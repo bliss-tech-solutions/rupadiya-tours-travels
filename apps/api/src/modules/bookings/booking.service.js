@@ -1,0 +1,493 @@
+const crypto = require('crypto');
+const Trip = require('../trips/trip.model');
+const Route = require('../routes/route.model');
+const Bus = require('../fleet/bus.model');
+const User = require('../users/user.model');
+const Booking = require('./booking.model');
+const Offer = require('../offers/offer.model');
+const holdStore = require('../../config/holdStore');
+const commissionService = require('../commissions/commission.service');
+const dummyPayment = require('../../providers/payments/DummyPaymentProvider');
+const razorpayPayment = require('../../providers/payments/RazorpayProvider');
+const env = require('../../config/env');
+const { SEAT_STATUS, BOOKING_STATUS, PAYMENT_STATUS } = require('../../config/constants');
+
+class BookingService {
+  /**
+   * Quote fare for selected seats
+   */
+  async calculateQuote({ tripId, seatNumbers, offerCode }) {
+    const trip = await Trip.findById(tripId);
+    if (!trip) throw new Error('Trip not found');
+
+    const seatCount = seatNumbers.length;
+    const baseFare = trip.baseFare;
+    const subtotal = baseFare * seatCount;
+    const gstAmount = Math.round(subtotal * env.GST_RATE);
+
+    let discountAmount = 0;
+    let appliedOffer = null;
+
+    if (offerCode) {
+      const offer = await Offer.findOne({
+        code: offerCode.toUpperCase(),
+        isActive: true,
+        validUntil: { $gte: new Date() }
+      });
+
+      if (offer && subtotal >= offer.minBookingAmount) {
+        discountAmount = Math.min(
+          Math.round((subtotal * offer.discountPercent) / 100),
+          offer.maxDiscountAmount
+        );
+        appliedOffer = {
+          code: offer.code,
+          title: offer.title,
+          discountAmount
+        };
+      }
+    }
+
+    const totalPayable = subtotal + gstAmount - discountAmount;
+
+    return {
+      tripId,
+      seatNumbers,
+      seatCount,
+      baseFare,
+      subtotal,
+      gstAmount,
+      discountAmount,
+      appliedOffer,
+      totalPayable
+    };
+  }
+
+  /**
+   * Atomic 10-minute seat hold with dynamic adjacent female preference check
+   */
+  async holdSeats({ tripId, seatNumbers, passengers, passengerId, referralCode }) {
+    const trip = await Trip.findById(tripId).populate('routeId').populate('busId');
+    if (!trip) throw new Error('Trip not found');
+
+    // Identify which booked seats have female passengers
+    const femaleBookedSeats = new Set();
+    trip.seats.forEach(s => {
+      if (s.status === SEAT_STATUS.BOOKED && s.passenger && s.passenger.gender === 'female') {
+        femaleBookedSeats.add(s.seatNumber);
+      }
+    });
+
+    const requestedSet = new Set(seatNumbers.map(s => s.toString()));
+
+    const normalizedSeatNumbers = [];
+
+    // 1. Verify each seat exists, isn't booked, and satisfies adjacent female preference
+    for (const rawSeatNum of seatNumbers) {
+      const seat = trip.seats.find(s => s.seatNumber === rawSeatNum.toString())
+        || trip.seats.find(s => s.seatNumber.toLowerCase() === rawSeatNum.toString().toLowerCase())
+        || trip.seats.find(s => s.seatNumber.replace(/\D/g, '') === rawSeatNum.toString().replace(/\D/g, ''));
+
+      if (!seat) throw new Error(`Seat ${rawSeatNum} does not exist on this bus.`);
+      const seatNum = seat.seatNumber;
+      normalizedSeatNumbers.push(seatNum);
+
+      if (seat.status === SEAT_STATUS.BOOKED || seat.status === SEAT_STATUS.BLOCKED) {
+        throw new Error(`Seat ${seatNum} is already booked.`);
+      }
+
+      // Check dynamic female preference:
+      const adjacentNum = Trip.getAdjacentSeatNumber(seatNum);
+      const isAdjacentToBookedFemale = adjacentNum && femaleBookedSeats.has(adjacentNum);
+
+      // If adjacent seat was previously booked by an independent female stranger
+      if (isAdjacentToBookedFemale) {
+        const pass = (passengers || []).find(p => p.seatNumber === rawSeatNum.toString() || p.seatNumber === seatNum);
+        if (pass && pass.gender && pass.gender.toLowerCase() === 'male') {
+          throw new Error(
+            `Seat ${seatNum} is adjacent to a seat booked by a female passenger. ` +
+            `To ensure safety and comfort, this seat is reserved for female passengers only.`
+          );
+        }
+      }
+    }
+
+    // 2. Atomic hold in holdStore
+    const holdToken = `HOLD_${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
+    const holdResult = await holdStore.holdSeats({
+      tripId: tripId.toString(),
+      seatNumbers: normalizedSeatNumbers,
+      passengerDetails: passengers || [],
+      holdToken,
+      ttlSeconds: env.HOLD_DURATION_SECONDS
+    });
+
+    if (!holdResult.success) {
+      const err = new Error(holdResult.message);
+      err.statusCode = 409;
+      err.conflictingSeats = holdResult.conflictingSeats;
+      throw err;
+    }
+
+    // 3. Generate fare quote
+    const quote = await this.calculateQuote({ tripId, seatNumbers });
+
+    return {
+      success: true,
+      holdToken,
+      expiresAt: holdResult.expiresAt,
+      ttlRemainingSeconds: holdResult.ttlRemainingSeconds,
+      trip: {
+        id: trip._id,
+        route: trip.routeId,
+        bus: trip.busId,
+        departureTime: trip.departureTime,
+        arrivalTime: trip.arrivalTime
+      },
+      quote
+    };
+  }
+
+  /**
+   * Confirm booking and finalize ticket
+   */
+  async confirmBooking({
+    holdToken,
+    passengerId,
+    contactEmail,
+    contactPhone,
+    passengers,
+    boardingPoint,
+    droppingPoint,
+    paymentProvider = 'dummy',
+    paymentDetails = {},
+    referralCode,
+    tripId,
+    seatNumbers
+  }) {
+    // 1. Validate hold token or recover from database if memory was cleared
+    let hold = holdToken ? holdStore.getHold(holdToken) : null;
+    if (!hold) {
+      const targetTripId = tripId || (passengers?.[0]?.tripId);
+      const targetSeats = (seatNumbers || (passengers || []).map(p => p.seatNumber)).filter(Boolean);
+
+      if (targetTripId && targetSeats.length > 0) {
+        const tripCheck = await Trip.findById(targetTripId);
+        if (tripCheck) {
+          const bookedConflict = tripCheck.seats.filter(s => 
+            targetSeats.map(String).includes(s.seatNumber.toString()) && 
+            (s.status === SEAT_STATUS.BOOKED || s.status === SEAT_STATUS.BLOCKED)
+          );
+
+          if (bookedConflict.length === 0) {
+            // Seats are available in database, re-hold safely
+            const tokenToUse = holdToken || `HOLD_${Date.now()}`;
+            await holdStore.holdSeats({
+              tripId: targetTripId.toString(),
+              seatNumbers: targetSeats.map(s => s.toString()),
+              passengerDetails: passengers || [],
+              holdToken: tokenToUse,
+              ttlSeconds: env.HOLD_DURATION_SECONDS || 600
+            });
+            hold = holdStore.getHold(tokenToUse);
+          } else {
+            const err = new Error(`Seats [${bookedConflict.map(s => s.seatNumber).join(', ')}] have already been booked by another passenger.`);
+            err.statusCode = 409;
+            throw err;
+          }
+        }
+      }
+    }
+
+    if (!hold) {
+      const err = new Error('Your 10-minute seat reservation has expired. Please choose your seats again.');
+      err.statusCode = 410;
+      throw err;
+    }
+
+    const trip = await Trip.findById(hold.tripId).populate('routeId').populate('busId');
+    if (!trip) throw new Error('Scheduled trip was not found');
+
+    // Ensure valid passengerId without requiring user login
+    if (!passengerId) {
+      const User = require('../users/user.model');
+      const email = (contactEmail || 'guest@rupadiya.test').toLowerCase();
+      const cleanPhone = contactPhone ? contactPhone.replace(/\D/g, '') : null;
+      let guestUser = await User.findOne({
+        $or: [
+          ...(cleanPhone ? [{ phone: cleanPhone }] : []),
+          { email }
+        ]
+      });
+      if (!guestUser) {
+        guestUser = await User.create({
+          name: passengers?.[0]?.name || 'Guest Traveler',
+          email,
+          phone: cleanPhone || '9999999999',
+          role: 'PASSENGER',
+          passwordHash: 'guest-no-login'
+        });
+      }
+      passengerId = guestUser._id;
+    }
+
+    // 2. Process or verify payment
+    let paymentVerified = false;
+    let paymentRef = '';
+
+    if (paymentProvider === 'agent_wallet') {
+      const { Wallet, WalletLedger } = require('../wallets/wallet.model');
+      const User = require('../users/user.model');
+      
+      // Determine agent performing the wallet booking
+      let agentUser = null;
+      if (passengerId) {
+        agentUser = await User.findById(passengerId);
+      }
+      if (!agentUser && referralCode) {
+        agentUser = await User.findOne({ referralCode: referralCode.toUpperCase() });
+      }
+
+      if (!agentUser) {
+        throw new Error('Agent authentication or valid referral code required for agent wallet booking.');
+      }
+
+      const agentWallet = await Wallet.findOne({ userId: agentUser._id });
+      const quoteCheck = await this.calculateQuote({
+        tripId: trip._id,
+        seatNumbers: hold.seatNumbers
+      });
+
+      if (!agentWallet || agentWallet.balance < quoteCheck.totalPayable) {
+        throw new Error(`Insufficient agent wallet balance. Required: ₹${quoteCheck.totalPayable}, Available: ₹${agentWallet?.balance || 0}`);
+      }
+
+      // Atomically debit agent wallet
+      agentWallet.balance -= quoteCheck.totalPayable;
+      await agentWallet.save();
+
+      paymentRef = `WALLET_TXN_${Date.now()}`;
+      await WalletLedger.create({
+        walletId: agentWallet._id,
+        userId: agentUser._id,
+        companyCode: trip.companyCode || 1,
+        entryType: 'DEBIT',
+        amount: quoteCheck.totalPayable,
+        transactionType: TRANSACTION_TYPES.TICKET_PURCHASE,
+        referenceType: 'BOOKING',
+        referenceId: paymentRef,
+        description: `Customer Ticket Booking - Seats [${hold.seatNumbers.join(', ')}]`,
+        idempotencyKey: `WALLET_BOOKING_${paymentRef}`,
+        balanceAfter: agentWallet.balance
+      });
+
+      paymentVerified = true;
+      if (!referralAgentId) referralAgentId = agentUser._id;
+    } else if (paymentProvider === 'razorpay') {
+      const verifyRes = await razorpayPayment.verifyPayment(paymentDetails);
+      if (!verifyRes.verified) {
+        throw new Error('Payment verification failed. Booking cannot be confirmed.');
+      }
+      paymentVerified = true;
+      paymentRef = verifyRes.transactionId;
+    } else {
+      // Dummy provider
+      const dummyRes = await dummyPayment.verifyPayment({
+        paymentId: paymentDetails.paymentId,
+        status: paymentDetails.status || 'SUCCESS'
+      });
+      if (!dummyRes.verified) {
+        throw new Error('Simulated card payment declined.');
+      }
+      paymentVerified = true;
+      paymentRef = dummyRes.transactionId;
+    }
+
+    // 3. Mark seats as BOOKED on the Trip document atomically
+    for (const seatNum of hold.seatNumbers) {
+      const seat = trip.seats.find(s => s.seatNumber === seatNum.toString());
+      if (seat) {
+        seat.status = SEAT_STATUS.BOOKED;
+        const passInfo = (passengers || []).find(p => p.seatNumber === seatNum.toString()) || {};
+        seat.passenger = {
+          name: passInfo.name || 'Passenger',
+          age: passInfo.age || 25,
+          gender: passInfo.gender || 'other'
+        };
+      }
+    }
+    await trip.save();
+
+    // 4. Calculate final quote
+    const quote = await this.calculateQuote({
+      tripId: trip._id,
+      seatNumbers: hold.seatNumbers
+    });
+
+    const pnr = `RUP-${Math.floor(100000 + Math.random() * 900000)}`;
+    const bookingId = `BK_${Date.now()}_${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+    // Resolve referral agent if provided
+    let referralAgentId = null;
+    if (referralCode) {
+      const User = require('../users/user.model');
+      const agent = await User.findOne({ referralCode: referralCode.toUpperCase() });
+      if (agent) referralAgentId = agent._id;
+    }
+
+    // Safely resolve boarding and dropping point with fallback times
+    const depTimeFormatted = new Date(trip.departureTime).toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    const arrTimeFormatted = new Date(trip.arrivalTime).toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    const resolvedBoarding = {
+      name: (boardingPoint && boardingPoint.name) || trip.routeId?.boardingPoints?.[0]?.name || 'Main Border Terminal',
+      time: (boardingPoint && boardingPoint.time) || depTimeFormatted
+    };
+
+    const resolvedDropping = {
+      name: (droppingPoint && droppingPoint.name) || trip.routeId?.droppingPoints?.[0]?.name || 'Central Terminal',
+      time: (droppingPoint && droppingPoint.time) || arrTimeFormatted
+    };
+
+    // 5. Create Booking record
+    const booking = new Booking({
+      bookingId,
+      pnr,
+      passengerId,
+      contactDetails: {
+        email: contactEmail,
+        phone: contactPhone
+      },
+      tripId: trip._id,
+      routeId: trip.routeId._id,
+      busId: trip.busId._id,
+      companyCode: trip.companyCode,
+      referralAgentId,
+      seatNumbers: hold.seatNumbers,
+      passengers: (passengers || []).map(p => ({
+        seatNumber: p.seatNumber,
+        name: p.name,
+        age: p.age,
+        gender: p.gender,
+        fare: trip.baseFare
+      })),
+      boardingPoint: resolvedBoarding,
+      droppingPoint: resolvedDropping,
+      fareBreakdown: {
+        baseFare: quote.baseFare,
+        seatCount: quote.seatCount,
+        subtotal: quote.subtotal,
+        gstAmount: quote.gstAmount,
+        discountAmount: quote.discountAmount,
+        totalPayable: quote.totalPayable
+      },
+      status: BOOKING_STATUS.CONFIRMED,
+      paymentStatus: PAYMENT_STATUS.SUCCESS,
+      paymentProvider,
+      paymentReference: paymentRef
+    });
+
+    await booking.save();
+
+    // 6. Release lock from holdStore
+    holdStore.releaseHold(holdToken);
+
+    // 7. Calculate and distribute 5-level commissions if booked via an agent
+    if (referralAgentId) {
+      try {
+        await commissionService.distributeCommissions({
+          booking,
+          trip,
+          seatCount: hold.seatNumbers.length
+        });
+      } catch (commErr) {
+        console.error('[Commission Engine Error]', commErr);
+      }
+    }
+
+    // Populate relations for complete ticket view
+    await booking.populate([
+      { path: 'tripId', populate: [{ path: 'busId' }, { path: 'routeId' }] },
+      { path: 'routeId' },
+      { path: 'busId' }
+    ]);
+
+    const bookingObj = booking.toObject();
+    bookingObj.trip = bookingObj.tripId;
+    bookingObj.bus = bookingObj.busId;
+    bookingObj.route = bookingObj.routeId;
+    bookingObj.seats = bookingObj.seatNumbers;
+    bookingObj.totalAmount = bookingObj.fareBreakdown?.totalPayable;
+
+    return bookingObj;
+  }
+
+  /**
+   * Cancel booking with refund calculation
+   */
+  async cancelBooking({ bookingId, reason, cancelledByUserId }) {
+    const booking = await Booking.findOne({ $or: [{ bookingId }, { pnr: bookingId }] })
+      .populate('tripId');
+
+    if (!booking) throw new Error('Booking not found');
+    if (booking.status === BOOKING_STATUS.CANCELLED) {
+      throw new Error('This booking is already cancelled');
+    }
+
+    const trip = await Trip.findById(booking.tripId);
+    if (!trip) throw new Error('Associated trip not found');
+
+    for (const seatNum of booking.seatNumbers) {
+      const seat = trip.seats.find(s => s.seatNumber === seatNum.toString());
+      if (seat) {
+        seat.status = SEAT_STATUS.AVAILABLE;
+        seat.passenger = null;
+      }
+    }
+    await trip.save();
+
+    const now = new Date();
+    const hoursToDep = (new Date(trip.departureTime) - now) / (1000 * 60 * 60);
+
+    let refundPercent = 0.50;
+    if (hoursToDep > 24) refundPercent = 0.90;
+    else if (hoursToDep > 12) refundPercent = 0.70;
+
+    const paidTotal = booking.fareBreakdown.totalPayable;
+    const refundAmount = Math.round(paidTotal * refundPercent);
+    const cancellationFee = paidTotal - refundAmount;
+
+    booking.status = BOOKING_STATUS.CANCELLED;
+    booking.cancellationDetails = {
+      cancelledAt: new Date(),
+      refundAmount,
+      cancellationFee,
+      reason: reason || 'Customer requested cancellation'
+    };
+    await booking.save();
+
+    try {
+      await commissionService.reverseCommissions(booking._id);
+    } catch (commErr) {
+      console.error('[Commission Reversal Error]', commErr);
+    }
+
+    return {
+      success: true,
+      booking,
+      refundAmount,
+      cancellationFee,
+      refundPercent: refundPercent * 100
+    };
+  }
+}
+
+module.exports = new BookingService();

@@ -1,0 +1,23 @@
+{
+  "name": "rupadiya-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace=@rupadiya/api run dev",
+    "dev:user": "npm --workspace=@rupadiya/user-web run dev",
+    "dev:agent": "npm --workspace=@rupadiya/agent-portal run dev",
+    "dev:company": "npm --workspace=@rupadiya/company-portal run dev",
+    "dev:admin": "npm --workspace=@rupadiya/admin-portal run dev",
+    "build:user": "npm --workspace=@rupadiya/user-web run build",
+    "build:agent": "npm --workspace=@rupadiya/agent-portal run build",
+    "build:company": "npm --workspace=@rupadiya/company-portal run build",
+    "build:admin": "npm --workspace=@rupadiya/admin-portal run build",
+    "build:all": "npm run build:user && npm run build:agent && npm run build:company && npm run build:admin",
+    "seed": "npm --workspace=@rupadiya/api run seed",
+    "test:api": "npm --workspace=@rupadiya/api run test"
+  }
+}

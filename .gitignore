@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Next.js Build Output
+.next/
+apps/*/.next/
+out/
+build/
+dist/
+
+# Local Database & Cache
+apps/api/data/
+*.sock
+*.lock
+
+# Environment variables
+.env
+.env*.local
+!.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# IDE & Editor Configs
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+

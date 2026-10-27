@@ -1,0 +1,17 @@
+const express = require('express');
+const router = express.Router();
+const bookingController = require('./booking.controller');
+const { authenticateToken, optionalAuth } = require('../../middleware/auth.middleware');
+
+router.post('/quote', (req, res, next) => bookingController.quote(req, res, next));
+router.post('/hold', optionalAuth, (req, res, next) => bookingController.hold(req, res, next));
+router.post('/hold/release', optionalAuth, (req, res, next) => bookingController.releaseHold(req, res, next));
+router.get('/hold/:holdToken', (req, res, next) => bookingController.getHoldStatus(req, res, next));
+router.post('/confirm', optionalAuth, (req, res, next) => bookingController.confirm(req, res, next));
+router.get('/mine', authenticateToken, (req, res, next) => bookingController.getMine(req, res, next));
+router.get('/my-bookings', authenticateToken, (req, res, next) => bookingController.getMine(req, res, next));
+router.get('/:bookingId', (req, res, next) => bookingController.getById(req, res, next));
+router.post('/:bookingId/cancel', optionalAuth, (req, res, next) => bookingController.cancel(req, res, next));
+
+module.exports = router;
+
