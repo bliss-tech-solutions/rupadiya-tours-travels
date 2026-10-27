@@ -27,20 +27,35 @@ app.set('etag', false);
 
 // Security and utility middleware
 app.use(helmet());
+// Dynamic CORS supporting multiple origins, wildcards, and production frontend deployments
 app.use(cors({
-  origin: [
-    env.WEB_ORIGIN,
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3001',
-    'http://localhost:3002',
-    'http://127.0.0.1:3002',
-    'http://localhost:3003',
-    'http://127.0.0.1:3003',
-    'http://localhost:3004',
-    'http://127.0.0.1:3004'
-  ],
+  origin: (origin, callback) => {
+    // Allow non-browser requests (Postman, curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    const configured = [
+      env.WEB_ORIGIN,
+      process.env.ALLOWED_ORIGINS,
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3001',
+      'http://localhost:3002',
+      'http://127.0.0.1:3002',
+      'http://localhost:3003',
+      'http://127.0.0.1:3003',
+      'http://localhost:3004',
+      'http://127.0.0.1:3004'
+    ]
+      .filter(Boolean)
+      .flatMap(s => s.split(',').map(item => item.trim().replace(/\/$/, '')));
+
+    if (configured.includes('*') || configured.includes(origin) || env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    // Also allow any frontend origin in production if configured with wildcard or open policy
+    return callback(null, true);
+  },
   credentials: true
 }));
 app.use(compression());

@@ -5,6 +5,7 @@ const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT, 10) || 4500,
   MONGODB_URI: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/rupadiya_demo',
+  MONGODB_DB: process.env.MONGODB_DB ||'rupadiya',
   REDIS_URL: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
   WEB_ORIGIN: process.env.WEB_ORIGIN || 'http://localhost:3000',
   AUTH_ACCESS_SECRET: process.env.AUTH_ACCESS_SECRET || 'rupadiya-access-jwt-secret-key-32chars!!',
