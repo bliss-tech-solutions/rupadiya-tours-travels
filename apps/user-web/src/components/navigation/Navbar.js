@@ -46,13 +46,13 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           
-          {/* Logo matching NTT Travel brand */}
+          {/* Logo matching Rupadiya Travel brand */}
           <Link href="/" className="flex items-center gap-2.5 group">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-sky-500 flex items-center justify-center text-white shadow-md shadow-sky-500/20 group-hover:bg-sky-600 transition">
               <Bus className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="flex flex-col">
-              <span className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 leading-none">NTT</span>
+              <span className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 leading-none">Rupadiya</span>
               <span className="text-[9px] sm:text-[10px] tracking-widest uppercase font-semibold text-slate-400 leading-tight">TRAVEL</span>
             </div>
           </Link>

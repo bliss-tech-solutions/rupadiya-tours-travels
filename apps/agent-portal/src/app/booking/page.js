@@ -16,23 +16,27 @@ import {
   AlertCircle, 
   RefreshCw,
   ArrowRight,
-  Sparkles,
+  ArrowLeftRight,
   CreditCard,
-  QrCode,
-  Building2
+  Building2,
+  Bus as BusIcon,
+  ShieldCheck,
+  ChevronRight
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { downloadTicketPdf } from '../../lib/pdfGenerator';
+import { openRazorpayCheckout } from '../../lib/razorpay';
 
-const CITIES = [
-  'Rupadiya',
+const HUB_CITY = 'Rupadiya';
+const SPOKE_CITIES = [
   'Ahmedabad',
-  'Surat',
   'Vadodara',
+  'Surat',
   'Bengaluru',
   'Hyderabad',
   'Mumbai'
 ];
+const ALL_CITIES = [HUB_CITY, ...SPOKE_CITIES];
 
 export default function AgentBookingPage() {
   // Steps: 1. SEARCH/RESULTS, 2. SEATS, 3. DETAILS_AND_PAY, 4. CONFIRMED
@@ -48,6 +52,7 @@ export default function AgentBookingPage() {
 
   // Results
   const [trips, setTrips] = useState([]);
+  const [upcomingTrips, setUpcomingTrips] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
 
@@ -89,7 +94,7 @@ export default function AgentBookingPage() {
         ]);
         if (dashRes?.success) {
           const d = dashRes.data || dashRes;
-          setWalletBalance(d.walletBalance ?? d.wallet?.availableBalance);
+          setWalletBalance(d.walletBalance ?? d.wallet?.availableBalance ?? d.wallet?.balance);
           setAgentProfile(d.agent);
         }
         if (setRes?.success) {
@@ -99,7 +104,7 @@ export default function AgentBookingPage() {
       } catch (e) {}
     }
     loadAgent();
-    handleSearch();
+    handleSearch(null, { sourceCity: 'Rupadiya', destinationCity: 'Ahmedabad' });
 
     const handleWalletUpdate = () => loadAgent();
     window.addEventListener('wallet-updated', handleWalletUpdate);
@@ -123,22 +128,58 @@ export default function AgentBookingPage() {
     });
   }, [selectedSeats]);
 
-  const handleSearch = async (e) => {
-    if (e) e.preventDefault();
+  const handleSourceChange = (newSrc) => {
+    setSourceCity(newSrc);
+    if (newSrc === HUB_CITY) {
+      if (destinationCity === HUB_CITY) {
+        setDestinationCity(SPOKE_CITIES[0]);
+      }
+    } else {
+      setDestinationCity(HUB_CITY);
+    }
+  };
+
+  const handleDestinationChange = (newDst) => {
+    setDestinationCity(newDst);
+    if (newDst !== HUB_CITY && sourceCity !== HUB_CITY) {
+      setSourceCity(HUB_CITY);
+    }
+  };
+
+  const handleSwapCities = () => {
+    const nextSrc = destinationCity;
+    const nextDst = sourceCity;
+    setSourceCity(nextSrc);
+    setDestinationCity(nextDst);
+    handleSearch(null, { sourceCity: nextSrc, destinationCity: nextDst, travelDate });
+  };
+
+  const handleSearch = async (e, overrideParams) => {
+    if (e?.preventDefault) e.preventDefault();
     setSearching(true);
     setSearchError('');
     setSelectedTrip(null);
     setTripDetail(null);
     setSelectedSeats([]);
 
+    const src = overrideParams?.sourceCity || sourceCity;
+    const dst = overrideParams?.destinationCity || destinationCity;
+    const date = overrideParams?.travelDate || travelDate;
+
     try {
-      const res = await api.searchTrips(sourceCity, destinationCity, travelDate);
+      const res = await api.searchTrips(src, dst, date);
       if (res?.success) {
-        setTrips(res.data?.trips || res.trips || []);
+        const foundTrips = Array.isArray(res.data) ? res.data : (res.data?.trips || res.trips || []);
+        setTrips(foundTrips);
+        setUpcomingTrips(res.upcomingTrips || res.data?.upcomingTrips || []);
       } else {
+        setTrips([]);
+        setUpcomingTrips([]);
         setSearchError(res?.error || 'No trips scheduled for this date');
       }
     } catch (err) {
+      setTrips([]);
+      setUpcomingTrips([]);
       setSearchError(err.message || 'Error searching bus schedules');
     } finally {
       setSearching(false);
@@ -152,15 +193,28 @@ export default function AgentBookingPage() {
 
     try {
       const res = await api.getTrip(trip._id);
-      const t = res.data?.trip || res.trip;
+      const t = res.trip || res.data?.trip || res.data || trip;
       if (t) {
         setTripDetail(t);
-        if (t.boardingPoints?.length) setBoardingPoint(t.boardingPoints[0]);
-        if (t.droppingPoints?.length) setDroppingPoint(t.droppingPoints[0]);
+        if (t.boardingPoints?.length) {
+          const bp = t.boardingPoints[0];
+          setBoardingPoint({ name: bp.name || bp.location, time: bp.time || '05:30 PM' });
+        } else {
+          setBoardingPoint({ name: `${t.sourceCity || sourceCity} Main Terminal`, time: '05:30 PM' });
+        }
+
+        if (t.droppingPoints?.length) {
+          const dp = t.droppingPoints[0];
+          setDroppingPoint({ name: dp.name || dp.location, time: dp.time || '08:30 AM' });
+        } else {
+          setDroppingPoint({ name: `${t.destinationCity || destinationCity} Central Drop Point`, time: '08:30 AM' });
+        }
         setStep(2); // Go to seat selection
       }
     } catch (err) {
       console.error(err);
+      setTripDetail(trip);
+      setStep(2);
     } finally {
       setLoadingTrip(false);
     }
@@ -168,9 +222,10 @@ export default function AgentBookingPage() {
 
   const toggleSeat = (seat) => {
     if (seat.status && seat.status !== 'AVAILABLE') return;
-    const isSelected = selectedSeats.some(s => (s.seatNumber || s) === (seat.seatNumber || seat));
+    const seatId = seat.seatNumber || seat;
+    const isSelected = selectedSeats.some(s => (s.seatNumber || s) === seatId);
     if (isSelected) {
-      setSelectedSeats(selectedSeats.filter(s => (s.seatNumber || s) !== (seat.seatNumber || seat)));
+      setSelectedSeats(selectedSeats.filter(s => (s.seatNumber || s) !== seatId));
     } else {
       if (selectedSeats.length >= 6) {
         alert('Maximum 6 seats can be booked in a single transaction.');
@@ -180,10 +235,87 @@ export default function AgentBookingPage() {
     }
   };
 
+  const renderBerthCard = (seatCode) => {
+    const seat = tripDetail?.seats?.find(s => s.seatNumber === seatCode) || {
+      seatNumber: seatCode,
+      status: 'AVAILABLE',
+      fare: basePricePerSeat
+    };
+    const isSelected = selectedSeats.some(s => (s.seatNumber || s) === seatCode);
+    const isBooked = seat.status === 'BOOKED' || seat.status === 'LOCKED' || seat.status === 'BLOCKED';
+    const isFemale = seat.gender === 'female' || seat.category === 'FEMALE_ONLY' || seat.passenger?.gender === 'female';
+    const seatPrice = seat.fare || seat.price || basePricePerSeat;
+
+    return (
+      <button
+        key={seatCode}
+        type="button"
+        disabled={isBooked}
+        onClick={() => toggleSeat(seat)}
+        className={`w-12 h-18 sm:w-14 sm:h-20 rounded-xl border flex flex-col justify-between p-1.5 text-left transition cursor-pointer relative ${
+          isSelected
+            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs ring-2 ring-emerald-400'
+            : isBooked
+            ? isFemale
+              ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
+              : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+            : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500 hover:bg-emerald-50/40'
+        }`}
+        title={`${seatCode} · ${isBooked ? 'Booked' : isSelected ? 'Selected' : 'Available'}`}
+      >
+        <span className="text-[10px] font-mono font-bold">{seatCode}</span>
+        
+        {/* Pillow / Headrest indicator */}
+        <div className={`w-6 h-1 rounded-full mx-auto my-0.5 ${
+          isSelected ? 'bg-white/70' : isBooked ? 'bg-slate-300' : 'bg-emerald-100'
+        }`} />
+
+        <span className="text-[9px] font-bold truncate">
+          {isBooked ? 'Sold' : `₹${seatPrice}`}
+        </span>
+      </button>
+    );
+  };
+
+  const renderSeaterButton = (seatCode) => {
+    const seat = tripDetail?.seats?.find(s => s.seatNumber === seatCode) || {
+      seatNumber: seatCode,
+      status: 'AVAILABLE',
+      fare: basePricePerSeat
+    };
+    const isSelected = selectedSeats.some(s => (s.seatNumber || s) === seatCode);
+    const isBooked = seat.status === 'BOOKED' || seat.status === 'LOCKED' || seat.status === 'BLOCKED';
+    const isFemale = seat.gender === 'female' || seat.category === 'FEMALE_ONLY' || seat.passenger?.gender === 'female';
+    const seatPrice = seat.fare || seat.price || basePricePerSeat;
+
+    return (
+      <button
+        key={seatCode}
+        type="button"
+        disabled={isBooked}
+        onClick={() => toggleSeat(seat)}
+        className={`w-11 h-11 rounded-xl border flex flex-col justify-between p-1 text-left transition cursor-pointer ${
+          isSelected
+            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs ring-1 ring-emerald-400'
+            : isBooked
+            ? isFemale
+              ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
+              : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+            : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500'
+        }`}
+      >
+        <span className="text-[10px] font-mono font-bold">{seatCode}</span>
+        <span className="text-[9px] font-bold truncate">
+          {isBooked ? 'Sold' : `₹${seatPrice}`}
+        </span>
+      </button>
+    );
+  };
+
   // Price calculations
   const seatCount = selectedSeats.length;
-  const basePricePerSeat = tripDetail?.basePrice || selectedTrip?.basePrice || 750;
-  const subtotal = seatCount * basePricePerSeat;
+  const basePricePerSeat = tripDetail?.baseFare || tripDetail?.basePrice || selectedTrip?.baseFare || selectedTrip?.basePrice || 1650;
+  const subtotal = selectedSeats.reduce((sum, s) => sum + (s.fare || s.price || basePricePerSeat), 0);
   const gstAmount = Math.round(subtotal * 0.05); // 5% GST
   const serviceCharge = Math.min(200, Number(agentSettings?.bookingCharge || 20) * (agentSettings?.bookingChargeType === 'FIXED' ? 1 : 1));
   const grandTotal = subtotal + gstAmount + serviceCharge;
@@ -200,7 +332,7 @@ export default function AgentBookingPage() {
     }
 
     if (paymentMode === 'WALLET' && walletBalance < grandTotal) {
-      setPayError(`Insufficient Wallet Balance (₹${Number(walletBalance).toLocaleString('en-IN')}). Required: ₹${grandTotal.toLocaleString('en-IN')}. Please Make Deposit first.`);
+      setPayError(`Insufficient Wallet Balance (₹${Number(walletBalance).toLocaleString('en-IN')}). Required: ₹${grandTotal.toLocaleString('en-IN')}. Please Make Deposit or pay via Online Gateway.`);
       return;
     }
 
@@ -208,53 +340,144 @@ export default function AgentBookingPage() {
     setPayError('');
 
     try {
+      const seatNums = selectedSeats.map(s => s.seatNumber || s);
+      const formattedPassengers = passengerDetails.map(p => ({
+        seatNumber: p.seatNumber,
+        name: p.name.trim(),
+        age: Number(p.age || 25),
+        gender: p.gender || 'male',
+        fare: basePricePerSeat
+      }));
+
+      const bpName = boardingPoint?.name || boardingPoint?.location || `${sourceCity} Main Station`;
+      const bpTime = boardingPoint?.time || '05:30 PM';
+      const dpName = droppingPoint?.name || droppingPoint?.location || `${destinationCity} Terminal`;
+      const dpTime = droppingPoint?.time || '08:30 AM';
+
       const payload = {
         tripId: tripDetail._id,
-        seatNumbers: selectedSeats.map(s => s.seatNumber || s),
-        passengers: passengerDetails,
+        seatNumbers: seatNums,
+        selectedSeats: seatNums,
+        passengers: formattedPassengers,
         contactDetails: {
           name: contactName || passengerDetails[0]?.name || 'Passenger',
           phone: contactMobile.trim(),
           email: contactEmail.trim() || 'passenger@rupadiya.test'
         },
-        boardingPoint,
-        droppingPoint,
+        contactPhone: contactMobile.trim(),
+        contactEmail: contactEmail.trim() || 'passenger@rupadiya.test',
+        boardingPoint: { name: bpName, time: bpTime },
+        droppingPoint: { name: dpName, time: dpTime },
         serviceCharge,
-        paymentMethod: paymentMode // 'WALLET' or 'ONLINE'
+        agentServiceFee: serviceCharge,
+        paymentMethod: paymentMode
       };
 
-      const res = await api.bookWithWallet(payload);
-      if (res?.success) {
-        setConfirmedBooking(res.data?.booking || res.booking);
-        setStep(4);
-        window.dispatchEvent(new Event('wallet-updated'));
-        try {
-          if (typeof api.getMyWallet === 'function') {
-            const w = await api.getMyWallet();
-            const bal = w?.data?.balance ?? w?.wallet?.availableBalance ?? w?.data?.availableBalance ?? w?.balance;
-            if (bal != null) setWalletBalance(bal);
+      if (paymentMode === 'WALLET') {
+        const res = await api.bookWithWallet(payload);
+        if (res?.success) {
+          const confirmed = res.booking || res.data?.booking || res.data;
+          setConfirmedBooking(confirmed);
+          setStep(4);
+          window.dispatchEvent(new Event('wallet-updated'));
+          if (res.walletBalance !== undefined) {
+            setWalletBalance(res.walletBalance);
+          } else {
+            try {
+              const dashRes = await api.getDashboard();
+              if (dashRes?.success) setWalletBalance(dashRes.data?.walletBalance ?? dashRes.data?.wallet?.availableBalance);
+            } catch (e) {}
           }
-        } catch (e) {}
+        } else {
+          setPayError(res?.error || 'Wallet payment authorization failed.');
+        }
+        setPaying(false);
       } else {
-        setPayError(res?.error || 'Payment and booking authorization failed.');
+        // ONLINE CUSTOMER PAYMENT VIA RAZORPAY
+        const orderRes = await api.createPaymentOrder({
+          amount: grandTotal,
+          purpose: 'TICKET_BOOKING',
+          metadata: {
+            tripId: tripDetail._id,
+            seatNumbers: seatNums,
+            selectedSeats: seatNums,
+            passengers: formattedPassengers,
+            boardingPoint: { name: bpName, time: bpTime },
+            droppingPoint: { name: dpName, time: dpTime },
+            contactPhone: contactMobile.trim(),
+            contactEmail: contactEmail.trim() || 'passenger@rupadiya.test',
+            referralCode: agentProfile?.referralCode
+          },
+          notes: {
+            corridor: `${sourceCity} to ${destinationCity}`,
+            agentName: agentProfile?.name || 'Agent'
+          }
+        });
+
+        if (!orderRes?.orderId) {
+          throw new Error(orderRes?.error || 'Failed to initialize payment gateway order');
+        }
+
+        await openRazorpayCheckout({
+          orderId: orderRes.orderId,
+          amount: grandTotal,
+          currency: 'INR',
+          keyId: orderRes.keyId,
+          name: 'Rupadiya Ticket Booking',
+          description: `Seats: [${seatNums.join(', ')}] · ${sourceCity} → ${destinationCity}`,
+          prefill: {
+            name: contactName || passengerDetails[0]?.name || 'Passenger',
+            email: contactEmail.trim() || 'passenger@rupadiya.test',
+            contact: contactMobile.trim()
+          },
+          onSuccess: async (rzpResponse) => {
+            try {
+              const verifyRes = await api.verifyPayment({
+                orderId: rzpResponse.razorpay_order_id,
+                paymentId: rzpResponse.razorpay_payment_id,
+                signature: rzpResponse.razorpay_signature
+              });
+
+              if (verifyRes?.success) {
+                const confirmed = verifyRes.bookingResult?.booking || verifyRes.bookingResult?.data?.booking || verifyRes.bookingResult;
+                setConfirmedBooking(confirmed);
+                setStep(4);
+                window.dispatchEvent(new Event('wallet-updated'));
+              } else {
+                setPayError(verifyRes?.error || 'Online payment verification failed.');
+              }
+            } catch (vErr) {
+              setPayError(vErr.message || 'Error verifying ticket payment');
+            } finally {
+              setPaying(false);
+            }
+          },
+          onDismiss: () => {
+            setPaying(false);
+          }
+        });
       }
     } catch (err) {
       setPayError(err.message || 'Transaction error during ticket issuance');
-    } finally {
       setPaying(false);
     }
   };
 
   const handleDownloadPdf = () => {
     if (!confirmedBooking) return;
-    const bus = tripDetail?.busId || {};
-    const seatsStr = confirmedBooking.seats?.map(s => s.seatNumber || s).join(', ') || 'N/A';
-    const depDate = tripDetail?.departureDate ? new Date(tripDetail.departureDate).toLocaleDateString('en-IN', {
+    const bus = tripDetail?.busId || tripDetail?.bus || {};
+    const seatsStr = confirmedBooking.seats?.map(s => s.seatNumber || s).join(', ') || confirmedBooking.seatNumbers?.join(', ') || 'N/A';
+    const depDate = tripDetail?.departureTime ? new Date(tripDetail.departureTime).toLocaleDateString('en-IN', {
       weekday: 'short',
       day: 'numeric',
       month: 'short',
       year: 'numeric'
     }) : travelDate;
+    const depTime = tripDetail?.departureTime ? new Date(tripDetail.departureTime).toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }) : '05:30 PM';
 
     downloadTicketPdf({
       bookingId: confirmedBooking.pnr,
@@ -262,16 +485,32 @@ export default function AgentBookingPage() {
       busName: bus.name || 'Rupadiya Intercity Express',
       busModel: `${bus.busType || 'AC Sleeper'} Coach`,
       dateStr: depDate,
-      timeStr: tripDetail?.departureTime || '05:30 PM',
+      timeStr: depTime,
       seatsStr,
-      boardingName: confirmedBooking.boardingPoint?.location || tripDetail?.sourceCity,
-      droppingName: confirmedBooking.droppingPoint?.location || tripDetail?.destinationCity,
-      totalFare: Number(confirmedBooking.pricing?.totalPrice || confirmedBooking.totalAmount || grandTotal).toLocaleString('en-IN'),
+      boardingName: confirmedBooking.boardingPoint?.name || confirmedBooking.boardingPoint?.location || tripDetail?.sourceCity || sourceCity,
+      droppingName: confirmedBooking.droppingPoint?.name || confirmedBooking.droppingPoint?.location || tripDetail?.destinationCity || destinationCity,
+      totalFare: Number(confirmedBooking.fareBreakdown?.totalPayable || confirmedBooking.pricing?.totalPrice || confirmedBooking.totalAmount || grandTotal).toLocaleString('en-IN'),
       agentCode: agentProfile?.agentCode || agentProfile?.referralCode || 'RUP-MASTER',
       agencyName: agentProfile?.agencyName || agentProfile?.name || 'Rupadiya Authorized Partner',
       passengers: confirmedBooking.passengers || []
     });
   };
+
+  // 4 quick date buttons
+  const quickDates = [
+    { label: 'Today', offset: 0 },
+    { label: 'Tomorrow', offset: 1 },
+    { label: '+2 Days', offset: 2 },
+    { label: '+3 Days', offset: 3 }
+  ].map(({ label, offset }) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offset);
+    return {
+      label,
+      iso: d.toISOString().split('T')[0],
+      display: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -302,32 +541,55 @@ export default function AgentBookingPage() {
       {step === 1 && (
         <div className="space-y-6">
           {/* Search Form Card */}
-          <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
             <form onSubmit={handleSearch} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+              {/* From City */}
               <div className="sm:col-span-4">
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">From City</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-600" /> From City
+                </label>
                 <select
                   value={sourceCity}
-                  onChange={(e) => setSourceCity(e.target.value)}
+                  onChange={(e) => handleSourceChange(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-500"
                 >
-                  {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  {ALL_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
 
-              <div className="sm:col-span-4">
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">To Destination</label>
+              {/* Swap Button (Desktop) */}
+              <div className="hidden sm:flex sm:col-span-1 justify-center pb-2">
+                <button
+                  type="button"
+                  onClick={handleSwapCities}
+                  title="Swap Origin and Destination"
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-500 transition border border-slate-200 active:scale-95"
+                >
+                  <ArrowLeftRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* To City */}
+              <div className="sm:col-span-3">
+                <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-sky-600" /> To Destination
+                </label>
                 <select
                   value={destinationCity}
-                  onChange={(e) => setDestinationCity(e.target.value)}
+                  onChange={(e) => handleDestinationChange(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-500"
                 >
-                  {CITIES.filter(c => c !== sourceCity).map(c => <option key={c} value={c}>{c}</option>)}
+                  {(sourceCity === HUB_CITY ? SPOKE_CITIES : [HUB_CITY]).map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
                 </select>
               </div>
 
+              {/* Journey Date */}
               <div className="sm:col-span-2">
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">Journey Date</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-slate-500" /> Journey Date
+                </label>
                 <input
                   type="date"
                   min={new Date().toISOString().split('T')[0]}
@@ -337,19 +599,49 @@ export default function AgentBookingPage() {
                 />
               </div>
 
+              {/* Search Submit */}
               <div className="sm:col-span-2">
                 <button
                   type="submit"
                   disabled={searching}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition active:scale-95 flex items-center justify-center gap-1.5 shadow-xs"
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition active:scale-95 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                 >
-                  {searching ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Search Buses'}
+                  {searching ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
+                    <>
+                      <Search className="w-4 h-4" /> Search Buses
+                    </>
+                  )}
                 </button>
               </div>
             </form>
 
+            {/* Quick Date Pills */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+              <span className="text-[11px] font-bold text-slate-400 mr-1">Quick Select:</span>
+              {quickDates.map((q) => {
+                const isActive = travelDate === q.iso;
+                return (
+                  <button
+                    key={q.iso}
+                    type="button"
+                    onClick={() => {
+                      setTravelDate(q.iso);
+                      handleSearch(null, { travelDate: q.iso });
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                      isActive
+                        ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {q.label} ({q.display})
+                  </button>
+                );
+              })}
+            </div>
+
             {searchError && (
-              <div className="mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{searchError}</span>
               </div>
@@ -358,28 +650,99 @@ export default function AgentBookingPage() {
 
           {/* Results List */}
           <div className="space-y-3">
-            <h3 className="text-sm font-bold text-slate-900">
-              Available Buses ({trips.length}) — {sourceCity} to {destinationCity} on {travelDate}
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">
+                Available Buses ({trips.length}) — {sourceCity} to {destinationCity} on {travelDate}
+              </h3>
+              <span className="text-xs text-slate-500 font-medium">
+                Corridor: {sourceCity} ⇄ {destinationCity}
+              </span>
+            </div>
 
             {trips.length === 0 ? (
-              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 text-xs space-y-2">
-                <Ticket className="w-8 h-8 mx-auto text-slate-300" />
-                <p className="font-semibold text-slate-600">No scheduled departures found for this corridor on {travelDate}.</p>
-                <p className="text-[11px] text-slate-400">Please choose another travel date or corridor.</p>
+              <div className="space-y-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-slate-400 text-xs space-y-2">
+                  <Ticket className="w-8 h-8 mx-auto text-slate-300" />
+                  <p className="font-semibold text-slate-600">No scheduled departures found for this corridor on {travelDate}.</p>
+                  <p className="text-[11px] text-slate-400">Please choose another travel date or select one of the available dates below.</p>
+                </div>
+
+                {upcomingTrips.length > 0 && (
+                  <div className="bg-white border border-emerald-200 rounded-2xl p-5 shadow-xs space-y-3">
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700 shrink-0">
+                        <Calendar className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          Next Available Departures on this Corridor ({sourceCity} → {destinationCity}):
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Click any upcoming departure to load seats and proceed with booking:
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+                      {upcomingTrips.map((uTrip) => {
+                        const uDate = new Date(uTrip.departureTime).toISOString().split('T')[0];
+                        const uDateStr = new Date(uTrip.departureTime).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+                        const uTimeStr = new Date(uTrip.departureTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                        const busName = uTrip.busId?.name || uTrip.bus?.name || 'Rupadiya Express';
+                        const fareVal = uTrip.baseFare || uTrip.basePrice || 1650;
+
+                        return (
+                          <button
+                            key={uTrip._id}
+                            type="button"
+                            onClick={() => {
+                              setTravelDate(uDate);
+                              handleSearch(null, { travelDate: uDate });
+                            }}
+                            className="p-3 rounded-xl border border-slate-200 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/50 text-left transition flex items-center justify-between group cursor-pointer"
+                          >
+                            <div>
+                              <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-700">
+                                {uDateStr} • {uTimeStr}
+                              </div>
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                {busName} · <strong className="text-slate-800">₹{fareVal}</strong>
+                              </div>
+                            </div>
+                            <span className="text-xs font-bold text-emerald-600 group-hover:translate-x-0.5 transition">
+                              View →
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               trips.map((trip) => {
-                const bus = trip.busId || {};
-                const availableCount = trip.availableSeatsCount ?? trip.seats?.filter(s => s.status === 'AVAILABLE')?.length ?? 24;
+                const bus = trip.busId || trip.bus || {};
+                const availableCount = trip.availableSeatsCount ?? trip.availableSeats ?? trip.seats?.filter(s => s.status === 'AVAILABLE')?.length ?? 38;
+                const depTimeStr = trip.departureTime 
+                  ? new Date(trip.departureTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) 
+                  : '05:30 PM';
+                const arrTimeStr = trip.arrivalTime 
+                  ? new Date(trip.arrivalTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) 
+                  : '08:30 AM';
+                const fromCityName = trip.sourceCity || trip.route?.fromCity?.name || trip.routeId?.fromCity?.name || sourceCity;
+                const toCityName = trip.destinationCity || trip.route?.toCity?.name || trip.routeId?.toCity?.name || destinationCity;
+                const fare = trip.baseFare || trip.basePrice || 1650;
+
                 return (
                   <div
                     key={trip._id}
-                    className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition shadow-xs"
+                    className="bg-white border border-slate-200/80 hover:border-emerald-300 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition shadow-xs"
                   >
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-900">{bus.name || 'Rupadiya Intercity Express'}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-bold text-slate-900">
+                          {bus.name || 'Rupadiya Intercity Express'}
+                        </span>
                         <span className="text-[10px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded">
                           {bus.busType || 'AC Sleeper (2+1)'}
                         </span>
@@ -390,8 +753,8 @@ export default function AgentBookingPage() {
 
                       <div className="flex items-center gap-6 text-xs text-slate-700">
                         <div>
-                          <span className="text-base font-bold text-slate-900">{trip.departureTime || '05:30 PM'}</span>
-                          <div className="text-[11px] text-slate-500">{trip.sourceCity}</div>
+                          <span className="text-base font-bold text-slate-900">{depTimeStr}</span>
+                          <div className="text-[11px] text-slate-500 font-medium">{fromCityName}</div>
                         </div>
                         <div className="flex flex-col items-center">
                           <span className="text-[10px] text-slate-400">Nonstop Direct</span>
@@ -400,8 +763,8 @@ export default function AgentBookingPage() {
                           </div>
                         </div>
                         <div>
-                          <span className="text-base font-bold text-slate-900">{trip.arrivalTime || '08:30 AM'}</span>
-                          <div className="text-[11px] text-slate-500">{trip.destinationCity}</div>
+                          <span className="text-base font-bold text-slate-900">{arrTimeStr}</span>
+                          <div className="text-[11px] text-slate-500 font-medium">{toCityName}</div>
                         </div>
                       </div>
                     </div>
@@ -410,15 +773,17 @@ export default function AgentBookingPage() {
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase font-semibold block md:text-right">Starting from</span>
                         <div className="text-xl font-bold text-emerald-700 md:text-right">
-                          ₹{Number(trip.basePrice || 750).toLocaleString('en-IN')}
+                          ₹{Number(fare).toLocaleString('en-IN')}
                         </div>
                       </div>
 
                       <button
                         onClick={() => handleSelectTrip(trip)}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition active:scale-95 shadow-xs"
+                        disabled={loadingTrip}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition active:scale-95 shadow-xs flex items-center gap-1.5 cursor-pointer"
                       >
-                        Select Seats →
+                        {loadingTrip ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                        <span>Select Seats →</span>
                       </button>
                     </div>
                   </div>
@@ -435,12 +800,12 @@ export default function AgentBookingPage() {
           <div className="flex items-center justify-between">
             <button
               onClick={() => setStep(1)}
-              className="text-xs text-slate-600 hover:text-slate-900 font-semibold"
+              className="text-xs text-slate-600 hover:text-slate-900 font-bold flex items-center gap-1 cursor-pointer"
             >
               ← Back to Bus Results
             </button>
-            <span className="text-xs text-slate-600 font-medium">
-              {tripDetail.sourceCity} → {tripDetail.destinationCity} • {tripDetail.busId?.name}
+            <span className="text-xs text-slate-600 font-semibold">
+              {tripDetail.sourceCity || sourceCity} → {tripDetail.destinationCity || destinationCity} • {tripDetail.busId?.name || tripDetail.bus?.name || 'Express Coach'}
             </span>
           </div>
 
@@ -460,117 +825,112 @@ export default function AgentBookingPage() {
                 </div>
               </div>
 
-              {/* SLEEPER 2+1 LAYOUT */}
-              {tripDetail.busId?.busType?.toLowerCase().includes('sleeper') ? (
+              {/* SLEEPER 2+1 LAYOUT (36 Berths: 18 Lower + 18 Upper, 1 Left + 2 Right) */}
+              {(tripDetail.busId?.busType?.toLowerCase().includes('sleeper') || 
+                tripDetail.bus?.busType?.toLowerCase().includes('sleeper') || 
+                tripDetail.layoutType === '2+1' || 
+                tripDetail.seats?.some(s => s.deck === 'UPPER' || s.seatNumber?.startsWith('U'))) ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Lower Deck */}
+                  {/* Lower Deck (18 berths: 6 rows of 1 Left + 2 Right) */}
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
                     <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 text-xs font-bold text-slate-700 uppercase">
-                      <span>Lower Deck</span>
-                      <span className="text-[10px] text-slate-400">Front →</span>
+                      <span>Lower Deck (18 Berths)</span>
+                      <span className="text-[10px] text-slate-400">Driver Cabin →</span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2.5">
-                      {tripDetail.seats
-                        .filter(s => s.seatNumber?.startsWith('L'))
-                        .map((seat) => {
-                          const isSelected = selectedSeats.some(s => (s.seatNumber || s) === seat.seatNumber);
-                          const isBooked = seat.status === 'BOOKED' || seat.status === 'LOCKED';
-                          const isFemale = seat.gender === 'female';
+                    <div className="space-y-3">
+                      {[
+                        { rowIdx: 1, left: 'L1', right: ['L2', 'L3'] },
+                        { rowIdx: 2, left: 'L4', right: ['L5', 'L6'] },
+                        { rowIdx: 3, left: 'L7', right: ['L8', 'L9'] },
+                        { rowIdx: 4, left: 'L10', right: ['L11', 'L12'] },
+                        { rowIdx: 5, left: 'L13', right: ['L14', 'L15'] },
+                        { rowIdx: 6, left: 'L16', right: ['L17', 'L18'] }
+                      ].map((row) => (
+                        <div key={`lower-row-${row.rowIdx}`} className="flex items-center justify-between gap-2">
+                          {/* Single Berth Left */}
+                          <div>
+                            {renderBerthCard(row.left)}
+                          </div>
 
-                          return (
-                            <button
-                              key={seat.seatNumber}
-                              disabled={isBooked}
-                              onClick={() => toggleSeat(seat)}
-                              className={`h-16 rounded-xl border flex flex-col justify-between p-2 text-left transition ${
-                                isSelected
-                                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
-                                  : isBooked
-                                  ? isFemale
-                                    ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
-                                    : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                                  : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500 hover:bg-emerald-50/40'
-                              }`}
-                            >
-                              <span className="text-[10px] font-mono font-bold">{seat.seatNumber}</span>
-                              <span className="text-[10px] font-bold">
-                                {isBooked ? 'Sold' : `₹${seat.price || tripDetail.basePrice}`}
-                              </span>
-                            </button>
-                          );
-                        })}
+                          {/* Aisle Walkway */}
+                          <div className="w-5 text-center text-[10px] text-slate-300 font-mono select-none">
+                            |
+                          </div>
+
+                          {/* Double Berths Right */}
+                          <div className="flex items-center gap-2">
+                            {row.right.map(code => renderBerthCard(code))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
-                  {/* Upper Deck */}
+                  {/* Upper Deck (18 berths: 6 rows of 1 Left + 2 Right) */}
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
                     <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 text-xs font-bold text-slate-700 uppercase">
-                      <span>Upper Deck</span>
-                      <span className="text-[10px] text-slate-400">Upper Berths</span>
+                      <span>Upper Deck (18 Berths)</span>
+                      <span className="text-[10px] text-slate-400">Upper Berths →</span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2.5">
-                      {tripDetail.seats
-                        .filter(s => s.seatNumber?.startsWith('U'))
-                        .map((seat) => {
-                          const isSelected = selectedSeats.some(s => (s.seatNumber || s) === seat.seatNumber);
-                          const isBooked = seat.status === 'BOOKED' || seat.status === 'LOCKED';
-                          const isFemale = seat.gender === 'female';
+                    <div className="space-y-3">
+                      {[
+                        { rowIdx: 1, left: 'U1', right: ['U2', 'U3'] },
+                        { rowIdx: 2, left: 'U4', right: ['U5', 'U6'] },
+                        { rowIdx: 3, left: 'U7', right: ['U8', 'U9'] },
+                        { rowIdx: 4, left: 'U10', right: ['U11', 'U12'] },
+                        { rowIdx: 5, left: 'U13', right: ['U14', 'U15'] },
+                        { rowIdx: 6, left: 'U16', right: ['U17', 'U18'] }
+                      ].map((row) => (
+                        <div key={`upper-row-${row.rowIdx}`} className="flex items-center justify-between gap-2">
+                          {/* Single Berth Left */}
+                          <div>
+                            {renderBerthCard(row.left)}
+                          </div>
 
-                          return (
-                            <button
-                              key={seat.seatNumber}
-                              disabled={isBooked}
-                              onClick={() => toggleSeat(seat)}
-                              className={`h-16 rounded-xl border flex flex-col justify-between p-2 text-left transition ${
-                                isSelected
-                                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
-                                  : isBooked
-                                  ? isFemale
-                                    ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
-                                    : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                                  : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500 hover:bg-emerald-50/40'
-                              }`}
-                            >
-                              <span className="text-[10px] font-mono font-bold">{seat.seatNumber}</span>
-                              <span className="text-[10px] font-bold">
-                                {isBooked ? 'Sold' : `₹${seat.price || tripDetail.basePrice}`}
-                              </span>
-                            </button>
-                          );
-                        })}
+                          {/* Aisle Walkway */}
+                          <div className="w-5 text-center text-[10px] text-slate-300 font-mono select-none">
+                            |
+                          </div>
+
+                          {/* Double Berths Right */}
+                          <div className="flex items-center gap-2">
+                            {row.right.map(code => renderBerthCard(code))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
               ) : (
-                /* SEATER 2+2 LAYOUT */
+                /* SEATER 2+2 LAYOUT (40 Seats: 10 Rows of 2 Left + 2 Right) */
                 <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 max-w-md mx-auto">
                   <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 text-xs font-bold text-slate-700 uppercase">
-                    <span>Coach Seating (2+2)</span>
-                    <span className="text-[10px] text-slate-400">Front →</span>
+                    <span>Coach Seating (2+2) · 40 Seats</span>
+                    <span className="text-[10px] text-slate-400">Driver Cabin →</span>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2.5">
-                    {tripDetail.seats.map((seat, i) => {
-                      const isSelected = selectedSeats.some(s => (s.seatNumber || s) === (seat.seatNumber || seat));
-                      const isBooked = seat.status === 'BOOKED' || seat.status === 'LOCKED';
+                  <div className="space-y-2.5">
+                    {Array.from({ length: 10 }, (_, r) => {
+                      const s1 = String(r * 4 + 1);
+                      const s2 = String(r * 4 + 2);
+                      const s3 = String(r * 4 + 3);
+                      const s4 = String(r * 4 + 4);
                       return (
-                        <button
-                          key={seat.seatNumber || i}
-                          disabled={isBooked}
-                          onClick={() => toggleSeat(seat)}
-                          className={`h-12 rounded-xl border flex flex-col justify-between p-1.5 text-left transition ${
-                            isSelected
-                              ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
-                              : isBooked
-                              ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                              : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500'
-                          } ${i % 4 === 1 ? 'mr-3' : ''}`}
-                        >
-                          <span className="text-[10px] font-mono font-bold">{seat.seatNumber}</span>
-                          <span className="text-[9px] font-bold">{isBooked ? 'Sold' : `₹${seat.price || tripDetail.basePrice}`}</span>
-                        </button>
+                        <div key={`seater-row-${r + 1}`} className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            {renderSeaterButton(s1)}
+                            {renderSeaterButton(s2)}
+                          </div>
+                          <div className="w-6 text-center text-[10px] text-slate-300 font-mono select-none">
+                            Aisle
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {renderSeaterButton(s3)}
+                            {renderSeaterButton(s4)}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
@@ -632,7 +992,7 @@ export default function AgentBookingPage() {
               <button
                 disabled={selectedSeats.length === 0}
                 onClick={() => setStep(3)}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition active:scale-95 shadow-xs flex items-center justify-center gap-2"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition active:scale-95 shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Continue to Passenger & Payment ({selectedSeats.length} Seats)</span>
                 <ArrowRight className="w-4 h-4" />
@@ -648,7 +1008,7 @@ export default function AgentBookingPage() {
           <div className="flex items-center justify-between">
             <button
               onClick={() => setStep(2)}
-              className="text-xs text-slate-600 hover:text-slate-900 font-semibold"
+              className="text-xs text-slate-600 hover:text-slate-900 font-bold flex items-center gap-1 cursor-pointer"
             >
               ← Back to Seat Selection
             </button>
@@ -666,16 +1026,21 @@ export default function AgentBookingPage() {
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Boarding Point</label>
                   <select
-                    value={boardingPoint?.location || ''}
+                    value={boardingPoint?.name || boardingPoint?.location || ''}
                     onChange={(e) => {
-                      const pt = tripDetail.boardingPoints?.find(p => p.location === e.target.value);
-                      if (pt) setBoardingPoint(pt);
+                      const val = e.target.value;
+                      const found = tripDetail.boardingPoints?.find(p => (p.name || p.location) === val);
+                      if (found) setBoardingPoint({ name: found.name || found.location, time: found.time || '05:30 PM' });
+                      else setBoardingPoint({ name: val, time: '05:30 PM' });
                     }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-500"
                   >
-                    {tripDetail.boardingPoints?.map((bp, i) => (
-                      <option key={i} value={bp.location}>
-                        {bp.location} ({bp.time})
+                    {(tripDetail.boardingPoints?.length ? tripDetail.boardingPoints : [
+                      { name: `${sourceCity} Main Bus Stand`, time: '05:30 PM' },
+                      { name: `${sourceCity} Bypass Circle`, time: '06:00 PM' }
+                    ]).map((bp, i) => (
+                      <option key={i} value={bp.name || bp.location}>
+                        {bp.name || bp.location} {bp.time ? `(${bp.time})` : ''}
                       </option>
                     ))}
                   </select>
@@ -684,16 +1049,21 @@ export default function AgentBookingPage() {
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Dropping Point</label>
                   <select
-                    value={droppingPoint?.location || ''}
+                    value={droppingPoint?.name || droppingPoint?.location || ''}
                     onChange={(e) => {
-                      const pt = tripDetail.droppingPoints?.find(p => p.location === e.target.value);
-                      if (pt) setDroppingPoint(pt);
+                      const val = e.target.value;
+                      const found = tripDetail.droppingPoints?.find(p => (p.name || p.location) === val);
+                      if (found) setDroppingPoint({ name: found.name || found.location, time: found.time || '08:30 AM' });
+                      else setDroppingPoint({ name: val, time: '08:30 AM' });
                     }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-500"
                   >
-                    {tripDetail.droppingPoints?.map((dp, i) => (
-                      <option key={i} value={dp.location}>
-                        {dp.location} ({dp.time})
+                    {(tripDetail.droppingPoints?.length ? tripDetail.droppingPoints : [
+                      { name: `${destinationCity} Central Bus Station`, time: '08:30 AM' },
+                      { name: `${destinationCity} Highway Drop Point`, time: '09:00 AM' }
+                    ]).map((dp, i) => (
+                      <option key={i} value={dp.name || dp.location}>
+                        {dp.name || dp.location} {dp.time ? `(${dp.time})` : ''}
                       </option>
                     ))}
                   </select>
@@ -771,8 +1141,9 @@ export default function AgentBookingPage() {
                   <input
                     type="tel"
                     required
+                    maxLength={10}
                     value={contactMobile}
-                    onChange={(e) => setContactMobile(e.target.value)}
+                    onChange={(e) => setContactMobile(e.target.value.replace(/\D/g, ''))}
                     placeholder="10-digit mobile (for SMS ticket)"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-500"
                   />
@@ -799,7 +1170,7 @@ export default function AgentBookingPage() {
                 <button
                   type="button"
                   onClick={() => setPaymentMode('WALLET')}
-                  className={`p-3.5 rounded-xl border text-left transition flex items-start gap-2.5 ${
+                  className={`p-3.5 rounded-xl border text-left transition flex items-start gap-2.5 cursor-pointer ${
                     paymentMode === 'WALLET'
                       ? 'bg-emerald-50/80 border-emerald-500 text-slate-900 ring-1 ring-emerald-500'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -816,11 +1187,11 @@ export default function AgentBookingPage() {
                   </div>
                 </button>
 
-                {/* Online Payment */}
+                {/* Online Payment via Razorpay */}
                 <button
                   type="button"
                   onClick={() => setPaymentMode('ONLINE')}
-                  className={`p-3.5 rounded-xl border text-left transition flex items-start gap-2.5 ${
+                  className={`p-3.5 rounded-xl border text-left transition flex items-start gap-2.5 cursor-pointer ${
                     paymentMode === 'ONLINE'
                       ? 'bg-emerald-50/80 border-emerald-500 text-slate-900 ring-1 ring-emerald-500'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -831,7 +1202,7 @@ export default function AgentBookingPage() {
                   </div>
                   <div>
                     <div className="text-xs font-bold">Online Payment</div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">UPI, Card, Net Banking</div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">Razorpay Gateway (Auto UPI / Cards)</div>
                   </div>
                 </button>
               </div>
@@ -852,14 +1223,16 @@ export default function AgentBookingPage() {
                 type="button"
                 disabled={paying}
                 onClick={handleConfirmBooking}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition active:scale-98 shadow-xs flex items-center justify-center gap-2"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition active:scale-98 shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 {paying ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" /> Authorizing Payment...
                   </>
+                ) : paymentMode === 'ONLINE' ? (
+                  <>Pay ₹{grandTotal.toLocaleString('en-IN')} Online via Razorpay →</>
                 ) : (
-                  <>Confirm & Issue Ticket (₹{grandTotal.toLocaleString('en-IN')}) →</>
+                  <>Deduct & Issue Ticket (₹{grandTotal.toLocaleString('en-IN')}) →</>
                 )}
               </button>
             </div>
@@ -882,7 +1255,7 @@ export default function AgentBookingPage() {
               PNR: #{confirmedBooking.pnr}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              {tripDetail?.sourceCity} → {tripDetail?.destinationCity} • Seats: {confirmedBooking.seats?.map(s => s.seatNumber || s).join(', ') || confirmedBooking.seatNumbers?.join(', ')}
+              {tripDetail?.sourceCity || sourceCity} → {tripDetail?.destinationCity || destinationCity} • Seats: {confirmedBooking.seats?.map(s => s.seatNumber || s).join(', ') || confirmedBooking.seatNumbers?.join(', ')}
             </p>
           </div>
 
@@ -901,14 +1274,14 @@ export default function AgentBookingPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Boarding Point:</span>
-              <span className="font-medium text-slate-700">{confirmedBooking.boardingPoint?.location || boardingPoint?.location}</span>
+              <span className="font-medium text-slate-700">{confirmedBooking.boardingPoint?.name || confirmedBooking.boardingPoint?.location || boardingPoint?.name}</span>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
             <button
               onClick={handleDownloadPdf}
-              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-xs"
+              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Download className="w-4 h-4" />
               <span>Download PDF</span>
@@ -928,7 +1301,7 @@ export default function AgentBookingPage() {
               setSelectedSeats([]);
               setConfirmedBooking(null);
             }}
-            className="text-xs text-slate-500 hover:text-slate-800 underline pt-2 block mx-auto"
+            className="text-xs text-slate-500 hover:text-slate-800 underline pt-2 block mx-auto cursor-pointer"
           >
             Issue Another Customer Ticket
           </button>

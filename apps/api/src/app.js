@@ -18,6 +18,7 @@ const kycRoutes = require('./modules/kyc/kyc.routes');
 const ownerRoutes = require('./modules/companies/owner.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const toursRoutes = require('./modules/tours/tours.routes');
+const paymentRoutes = require('./modules/payments/payments.routes');
 const Offer = require('./modules/offers/offer.model');
 
 const app = express();
@@ -106,8 +107,10 @@ app.use('/api/v1/agents', agentRoutes);
 app.use('/api/v1/withdrawals', withdrawalRoutes);
 app.use('/api/v1/kyc', kycRoutes);
 app.use('/api/v1/owner', ownerRoutes);
+app.use('/api/v1/companies', ownerRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/tours', toursRoutes);
+app.use('/api/v1/payments', paymentRoutes);
 
 // 404 handler
 app.use((req, res) => {

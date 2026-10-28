@@ -140,7 +140,7 @@ export default function UserProfilePage() {
             href="/login?redirect=/profile"
             className="w-full py-3.5 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-sm shadow-md shadow-sky-500/20 transition active:scale-95 inline-block"
           >
-            Sign in to NTT Travel
+            Sign in to Rupadiya Travel
           </Link>
         </div>
       </div>
@@ -314,7 +314,7 @@ export default function UserProfilePage() {
                 <Mail className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                To update your login email, contact NTT Travel Helpdesk.
+                To update your login email, contact Rupadiya Travel Helpdesk.
               </p>
             </div>
 

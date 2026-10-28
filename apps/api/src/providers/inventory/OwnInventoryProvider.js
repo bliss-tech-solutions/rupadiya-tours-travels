@@ -1,7 +1,7 @@
 const InventoryProvider = require('./InventoryProvider');
 const Trip = require('../../modules/trips/trip.model');
 const holdStore = require('../../config/holdStore');
-const { SEAT_STATUS, SEAT_CATEGORY } = require('../../config/constants');
+const { SEAT_STATUS, SEAT_CATEGORY, normalizeCityId } = require('../../config/constants');
 
 class OwnInventoryProvider extends InventoryProvider {
   constructor() {
@@ -10,6 +10,9 @@ class OwnInventoryProvider extends InventoryProvider {
   }
 
   async searchTrips({ fromCityId, toCityId, travelDate }) {
+    const normFrom = fromCityId ? normalizeCityId(fromCityId) : null;
+    const normTo = toCityId ? normalizeCityId(toCityId) : null;
+
     const query = { status: 'SCHEDULED' };
     if (travelDate) {
       const start = new Date(travelDate);
@@ -26,25 +29,34 @@ class OwnInventoryProvider extends InventoryProvider {
 
     const filtered = trips.filter(trip => {
       if (!trip.routeId) return false;
-      const matchesFrom = !fromCityId || trip.routeId.fromCity.id === fromCityId;
-      const matchesTo = !toCityId || trip.routeId.toCity.id === toCityId;
+      const tripFrom = normalizeCityId(trip.routeId.fromCity?.id || trip.routeId.fromCity?.name);
+      const tripTo = normalizeCityId(trip.routeId.toCity?.id || trip.routeId.toCity?.name);
+      const matchesFrom = !normFrom || tripFrom === normFrom;
+      const matchesTo = !normTo || tripTo === normTo;
       return matchesFrom && matchesTo;
     });
 
     return filtered.map(t => {
       const heldSeats = holdStore.getHeldSeatsForTrip(t._id.toString());
-      const bookedCount = t.seats.filter(s => s.status === SEAT_STATUS.BOOKED || s.status === SEAT_STATUS.BLOCKED).length;
+      const bookedCount = (t.seats || []).filter(s => s.status === SEAT_STATUS.BOOKED || s.status === SEAT_STATUS.BLOCKED).length;
       const effectiveHeldCount = heldSeats.length;
       const availableSeats = Math.max(0, 40 - bookedCount - effectiveHeldCount);
 
-      const obj = t.toObject();
+      const obj = t.toObject ? t.toObject() : t;
+      const fromName = obj.routeId?.fromCity?.name || 'Rupadiya';
+      const toName = obj.routeId?.toCity?.name || 'Ahmedabad';
+
       return {
         ...obj,
         bus: obj.busId,
         route: obj.routeId,
+        sourceCity: fromName,
+        destinationCity: toName,
+        basePrice: obj.baseFare || 750,
         boardingPoints: obj.routeId?.boardingPoints || [],
         droppingPoints: obj.routeId?.droppingPoints || [],
         availableSeats,
+        availableSeatsCount: availableSeats,
         isFull: availableSeats === 0
       };
     });

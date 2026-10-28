@@ -14,7 +14,7 @@ export const viewport = {
 };
 
 export const metadata = {
-  title: 'NTT Travel — Rupadiya Intercity Bus & Tour Booking',
+  title: 'Rupadiya Travel — Rupadiya Intercity Bus & Tour Booking',
   description: 'Book comfortable intercity bus tickets and handpicked tours between Rupadiya and Ahmedabad, Vadodara, Surat, Bengaluru, Hyderabad, and Mumbai.',
 };
 

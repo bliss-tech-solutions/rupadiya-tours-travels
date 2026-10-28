@@ -72,7 +72,7 @@ export default function SplashScreen() {
         {/* Brand Name */}
         <div className="space-y-1 mb-2">
           <div className="flex items-center justify-center gap-1.5">
-            <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">NTT</span>
+            <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">Rupadiya</span>
             <span className="text-3xl sm:text-4xl font-light tracking-wide text-sky-400">TRAVEL</span>
           </div>
           <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-widest text-slate-400">

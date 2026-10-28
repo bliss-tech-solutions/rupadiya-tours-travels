@@ -102,10 +102,23 @@ const CITIES = [HUB_CITY, ...SPOKE_CITIES];
 
 const SPOKE_IDS = SPOKE_CITIES.map(c => c.id);
 
+function normalizeCityId(input) {
+  if (!input) return '';
+  const lower = input.toString().trim().toLowerCase();
+  if (lower === 'rupadiya' || lower === 'rup') return 'rupadiya';
+  if (lower === 'bengaluru' || lower === 'bangalore' || lower === 'blr') return 'bangalore';
+  if (lower === 'ahmedabad' || lower === 'amd') return 'ahmedabad';
+  if (lower === 'vadodara' || lower === 'baroda' || lower === 'bdq') return 'vadodara';
+  if (lower === 'surat' || lower === 'st') return 'surat';
+  if (lower === 'hyderabad' || lower === 'hyd') return 'hyderabad';
+  if (lower === 'mumbai' || lower === 'bombay' || lower === 'bom') return 'mumbai';
+  return lower;
+}
+
 function isValidCorridor(fromId, toId) {
   if (!fromId || !toId) return false;
-  const f = fromId.toLowerCase();
-  const t = toId.toLowerCase();
+  const f = normalizeCityId(fromId);
+  const t = normalizeCityId(toId);
   if (f === 'rupadiya' && SPOKE_IDS.includes(t)) return true;
   if (SPOKE_IDS.includes(f) && t === 'rupadiya') return true;
   return false;
@@ -143,6 +156,7 @@ module.exports = {
   SPOKE_CITIES,
   SPOKE_IDS,
   CITIES,
+  normalizeCityId,
   isValidCorridor,
   COMPANY_CODES
 };

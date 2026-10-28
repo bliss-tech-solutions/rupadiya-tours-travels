@@ -188,13 +188,6 @@ export default function HomePage() {
         {/* Mobile Header Greeting */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-sky-400 bg-slate-100 relative">
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
-                alt="Avatar"
-                className="w-full h-full object-cover"
-              />
-            </div>
             <div>
               <p className="text-xs text-slate-400 font-medium">Hi, Traveler</p>
               <h3 className="text-base font-bold text-slate-800">
@@ -312,7 +305,7 @@ export default function HomePage() {
 
         {/* Active Seat Hold Banner (RedBus style on mobile) */}
         {activeHold && (
-          <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/20 border border-amber-300/30">
+          <div className="my-6 p-4 rounded-3xl bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/20 border border-amber-300/30">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
                 <Clock className="w-5 h-5 text-white animate-pulse" />
@@ -351,35 +344,6 @@ export default function HomePage() {
             </div>
           </div>
         )}
-
-        {/* Most Viewed Destination Strip (from reference image) */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-bold text-slate-800">
-              Most Viewed Destination
-            </h4>
-            <Link
-              href="/tours"
-              className="w-7 h-7 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-sm"
-            >
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-          <div className="flex items-center -space-x-2 overflow-x-auto py-1 no-scrollbar">
-            {popularDestinations.map((dest, i) => (
-              <div
-                key={i}
-                className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm flex-shrink-0"
-              >
-                <img
-                  src={dest.img}
-                  alt={dest.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
 
         {/* Tour Guide & Category Filter Chips (matches Image 2 bottom-left) */}
         <div className="mb-6">

@@ -1,92 +1,121 @@
 'use client';
 
-import React from 'react';
-import { Target, TrendingUp, DollarSign, Calendar, Download } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Target, TrendingUp, DollarSign, Calendar, Download, RefreshCw, BarChart3, ShieldCheck } from 'lucide-react';
+import { api } from '../../lib/api';
 
 export default function CompanyTargetsPage() {
-  const pnlMonthly = [
-    { month: 'Oct 2026 (MTD)', passengers: 371, grossRevenue: '₹6,12,150', fuelTransit: '₹2,14,000', netSurplus: '₹3,98,150' },
-    { month: 'Sep 2026', passengers: 540, grossRevenue: '₹8,91,000', fuelTransit: '₹3,10,000', netSurplus: '₹5,81,000' },
-    { month: 'Aug 2026', passengers: 509, grossRevenue: '₹8,39,850', fuelTransit: '₹2,95,000', netSurplus: '₹5,44,850' },
-  ];
+  const [data, setData] = useState(null);
+  const [reports, setReports] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [dashRes, repRes] = await Promise.all([
+          api.getDashboard().catch(() => null),
+          api.getReports().catch(() => null)
+        ]);
+        if (dashRes?.success) setData(dashRes);
+        if (repRes?.success) setReports(repRes);
+      } catch (e) {
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const code = data?.companyCode || 1;
+  const companyName = data?.company?.name || `Company #${String(code).padStart(2, '0')}`;
+  const stats = data?.stats || {};
+  const targetPassengers = stats.targetPassengers || 10000;
+  const totalPassengers = stats.totalPassengers || 0;
+  const progressPercent = stats.targetProgressPercent || Math.min(100, Math.round((totalPassengers / targetPassengers) * 100));
+  const totalRevenue = stats.totalRevenue || (reports?.totalRevenue || 0);
+  const totalGst = reports?.totalGst || Math.round(totalRevenue * 0.05);
+  const netGross = totalRevenue - totalGst;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+    <div className="w-full space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-6">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-bold uppercase tracking-wider mb-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold uppercase tracking-wider mb-2 border border-blue-100">
             <Target className="w-3.5 h-3.5" />
             <span>Quota & Performance</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white">Annual Target & Revenue Statement</h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Platform quota compliance: 12,000 annual passenger target commitment for Company Code #01.
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Annual Target & Revenue Statement</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Platform quota compliance: {targetPassengers.toLocaleString('en-IN')} annual passenger commitment for {companyName}.
           </p>
         </div>
 
         <button
           onClick={() => alert('Exporting Financial P&L Statement (CSV)...')}
-          className="px-5 py-3 rounded-2xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-white font-bold text-xs transition flex items-center gap-2"
+          className="px-5 py-3 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-xs transition flex items-center gap-2 self-start sm:self-auto cursor-pointer"
         >
-          <Download className="w-4 h-4 text-slate-400" />
+          <Download className="w-4 h-4 text-slate-500" />
           <span>Export P&L Report</span>
         </button>
       </div>
 
       {/* Target Progress Card */}
-      <div className="bg-[#0D131F] border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4">
+      <div className="bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               FY 2026-2027 Passenger Quota Fulfillment
             </h2>
-            <div className="text-3xl font-black text-white mt-1">
-              1,420 <span className="text-base text-slate-400 font-normal">/ 12,000 Passengers</span>
+            <div className="text-3xl font-black text-slate-900 mt-1">
+              {totalPassengers.toLocaleString('en-IN')} <span className="text-base text-slate-400 font-normal">/ {targetPassengers.toLocaleString('en-IN')} Passengers</span>
             </div>
           </div>
           <div className="text-right">
-            <span className="text-3xl font-black text-blue-400">11.8%</span>
-            <span className="text-[10px] text-slate-500 block">Annual target</span>
+            <span className="text-3xl font-black text-blue-600">{progressPercent}%</span>
+            <span className="text-[11px] text-slate-400 block font-medium">Annual target</span>
           </div>
         </div>
 
-        <div className="w-full bg-slate-900 h-4 rounded-full overflow-hidden border border-slate-800">
-          <div className="bg-gradient-to-r from-blue-600 via-sky-500 to-emerald-400 h-full rounded-full" style={{ width: '11.8%' }} />
+        {/* Progress bar */}
+        <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden border border-slate-200">
+          <div 
+            className="bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-500 h-full rounded-full transition-all duration-700" 
+            style={{ width: `${Math.max(2, progressPercent)}%` }} 
+          />
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+          <span className="flex items-center gap-1.5 font-medium">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            Rupadiya Franchise Franchise SLA: Active
+          </span>
+          <span className="font-semibold text-slate-700">
+            {Math.max(0, targetPassengers - totalPassengers).toLocaleString('en-IN')} remaining to goal
+          </span>
         </div>
       </div>
 
-      {/* Monthly Financial Breakdown */}
-      <div className="bg-[#0D131F] border border-slate-800 rounded-3xl p-6 space-y-4">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-white">
-          Monthly P&L Statement (Company Code #01)
-        </h2>
+      {/* Revenue Statement Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white border border-slate-200/80 p-6 rounded-3xl shadow-xs space-y-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Ticket Revenue</span>
+          <div className="text-2xl font-black text-emerald-600">₹{totalRevenue.toLocaleString('en-IN')}</div>
+          <span className="text-[11px] text-slate-500 block">Gross receipts from passenger bookings</span>
+        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
-                <th className="py-3 px-4">Period</th>
-                <th className="py-3 px-4 text-center">Passengers Carried</th>
-                <th className="py-3 px-4 text-right">Gross Ticket Sales</th>
-                <th className="py-3 px-4 text-right">Fuel & Toll Transit Costs</th>
-                <th className="py-3 px-4 text-right">Net Operational Surplus</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {pnlMonthly.map((p, i) => (
-                <tr key={i} className="hover:bg-slate-900/60 transition">
-                  <td className="py-3 px-4 font-bold text-white">{p.month}</td>
-                  <td className="py-3 px-4 text-center font-bold text-blue-400">{p.passengers}</td>
-                  <td className="py-3 px-4 text-right font-black text-white">{p.grossRevenue}</td>
-                  <td className="py-3 px-4 text-right text-slate-400">{p.fuelTransit}</td>
-                  <td className="py-3 px-4 text-right font-black text-emerald-400">{p.netSurplus}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="bg-white border border-slate-200/80 p-6 rounded-3xl shadow-xs space-y-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">GST (5%) Obligation</span>
+          <div className="text-2xl font-black text-amber-600">₹{totalGst.toLocaleString('en-IN')}</div>
+          <span className="text-[11px] text-slate-500 block">Statutory tax collected for department</span>
+        </div>
+
+        <div className="bg-white border border-slate-200/80 p-6 rounded-3xl shadow-xs space-y-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Net Company Gross</span>
+          <div className="text-2xl font-black text-blue-600">₹{netGross.toLocaleString('en-IN')}</div>
+          <span className="text-[11px] text-slate-500 block">Net operational receipts after tax</span>
         </div>
       </div>
     </div>
   );
 }
-

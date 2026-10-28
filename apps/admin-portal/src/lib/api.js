@@ -13,7 +13,7 @@ async function request(endpoint, options = {}) {
     const res = await fetch(url, { ...options, headers });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data.message || `Request failed with status ${res.status}`);
+      throw new Error(data.error || data.message || `Request failed with status ${res.status}`);
     }
     return data;
   } catch (err) {
@@ -27,11 +27,31 @@ export const api = {
   login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   me: () => request('/auth/me'),
 
-  // Companies (33)
-  getCompanies: () => request('/companies'),
-  
+  // Command Center Overview
+  getDashboard: () => request('/admin/dashboard'),
+
+  // 33 Companies Management
+  getCompanies: () => request('/admin/companies'),
+  assignCompanyOwner: (code, payload) => request(`/admin/companies/${code}/assign-owner`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateCompanyTarget: (code, targetPassengers) => request(`/admin/companies/${code}/target`, { method: 'PATCH', body: JSON.stringify({ targetPassengers }) }),
+
+  // Global Agents Management (Across All 33 Companies)
+  getGlobalAgents: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/admin/agents?${q}`);
+  },
+  createAgent: (payload) => request('/admin/agents', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteAgent: (id) => request(`/admin/agents/${id}`, { method: 'DELETE' }),
+  adjustAgentWallet: (id, payload) => request(`/admin/agents/${id}/wallet`, { method: 'POST', body: JSON.stringify(payload) }),
+
+  // Fleet & Paper Expiry Compliance
+  getFleet: () => request('/admin/fleet'),
+  getFleetCompliance: () => request('/admin/fleet'),
+  addBus: (payload) => request('/admin/buses', { method: 'POST', body: JSON.stringify(payload) }),
+
   // Corridors & Fares
-  getRoutes: () => request('/routes'),
+  getRoutes: () => request('/admin/routes'),
+  createRoute: (payload) => request('/admin/routes', { method: 'POST', body: JSON.stringify(payload) }),
   updateRouteFare: (id, fare) => request(`/routes/${id}/fare`, { method: 'PATCH', body: JSON.stringify({ fare }) }),
 
   // Tours Manager
@@ -42,11 +62,13 @@ export const api = {
   // Master Bookings
   getBookings: () => request('/bookings'),
 
-  // KYC
-  getPendingKyc: () => request('/kyc/pending'),
-  approveKyc: (id, status) => request(`/kyc/${id}/verify`, { method: 'POST', body: JSON.stringify({ status }) }),
+  // KYC Queue
+  getPendingKyc: (status = 'PENDING') => request(`/admin/kyc?status=${status}`),
+  approveKyc: (id, status, rejectionReason = '') => request(`/admin/kyc/${id}`, { method: 'PATCH', body: JSON.stringify({ status, rejectionReason }) }),
 
   // Tax Reports
-  getTaxReports: () => request('/reports/tax'),
-};
+  getTaxReports: () => request('/admin/reports/tax'),
 
+  // Audit Logs
+  getAuditLogs: () => request('/admin/audit-logs'),
+};

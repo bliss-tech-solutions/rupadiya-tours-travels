@@ -5,21 +5,16 @@ import { useParams, useRouter } from 'next/navigation';
 import { 
   ArrowLeft, 
   ShieldCheck, 
-  CreditCard, 
-  QrCode, 
   CheckCircle2, 
   Tag, 
   Lock, 
   Sparkles, 
   Clock, 
-  ArrowRight, 
-  Zap, 
-  Building2, 
-  Smartphone,
-  Check
+  ArrowRight
 } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { useToast } from '../../../components/ui/Toast';
+import { openRazorpayCheckout } from '../../../lib/razorpay';
 
 export default function PaymentPage() {
   const params = useParams();
@@ -28,20 +23,10 @@ export default function PaymentPage() {
   const holdId = params.holdId;
 
   const [checkoutData, setCheckoutData] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState('upi'); // 'upi' | 'netbanking' | 'card' | 'demo'
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes timer
-
-  // Form states for other payment options
-  const [selectedBank, setSelectedBank] = useState('HDFC Bank');
-  const [cardData, setCardData] = useState({
-    number: '',
-    name: '',
-    expiry: '',
-    cvv: ''
-  });
 
   useEffect(() => {
     const raw = sessionStorage.getItem('rupadiya_checkout');
@@ -105,11 +90,6 @@ export default function PaymentPage() {
   const discount = appliedCoupon ? appliedCoupon.discount : 0;
   const finalTotal = Math.max(0, subtotal - discount);
 
-  // Dynamic UPI Payment Link and Simple QR Code (UPI ID string hidden per user request)
-  const merchantUpi = 'rupadiya.ticket@upi';
-  const upiString = `upi://pay?pa=${encodeURIComponent(merchantUpi)}&pn=Rupadiya%20Intercity&am=${finalTotal}&cu=INR&tn=Ticket%20Booking%20Seats%20${(checkoutData.selectedSeats || []).join('-')}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiString)}`;
-
   const handleApplyCoupon = (e) => {
     e.preventDefault();
     const code = couponCode.trim().toUpperCase();
@@ -125,61 +105,101 @@ export default function PaymentPage() {
     }
   };
 
-  // Complete Payment & Confirm Ticket
+  // Complete Payment & Confirm Ticket via Razorpay
   const handleConfirmPayment = async () => {
     setProcessing(true);
     try {
-      const payload = {
-        holdId: checkoutData.holdId,
-        holdToken: checkoutData.holdId,
-        tripId: checkoutData.tripId,
-        selectedSeats: checkoutData.selectedSeats,
-        seatNumbers: checkoutData.selectedSeats,
-        passengers: checkoutData.passengers,
-        boardingPoint: checkoutData.boardingPoint,
-        droppingPoint: checkoutData.droppingPoint,
-        contactPhone: checkoutData.contactPhone,
-        contactEmail: checkoutData.contactEmail || `${checkoutData.contactPhone}@rupadiya.com`,
-        primaryContact: {
-          phone: checkoutData.contactPhone,
+      const orderRes = await api.createPaymentOrder({
+        amount: finalTotal,
+        purpose: 'TICKET_BOOKING',
+        metadata: {
+          holdId: checkoutData.holdId,
+          holdToken: checkoutData.holdId,
+          tripId: checkoutData.tripId,
+          selectedSeats: checkoutData.selectedSeats,
+          seatNumbers: checkoutData.selectedSeats,
+          passengers: checkoutData.passengers,
+          boardingPoint: checkoutData.boardingPoint,
+          droppingPoint: checkoutData.droppingPoint,
+          contactPhone: checkoutData.contactPhone,
+          contactEmail: checkoutData.contactEmail || `${checkoutData.contactPhone}@rupadiya.com`,
+          primaryContact: {
+            phone: checkoutData.contactPhone,
+            email: checkoutData.contactEmail || `${checkoutData.contactPhone}@rupadiya.com`,
+          },
+          totalAmount: finalTotal,
+          couponCode: appliedCoupon?.code || null,
+        },
+        notes: {
+          tripId: checkoutData.tripId,
+          seats: checkoutData.selectedSeats?.join(', ')
+        }
+      });
+
+      if (!orderRes?.orderId) {
+        throw new Error(orderRes?.error || 'Failed to initialize payment gateway order');
+      }
+
+      await openRazorpayCheckout({
+        orderId: orderRes.orderId,
+        amount: finalTotal,
+        currency: 'INR',
+        keyId: orderRes.keyId,
+        name: 'Rupadiya Intercity Bus',
+        description: `Seats [${checkoutData.selectedSeats?.join(', ')}] Booking`,
+        prefill: {
+          name: checkoutData.passengers?.[0]?.name || 'Passenger',
           email: checkoutData.contactEmail || `${checkoutData.contactPhone}@rupadiya.com`,
+          contact: checkoutData.contactPhone
         },
-        paymentProvider: paymentMethod === 'upi' ? 'upi_qr' : paymentMethod,
-        paymentDetails: {
-          status: 'SUCCESS',
-          paymentId: `PAY_${paymentMethod.toUpperCase()}_${Date.now()}`
+        onSuccess: async (rzpResponse) => {
+          try {
+            const verifyRes = await api.verifyPayment({
+              orderId: rzpResponse.razorpay_order_id,
+              paymentId: rzpResponse.razorpay_payment_id,
+              signature: rzpResponse.razorpay_signature
+            });
+
+            if (verifyRes?.success) {
+              const booking = verifyRes.bookingResult?.booking || verifyRes.bookingResult?.data?.booking || verifyRes.bookingResult;
+              const cashbackCoupon = verifyRes.bookingResult?.cashbackCoupon || {
+                code: 'NEXTTRIP150',
+                title: 'Flat ₹150 Cashback Coupon',
+                description: 'Valid on your next intercity bus or curated tour booking',
+                discount: 150,
+              };
+
+              // Store confirmed booking and coupon in session
+              sessionStorage.setItem('rupadiya_confirmed_ticket', JSON.stringify({
+                booking,
+                cashbackCoupon,
+              }));
+
+              // Clear active hold from storage
+              localStorage.removeItem('rupadiya_active_hold');
+              sessionStorage.removeItem('rupadiya_checkout');
+              sessionStorage.removeItem('rupadiya_booking_flow');
+
+              addToast('Payment confirmed! Your ticket is booked.', 'success', 'Booking Confirmed');
+              const targetId = booking?.bookingId || booking?.pnr || checkoutData.holdId;
+              router.push(`/ticket/${targetId}`);
+            } else {
+              addToast(verifyRes?.error || 'Payment signature verification failed.', 'error', 'Payment Verification');
+            }
+          } catch (vErr) {
+            console.error(vErr);
+            addToast(vErr.message || 'Error completing booking confirmation', 'error', 'Confirmation Error');
+          } finally {
+            setProcessing(false);
+          }
         },
-        totalAmount: finalTotal,
-        couponCode: appliedCoupon?.code || null,
-      };
-
-      const res = await api.confirmBooking(payload);
-      const booking = res.data?.booking || res.booking || res.data;
-      const cashbackCoupon = res.data?.cashbackCoupon || res.cashbackCoupon;
-
-      // Store confirmed booking and coupon in session
-      sessionStorage.setItem('rupadiya_confirmed_ticket', JSON.stringify({
-        booking,
-        cashbackCoupon: cashbackCoupon || {
-          code: 'NEXTTRIP150',
-          title: 'Flat ₹150 Cashback Coupon',
-          description: 'Valid on your next intercity bus or curated tour booking',
-          discount: 150,
-        },
-      }));
-
-      // Clear active hold from storage
-      localStorage.removeItem('rupadiya_active_hold');
-      sessionStorage.removeItem('rupadiya_checkout');
-      sessionStorage.removeItem('rupadiya_booking_flow');
-
-      addToast('Payment confirmed! Your ticket is booked.', 'success', 'Booking Confirmed');
-      const targetId = booking?.bookingId || booking?._id || checkoutData.holdId;
-      router.push(`/ticket/${targetId}`);
+        onDismiss: () => {
+          setProcessing(false);
+        }
+      });
     } catch (err) {
       console.error(err);
       addToast(err.message || 'Payment processing failed. Please try again.', 'error', 'Payment Error');
-    } finally {
       setProcessing(false);
     }
   };
@@ -255,344 +275,7 @@ export default function PaymentPage() {
               </div>
             </div>
 
-            {/* PAYMENT METHOD TABS (QR UPI, Net Banking, Credit/Debit, Instant Demo) */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-3 sm:p-4 shadow-sm">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                
-                {/* 1. QR UPI Tab */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('upi')}
-                  className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 ${
-                    paymentMethod === 'upi'
-                      ? 'border-sky-500 bg-sky-50/70 text-sky-900 ring-2 ring-sky-500/20 font-bold'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white font-medium'
-                  }`}
-                >
-                  <QrCode className={`w-5 h-5 ${paymentMethod === 'upi' ? 'text-sky-600' : 'text-slate-500'}`} />
-                  <span className="text-xs">QR UPI</span>
-                </button>
-
-                {/* 2. Credit / Debit Tab */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('card')}
-                  className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 ${
-                    paymentMethod === 'card'
-                      ? 'border-sky-500 bg-sky-50/70 text-sky-900 ring-2 ring-sky-500/20 font-bold'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white font-medium'
-                  }`}
-                >
-                  <CreditCard className={`w-5 h-5 ${paymentMethod === 'card' ? 'text-sky-600' : 'text-slate-500'}`} />
-                  <span className="text-xs">Credit / Debit</span>
-                </button>
-
-                {/* 3. Net Banking Tab */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('netbanking')}
-                  className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 ${
-                    paymentMethod === 'netbanking'
-                      ? 'border-sky-500 bg-sky-50/70 text-sky-900 ring-2 ring-sky-500/20 font-bold'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white font-medium'
-                  }`}
-                >
-                  <Building2 className={`w-5 h-5 ${paymentMethod === 'netbanking' ? 'text-sky-600' : 'text-slate-500'}`} />
-                  <span className="text-xs">Net Banking</span>
-                </button>
-
-                {/* 4. Instant Demo 1-Click Tab */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('demo')}
-                  className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 ${
-                    paymentMethod === 'demo'
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20 font-bold'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white font-medium'
-                  }`}
-                >
-                  <Zap className={`w-5 h-5 ${paymentMethod === 'demo' ? 'text-emerald-600' : 'text-slate-500'}`} />
-                  <span className="text-xs">Instant Demo</span>
-                </button>
-
-              </div>
-            </div>
-
-            {/* TAB CONTENT 1: SIMPLE QR UPI PAYMENT (NO UPI ID DISPLAYED) */}
-            {paymentMethod === 'upi' && (
-              <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm text-center">
-                
-                <h3 className="text-lg font-black text-slate-900 mb-1">
-                  Scan QR Code to Pay ₹{finalTotal}
-                </h3>
-                <p className="text-xs text-slate-500 mb-6">
-                  Simple & secure payment via any UPI app
-                </p>
-
-                {/* Simple QR Code Box (NO UPI ID string shown) */}
-                <div className="inline-block p-4 sm:p-5 rounded-3xl bg-white border-2 border-slate-200 shadow-md mb-6">
-                  <img
-                    src={qrCodeUrl}
-                    alt="Scan UPI QR Code"
-                    className="w-48 h-48 sm:w-56 sm:h-56 mx-auto object-contain rounded-xl"
-                  />
-                </div>
-
-                {/* STEP-BY-STEP PAYMENT PROCESS WITH BRAND BADGES */}
-                <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-5 mb-6 text-left space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 text-center sm:text-left">
-                    How to pay using QR code:
-                  </h4>
-
-                  {/* Step 1: Open Payment Apps */}
-                  <div className="flex items-start gap-3">
-                    <span className="w-5 h-5 rounded-full bg-sky-500 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                      1
-                    </span>
-                    <div className="flex-1">
-                      <p className="text-xs text-slate-700 font-semibold mb-2">
-                        Open any UPI payment app on your smartphone:
-                      </p>
-                      
-                      {/* App Badges: PhonePe, Google Pay, Paytm, BHIM */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        {/* PhonePe */}
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#5f259f] text-white text-xs font-bold shadow-sm">
-                          <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px]">पे</span>
-                          <span>PhonePe</span>
-                        </div>
-
-                        {/* Google Pay */}
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-slate-800 text-xs font-bold shadow-sm">
-                          <span className="text-[#4285F4] font-black">G</span>
-                          <span className="text-slate-700">Pay</span>
-                        </div>
-
-                        {/* Paytm */}
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#002e6e] text-white text-xs font-bold shadow-sm">
-                          <span className="text-[#00b9f5] font-black">pay</span>
-                          <span>tm</span>
-                        </div>
-
-                        {/* BHIM UPI */}
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 text-white text-xs font-bold shadow-sm">
-                          <span className="font-black text-amber-300">🇮🇳</span>
-                          <span>BHIM UPI</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Step 2: Scan QR Code */}
-                  <div className="flex items-start gap-3 pt-2 border-t border-slate-200/60">
-                    <span className="w-5 h-5 rounded-full bg-sky-500 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                      2
-                    </span>
-                    <p className="text-xs text-slate-700 font-semibold">
-                      Scan the QR code shown above & verify amount <strong className="text-slate-900">₹{finalTotal}</strong>.
-                    </p>
-                  </div>
-
-                  {/* Step 3: Complete Payment */}
-                  <div className="flex items-start gap-3 pt-2 border-t border-slate-200/60">
-                    <span className="w-5 h-5 rounded-full bg-sky-500 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                      3
-                    </span>
-                    <p className="text-xs text-slate-700 font-semibold">
-                      Complete payment with your UPI PIN and click the confirmation button below.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Direct App Link for Mobile Users */}
-                <div className="space-y-3 max-w-sm mx-auto">
-                  <a
-                    href={upiString}
-                    className="w-full py-3 px-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition active:scale-95"
-                  >
-                    <Smartphone className="w-4 h-4" />
-                    <span>Pay with Installed UPI App</span>
-                  </a>
-
-                  {/* Confirm Booking Button */}
-                  <button
-                    onClick={handleConfirmPayment}
-                    disabled={processing}
-                    className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-2xl shadow-lg shadow-emerald-500/25 transition active:scale-[0.99] flex items-center justify-center gap-2 text-sm cursor-pointer"
-                  >
-                    {processing ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Verifying Payment & Booking...
-                      </span>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>I Have Paid with QR · Confirm Booking</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-              </div>
-            )}
-
-            {/* TAB CONTENT 2: CREDIT / DEBIT CARDS */}
-            {paymentMethod === 'card' && (
-              <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm space-y-4">
-                <div className="border-b border-slate-100 pb-3">
-                  <h3 className="text-base font-bold text-slate-900">Credit / Debit Card</h3>
-                  <p className="text-xs text-slate-500">All major Visa, MasterCard, RuPay cards accepted</p>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 block mb-1">Card Number</label>
-                    <input
-                      type="text"
-                      maxLength={19}
-                      placeholder="4532 •••• •••• 8901"
-                      value={cardData.number}
-                      onChange={(e) => setCardData({ ...cardData, number: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-slate-600 block mb-1">Valid Thru (MM/YY)</label>
-                      <input
-                        type="text"
-                        maxLength={5}
-                        placeholder="12/28"
-                        value={cardData.expiry}
-                        onChange={(e) => setCardData({ ...cardData, expiry: e.target.value })}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:border-sky-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-600 block mb-1">CVV</label>
-                      <input
-                        type="password"
-                        maxLength={4}
-                        placeholder="•••"
-                        value={cardData.cvv}
-                        onChange={(e) => setCardData({ ...cardData, cvv: e.target.value })}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:border-sky-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 block mb-1">Name on Card</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Rahul Sharma"
-                      value={cardData.name}
-                      onChange={(e) => setCardData({ ...cardData, name: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
-
-                  <button
-                    onClick={handleConfirmPayment}
-                    disabled={processing}
-                    className="w-full py-4 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-2xl shadow-lg shadow-sky-500/25 transition active:scale-[0.99] flex items-center justify-center gap-2 text-sm cursor-pointer mt-4"
-                  >
-                    {processing ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Processing Card Payment...
-                      </span>
-                    ) : (
-                      <span>Pay ₹{finalTotal} via Card →</span>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* TAB CONTENT 3: NET BANKING */}
-            {paymentMethod === 'netbanking' && (
-              <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm space-y-4">
-                <div className="border-b border-slate-100 pb-3">
-                  <h3 className="text-base font-bold text-slate-900">Net Banking</h3>
-                  <p className="text-xs text-slate-500">Instant transfer from all major Indian banks</p>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2">
-                  {['HDFC Bank', 'State Bank of India', 'ICICI Bank', 'Axis Bank', 'Kotak Bank', 'Bank of Baroda'].map((bank) => (
-                    <button
-                      key={bank}
-                      type="button"
-                      onClick={() => setSelectedBank(bank)}
-                      className={`p-3 rounded-xl border text-xs font-bold transition flex items-center gap-2 text-left ${
-                        selectedBank === bank
-                          ? 'border-sky-500 bg-sky-50 text-sky-900 ring-2 ring-sky-500/20'
-                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Building2 className="w-4 h-4 text-sky-600 flex-shrink-0" />
-                      <span className="truncate">{bank}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  onClick={handleConfirmPayment}
-                  disabled={processing}
-                  className="w-full py-4 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-2xl shadow-lg shadow-sky-500/25 transition active:scale-[0.99] flex items-center justify-center gap-2 text-sm cursor-pointer mt-4"
-                >
-                  {processing ? (
-                    <span className="flex items-center gap-2">
-                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Redirecting to Bank...
-                    </span>
-                  ) : (
-                    <span>Pay ₹{finalTotal} via {selectedBank} →</span>
-                  )}
-                </button>
-              </div>
-            )}
-
-            {/* TAB CONTENT 4: INSTANT DEMO / TEST PAYMENT */}
-            {paymentMethod === 'demo' && (
-              <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm space-y-4">
-                <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">Instant Demo / 1-Click Test</h3>
-                    <p className="text-xs text-slate-500">Fast test route · Confirms booking immediately without opening other apps</p>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                    Test Mode
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Click the button below to simulate immediate payment confirmation and test the complete ticket generation, PDF pass, and calendar sync flow.
-                </p>
-
-                <button
-                  onClick={handleConfirmPayment}
-                  disabled={processing}
-                  className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-2xl shadow-lg shadow-emerald-500/25 transition active:scale-[0.99] flex items-center justify-center gap-2 text-sm cursor-pointer"
-                >
-                  {processing ? (
-                    <span className="flex items-center gap-2">
-                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Confirming Test Booking...
-                    </span>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Complete Instant Demo Payment (₹{finalTotal})</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-
-            {/* Promo Coupon Box */}
+            {/* 1. Promo Coupon Box (ON TOP) */}
             <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5 text-sky-500" />
@@ -609,7 +292,7 @@ export default function PaymentPage() {
                 />
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition cursor-pointer"
                 >
                   Apply
                 </button>
@@ -621,6 +304,86 @@ export default function PaymentPage() {
                   <span>-₹{appliedCoupon.discount}</span>
                 </div>
               )}
+            </div>
+
+            {/* 2. DIRECT RAZORPAY PAYMENT GATEWAY ELEMENT */}
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm space-y-6">
+              
+              {/* Header with Razorpay Gateway Badge */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-bold tracking-wide uppercase flex items-center gap-1.5 border border-blue-200/60">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                      Razorpay Payment Gateway
+                    </span>
+                    <span className="text-xs text-slate-400 font-medium">· Official Integration</span>
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900">
+                    Pay ₹{finalTotal} via Razorpay
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Razorpay manages all payment options automatically. Fast, 100% secure, and verified.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto bg-slate-50 border border-slate-200 px-3 py-2 rounded-2xl">
+                  <Lock className="w-4 h-4 text-emerald-600" />
+                  <div className="text-left">
+                    <span className="text-[10px] font-bold text-slate-500 block uppercase leading-none">Security</span>
+                    <span className="text-xs font-black text-slate-800">256-Bit SSL</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Simple Guidelines */}
+              <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-5 space-y-3.5 text-xs">
+                <p className="text-slate-600 leading-relaxed">
+                  All payment options — <strong className="text-slate-800">UPI (Google Pay, PhonePe, Paytm, BHIM), Credit/Debit Cards (Visa, MasterCard, RuPay), NetBanking (50+ banks)</strong>, and <strong className="text-slate-800">Wallets</strong> — are handled automatically inside Razorpay.
+                </p>
+
+                <div className="pt-2 border-t border-slate-200/60 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-slate-700 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span>Instant PNR confirmation</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    <span>RBI-regulated security</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                    <span>Instant seat lock guarantee</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Direct Razorpay Launch CTA Button */}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={handleConfirmPayment}
+                  disabled={processing}
+                  className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-base shadow-xl shadow-blue-500/25 transition-all active:scale-[0.99] flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {processing ? (
+                    <span className="flex items-center gap-2.5">
+                      <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Connecting to Razorpay & Confirming...</span>
+                    </span>
+                  ) : (
+                    <>
+                      <Lock className="w-5 h-5" />
+                      <span>Pay ₹{finalTotal} with Razorpay</span>
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+                <p className="text-center text-[11px] text-slate-400 mt-2.5">
+                  Opens official Razorpay checkout. After payment verification, your ticket is booked instantly.
+                </p>
+              </div>
+
             </div>
 
             {/* Cancel / Release */}

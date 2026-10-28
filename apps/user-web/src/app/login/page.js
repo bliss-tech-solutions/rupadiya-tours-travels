@@ -314,7 +314,7 @@ function LoginContent() {
           {/* Trust Badge */}
           <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-400 font-medium">
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
-            <span>Secure Passwordless Auth by NTT</span>
+            <span>Secure Passwordless Auth by Rupadiya</span>
           </div>
 
         </div>

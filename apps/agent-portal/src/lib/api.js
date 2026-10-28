@@ -45,6 +45,11 @@ export const api = {
   },
   requestTopup: (amount, paymentMethod = 'UPI') => request('/wallet/deposit', { method: 'POST', body: JSON.stringify({ amount, paymentMethod }) }),
 
+  // Unified Razorpay Payment Module
+  getPaymentConfig: () => request('/payments/config'),
+  createPaymentOrder: (payload) => request('/payments/create-order', { method: 'POST', body: JSON.stringify(payload) }),
+  verifyPayment: (payload) => request('/payments/verify', { method: 'POST', body: JSON.stringify(payload) }),
+
   // 1. Dashboard Overview
   getDashboard: () => request('/agent/dashboard'),
 

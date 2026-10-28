@@ -21,7 +21,8 @@ import {
   CreditCard,
   PhoneCall,
   ChevronRight,
-  Info
+  Info,
+  Tag
 } from 'lucide-react';
 import { useToast } from '../../../components/ui/Toast';
 import { api } from '../../../lib/api';
@@ -44,7 +45,13 @@ export default function TicketConfirmationPage() {
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
-        if (parsed?.booking?.bookingId === bookingId || !bookingId || parsed?.booking?._id === bookingId) {
+        if (
+          parsed?.booking?.bookingId === bookingId || 
+          parsed?.booking?.pnr === bookingId ||
+          parsed?.booking?.pnr?.toUpperCase() === bookingId?.toUpperCase() ||
+          !bookingId || 
+          parsed?.booking?._id === bookingId
+        ) {
           setTicketData(parsed);
           setLoading(false);
           return;
@@ -108,12 +115,50 @@ export default function TicketConfirmationPage() {
 
   const boardingName = booking?.boardingPoint?.name || 'Rupadiya Border Main Stand';
   const droppingName = booking?.droppingPoint?.name || `${route?.toCity?.name || 'Ahmedabad'} Central Bus Station`;
-  const totalPaid = booking?.fareBreakdown?.totalPayable 
+  const fb = booking?.fareBreakdown || {};
+  const seatsList = (booking?.seatNumbers && booking.seatNumbers.length > 0)
+    ? booking.seatNumbers
+    : booking?.seats?.map(s => typeof s === 'string' ? s : s.seatNumber).filter(Boolean)
+    || booking?.passengers?.map(p => p.seatNumber).filter(Boolean)
+    || ['1'];
+  const seatCount = seatsList.length || fb.seatCount || 1;
+
+  // Final Total Paid
+  const finalTotalPaid = Number(
+    fb.totalPayable 
     ?? booking?.totalAmount 
     ?? booking?.totalFare 
     ?? booking?.totalPrice 
     ?? (booking?.passengers?.length ? booking.passengers.reduce((sum, p) => sum + (p.fare || 0), 0) : null)
-    ?? (booking?.seats?.length ? booking.seats.length * 850 : 1700);
+    ?? 1733
+  );
+  const totalPaid = finalTotalPaid;
+
+  const discountAmount = Number(fb.discountAmount || 0);
+
+  let subtotal = Number(fb.subtotal);
+  let gstAmount = Number(fb.gstAmount);
+  let baseFarePerSeat = Number(fb.baseFare);
+
+  if (!subtotal || subtotal === finalTotalPaid) {
+    // If subtotal is equal to finalTotalPaid (meaning GST was bundled in total)
+    // 5% GST included: subtotal + gst = finalTotalPaid + discountAmount
+    subtotal = Math.round((finalTotalPaid + discountAmount) / 1.05);
+    gstAmount = (finalTotalPaid + discountAmount) - subtotal;
+    baseFarePerSeat = Math.round(subtotal / seatCount);
+  } else if (!gstAmount && gstAmount !== 0) {
+    gstAmount = Math.max(0, (finalTotalPaid + discountAmount) - subtotal);
+    baseFarePerSeat = baseFarePerSeat || Math.round(subtotal / seatCount);
+  } else {
+    baseFarePerSeat = baseFarePerSeat || Math.round(subtotal / seatCount);
+  }
+
+  const paymentProvider = booking?.paymentProvider === 'razorpay' ? 'Razorpay Gateway' : (booking?.paymentProvider?.toUpperCase() || 'Razorpay Gateway');
+  const paymentReference = booking?.paymentReference || booking?.paymentDetails?.paymentId || (booking?.paymentStatus === 'SUCCESS' ? `pay_${String(displayBookingId).replace(/\D/g, '') || '91283'}` : 'RZP-PAID');
+  const paymentStatus = booking?.paymentStatus || 'SUCCESS';
+  const paymentDateStr = booking?.createdAt 
+    ? new Date(booking.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+    : 'Confirmed Instant Settlement';
 
   const copyCouponCode = () => {
     if (cashbackCoupon?.code) {
@@ -439,7 +484,7 @@ export default function TicketConfirmationPage() {
                     </div>
                     <h4 className="text-sm font-bold text-slate-900 mt-0.5">{droppingName}</h4>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Direct route with certified NTT rest-stop halts.
+                      Direct route with certified Rupadiya rest-stop halts.
                     </p>
                   </div>
                 </div>
@@ -521,7 +566,7 @@ export default function TicketConfirmationPage() {
                 </div>
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>NTT Verified Fleet</span>
+                  <span>Rupadiya Verified Fleet</span>
                 </div>
               </div>
 
@@ -545,35 +590,160 @@ export default function TicketConfirmationPage() {
               </div>
             </div>
 
-            {/* 4. Payment Receipt & Fare Breakdown */}
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+            {/* 4. Payment Receipt & Complete Fare Breakdown */}
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-5">
+              {/* Receipt Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-sky-600 block">
-                    Payment Receipt
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-sky-600 block mb-0.5">
+                    Payment Receipt · Tax Invoice
                   </span>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Fare Breakdown
+                  <h3 className="text-base font-black text-slate-900">
+                    Fare Breakdown & Payment Details
                   </h3>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-emerald-600 font-semibold">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Payment Verified</span>
+                <div className="flex items-center gap-1.5 self-start sm:self-auto bg-emerald-50 border border-emerald-200/80 px-3 py-1.5 rounded-xl">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span className="text-xs font-bold text-emerald-800">
+                    Payment Verified ({paymentProvider})
+                  </span>
                 </div>
               </div>
 
-              <div className="pt-4 space-y-2.5 text-xs text-slate-600">
-                <div className="flex items-center justify-between">
-                  <span>Base Bus Ticket Fare</span>
-                  <span className="font-semibold text-slate-900">₹{totalPaid}</span>
+              {/* Detailed Line Items */}
+              <div className="space-y-3 text-xs">
+                {/* 1. Base Ticket Fare */}
+                <div className="flex items-center justify-between text-slate-700">
+                  <div>
+                    <span className="font-semibold text-slate-800 block">
+                      Base Bus Ticket Fare ({seatCount} Seat{seatCount > 1 ? 's' : ''} × ₹{baseFarePerSeat})
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Standard intercity passenger tariff
+                    </span>
+                  </div>
+                  <span className="font-bold text-slate-900 text-sm">
+                    ₹{subtotal.toLocaleString('en-IN')}
+                  </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span>Taxes & GST (Included)</span>
-                  <span className="font-semibold text-emerald-600">₹0</span>
+
+                {/* 2. Taxes & GST (5%) */}
+                <div className="flex items-center justify-between text-slate-700">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-800">Taxes & GST (5%)</span>
+                      <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200/60">
+                        CGST 2.5% + SGST 2.5%
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      Statutory Government Transportation Tax
+                    </span>
+                  </div>
+                  <span className="font-bold text-emerald-700 text-sm">
+                    +₹{gstAmount.toLocaleString('en-IN')}
+                  </span>
                 </div>
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-sm font-bold text-slate-900">
-                  <span>Total Amount Paid</span>
-                  <span className="text-base text-sky-600">₹{totalPaid}</span>
+
+                {/* 3. Promo / Coupon Discount (if applied) */}
+                {discountAmount > 0 && (
+                  <div className="flex items-center justify-between text-emerald-700 bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200/60">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-3.5 h-3.5" />
+                      <span className="font-bold">Promo Coupon Discount Applied</span>
+                    </div>
+                    <span className="font-black text-sm">
+                      -₹{discountAmount.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                )}
+
+                {/* 4. Total Amount Paid */}
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-black text-slate-900 block">
+                      Total Amount Paid
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Inclusive of all taxes & verified by gateway
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl sm:text-2xl font-black text-sky-600">
+                      ₹{finalTotalPaid.toLocaleString('en-IN')}
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-600 block uppercase tracking-wide">
+                      Fully Settled · 0 Due
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Cashback Reward Highlight */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-sm mt-0.5">
+                    <Sparkles className="w-4 h-4 text-amber-100" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full">
+                        Cashback Reward
+                      </span>
+                      <span className="font-bold text-amber-950">
+                        {cashbackCoupon?.title || 'Flat ₹150 Cashback Voucher'}
+                      </span>
+                    </div>
+                    <p className="text-amber-800/90 text-[11px] mt-0.5">
+                      Earned on this booking! Use code <strong className="font-mono text-slate-900">{cashbackCoupon?.code || 'NEXTTRIP150'}</strong> on your next trip.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={copyCouponCode}
+                  className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer flex-shrink-0"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copied ? 'Copied' : 'Copy Voucher'}</span>
+                </button>
+              </div>
+
+              {/* 6. Gateway & Audit Meta Details */}
+              <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-3.5 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">
+                    Payment Method
+                  </span>
+                  <span className="font-bold text-slate-800 block truncate">
+                    {paymentProvider}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">
+                    Payment Reference
+                  </span>
+                  <span className="font-mono font-bold text-slate-800 block truncate" title={paymentReference}>
+                    {paymentReference}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">
+                    Status
+                  </span>
+                  <span className="font-bold text-emerald-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    {paymentStatus}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">
+                    Settlement Time
+                  </span>
+                  <span className="font-medium text-slate-700 block truncate">
+                    {paymentDateStr}
+                  </span>
                 </div>
               </div>
             </div>
@@ -731,6 +901,82 @@ export default function TicketConfirmationPage() {
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copied ? 'Copied' : 'Copy'}</span>
               </button>
+            </div>
+          </div>
+
+          {/* Mobile Payment Receipt & Fare Breakdown */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-600 block">
+                  Payment Receipt · Tax Invoice
+                </span>
+                <h3 className="text-sm font-black text-slate-900">
+                  Fare Breakdown & Details
+                </h3>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                ✓ Verified
+              </span>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div className="flex items-center justify-between text-slate-700">
+                <div>
+                  <span className="font-semibold text-slate-800 block">
+                    Base Fare ({seatCount} Seat{seatCount > 1 ? 's' : ''} × ₹{baseFarePerSeat})
+                  </span>
+                  <span className="text-[10px] text-slate-400">Intercity transit</span>
+                </div>
+                <span className="font-bold text-slate-900">₹{subtotal.toLocaleString('en-IN')}</span>
+              </div>
+
+              <div className="flex items-center justify-between text-slate-700">
+                <div>
+                  <span className="font-semibold text-slate-800 block">Taxes & GST (5%)</span>
+                  <span className="text-[10px] text-slate-400">CGST 2.5% + SGST 2.5%</span>
+                </div>
+                <span className="font-bold text-emerald-700">+₹{gstAmount.toLocaleString('en-IN')}</span>
+              </div>
+
+              {discountAmount > 0 && (
+                <div className="flex items-center justify-between text-emerald-700 bg-emerald-50 p-2 rounded-xl">
+                  <span>Coupon Discount</span>
+                  <span className="font-bold">-₹{discountAmount.toLocaleString('en-IN')}</span>
+                </div>
+              )}
+
+              <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-black text-slate-900 block">Total Amount Paid</span>
+                  <span className="text-[10px] text-slate-400">Inclusive of all taxes</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-lg font-black text-sky-600">₹{finalTotalPaid.toLocaleString('en-IN')}</span>
+                  <span className="text-[9px] font-bold text-emerald-600 block uppercase">0 Balance Due</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span className="text-[11px] font-bold text-amber-950">Earned ₹150 Cashback Voucher</span>
+              </div>
+              <span className="font-mono font-bold text-[11px] bg-white text-slate-900 px-2 py-0.5 rounded-lg border border-amber-300">
+                {cashbackCoupon?.code || 'NEXTTRIP150'}
+              </span>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-3 grid grid-cols-2 gap-2 text-[11px]">
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Gateway</span>
+                <span className="font-bold text-slate-800 truncate block">{paymentProvider}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Reference</span>
+                <span className="font-mono font-bold text-slate-800 truncate block">{paymentReference}</span>
+              </div>
             </div>
           </div>
 

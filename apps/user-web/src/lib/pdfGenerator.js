@@ -1,5 +1,5 @@
 /**
- * Client-Side PDF Generator for NTT Travel Boarding Pass
+ * Client-Side PDF Generator for Rupadiya Travel Boarding Pass
  * Creates a valid, standard PDF 1.4 document directly in the browser
  * with 0 external dependencies, saving as Ticket-[BookingId].pdf.
  */
@@ -34,15 +34,15 @@ export function downloadTicketPdf({
     content.push(`q ${r} ${g} ${b} ${fill ? 'rg' : 'RG'} ${x} ${y} ${w} ${h} re ${fill ? 'f' : 's'} Q`);
   };
 
-  // 1. Top Brand Banner (NTT Travel Sky Blue)
+  // 1. Top Brand Banner (Rupadiya Travel Sky Blue)
   addRect(36, 730, 523, 76, 0.08, 0.58, 0.94, true);
   
   // Brand Logo Accent Box
   addRect(52, 746, 44, 44, 1, 1, 1, true);
-  addText('NTT', 59, 762, 16, true, 0.08, 0.58, 0.94);
+  addText('Rupadiya', 59, 762, 16, true, 0.08, 0.58, 0.94);
 
   // Brand Name & Pass Title
-  addText('NTT TRAVEL', 106, 772, 18, true, 1, 1, 1);
+  addText('Rupadiya TRAVEL', 106, 772, 18, true, 1, 1, 1);
   addText('OFFICIAL INTERCITY BOARDING PASS', 106, 752, 10, false, 0.9, 0.95, 1);
   addText(`STATUS: CONFIRMED`, 390, 772, 10, true, 0.8, 1, 0.85);
   addText(`BOOKING ID: #${bookingId}`, 390, 752, 10, true, 1, 1, 1);
@@ -52,7 +52,7 @@ export function downloadTicketPdf({
 
   // 3. Traveler Greeting & Coach Details
   addText(`Dear ${travelerName},`, 56, 700, 14, true, 0.08, 0.12, 0.2);
-  addText(`Your intercity bus reservation has been confirmed with NTT Travel.`, 56, 684, 10, false, 0.4, 0.45, 0.5);
+  addText(`Your intercity bus reservation has been confirmed with Rupadiya Travel.`, 56, 684, 10, false, 0.4, 0.45, 0.5);
 
   addText(`Bus Operator: ${busName}`, 56, 664, 11, true, 0.1, 0.15, 0.22);
   addText(`Coach Type: ${busModel} · Direct Nonstop Service`, 56, 650, 9, false, 0.4, 0.45, 0.5);
@@ -138,7 +138,7 @@ export function downloadTicketPdf({
   addText(`* ${bookingId} *`, 245, 120, 9, false, 0.4, 0.45, 0.5);
 
   // Footer Tagline
-  addText('NTT Travel - Rupadiya Hub Connecting India | Thank You For Choosing NTT', 130, 80, 8, false, 0.5, 0.55, 0.6);
+  addText('Rupadiya Travel - Rupadiya Hub Connecting India | Thank You For Choosing Rupadiya', 130, 80, 8, false, 0.5, 0.55, 0.6);
 
   // Compile PDF document structure
   const stream = content.join('\n');

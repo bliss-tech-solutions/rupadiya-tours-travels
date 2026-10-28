@@ -10,7 +10,7 @@ export default function Footer() {
           {/* Brand Column */}
           <div className="space-y-3 max-w-sm">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold tracking-tight text-white">NTT</span>
+              <span className="text-2xl font-bold tracking-tight text-white">Rupadiya</span>
               <span className="text-xs tracking-widest text-sky-400 font-bold uppercase">TRAVEL</span>
             </div>
             <p className="text-slate-400 text-sm leading-relaxed">
@@ -72,7 +72,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
-          <p>© 2026 NTT Travel · Rupadiya Intercity Platform. All rights reserved.</p>
+          <p>© 2026 Rupadiya Travel · Rupadiya Intercity Platform. All rights reserved.</p>
           <div className="flex gap-6">
             <span>GST & Tax Compliant</span>
             <span>Female Adjacent Safety Enforced</span>

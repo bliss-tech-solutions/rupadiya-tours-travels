@@ -6,6 +6,8 @@ import { usePathname } from 'next/navigation';
 import { 
   ShieldAlert, 
   Building2, 
+  Users,
+  Bus,
   Route, 
   Compass, 
   FileSpreadsheet, 
@@ -15,16 +17,28 @@ import {
   LayoutDashboard,
   ShieldCheck
 } from 'lucide-react';
+import { api } from '../lib/api';
 
 export default function AdminSidebar() {
   const pathname = usePathname();
   const [admin, setAdmin] = useState(null);
+  const [pendingKyc, setPendingKyc] = useState(0);
 
   useEffect(() => {
     const raw = localStorage.getItem('admin_user');
     if (raw) {
       try { setAdmin(JSON.parse(raw)); } catch (e) {}
     }
+
+    async function loadDash() {
+      try {
+        const res = await api.getDashboard();
+        if (res?.success && res.stats?.pendingKycCount != null) {
+          setPendingKyc(res.stats.pendingKycCount);
+        }
+      } catch (e) {}
+    }
+    loadDash();
   }, []);
 
   const handleLogout = () => {
@@ -36,15 +50,17 @@ export default function AdminSidebar() {
   const navItems = [
     { label: 'Command Center', href: '/', icon: LayoutDashboard },
     { label: '33 Companies Registry', href: '/companies', icon: Building2 },
+    { label: 'Global Agents Directory', href: '/agents', icon: Users },
+    { label: 'Fleet & Paper Compliance', href: '/fleet', icon: Bus },
     { label: 'Corridors & Fares', href: '/routes', icon: Route },
     { label: 'Tour Packages Manager', href: '/tours', icon: Compass },
     { label: 'Master Bookings Ledger', href: '/bookings', icon: FileSpreadsheet },
-    { label: 'KYC Approvals Queue', href: '/kyc', icon: UserCheck },
+    { label: 'KYC Approvals Queue', href: '/kyc', icon: UserCheck, badge: pendingKyc > 0 ? pendingKyc : null },
     { label: 'GST & TCS Tax Reports', href: '/tax', icon: Receipt },
   ];
 
   return (
-    <aside className="w-64 bg-slate-950 border-r border-slate-800/80 flex flex-col justify-between h-screen sticky top-0">
+    <aside className="w-64 bg-slate-950 border-r border-slate-800/80 flex flex-col justify-between h-screen sticky top-0 shrink-0">
       <div>
         {/* Brand */}
         <div className="p-6 border-b border-slate-800">
@@ -62,27 +78,34 @@ export default function AdminSidebar() {
 
           <div className="mt-4 p-2.5 rounded-xl bg-purple-950/40 border border-purple-800/40 text-center">
             <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">
-              33 Companies Managed
+              33 Companies Registry
             </span>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 space-y-1.5">
+        <nav className="p-4 space-y-1.5 overflow-y-auto max-h-[calc(100vh-210px)]">
           {navItems.map((item) => {
             const active = pathname === item.href;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
+                className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                   active
                     ? 'bg-purple-600 text-white font-black shadow-md shadow-purple-600/25'
                     : 'text-slate-400 hover:text-white hover:bg-slate-900'
                 }`}
               >
-                <item.icon className="w-4 h-4" />
-                <span>{item.label}</span>
+                <div className="flex items-center gap-3">
+                  <item.icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge != null && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-slate-950">
+                    {item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -112,4 +135,3 @@ export default function AdminSidebar() {
     </aside>
   );
 }
-

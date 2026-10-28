@@ -323,56 +323,76 @@ async function seed() {
 
   const createdRoutes = await Route.insertMany(routesData);
 
-  console.log('[Seed] Seeding Fleet Buses (Company Code #01 - Sleeper & Seater variants)...');
+  console.log('[Seed] Seeding Fleet Buses (Company Code #01 - Standard Sleeper 36 & Seater 40 variants)...');
   const busesData = [
     {
       busNumber: 'UP-40-BT-1001',
       name: 'Rupadiya Royal AC Sleeper',
+      operatorName: 'Rupadiya Intercity Travels',
       companyCode: 1,
-      busType: 'BharatBenz AC Sleeper (2+1)',
+      busType: 'AC Sleeper (2+1)',
+      category: 'SLEEPER',
+      isAc: true,
       layoutType: '2+1',
       totalSeats: 36,
       amenities: ['Charging Point', 'WiFi', 'Blanket', 'Reading Light', 'GPS Tracking', 'Water Bottle'],
+      driverDetails: { name: 'Mohan Lal', phone: '+91 9876500001', licenseNumber: 'DL-UP40-2015001', alternatePhone: '+91 9876500011' },
       managerContact: { name: 'Mohan Lal', phone: '+91 9876500001' }
     },
     {
       busNumber: 'UP-40-BT-1002',
       name: 'Volvo 9600 AC Sleeper Express',
+      operatorName: 'Rupadiya Intercity Travels',
       companyCode: 1,
-      busType: 'Volvo 9600 AC Sleeper (2+1)',
+      busType: 'AC Sleeper (2+1)',
+      category: 'SLEEPER',
+      isAc: true,
       layoutType: '2+1',
       totalSeats: 36,
-      amenities: ['Charging Point', 'WiFi', 'Reading Light', 'Live Tracking', 'Sanitised Beds'],
+      amenities: ['Charging Point', 'WiFi', 'Reading Light', 'GPS Tracking', 'Sanitised Beds'],
+      driverDetails: { name: 'Ramesh Yadav', phone: '+91 9876500002', licenseNumber: 'DL-UP40-2016002', alternatePhone: '+91 9876500012' },
       managerContact: { name: 'Ramesh Yadav', phone: '+91 9876500002' }
     },
     {
       busNumber: 'UP-40-BT-1003',
       name: 'Rupadiya Non-AC Sleeper Deluxe',
+      operatorName: 'Rupadiya Intercity Travels',
       companyCode: 1,
       busType: 'Non-AC Sleeper (2+1)',
+      category: 'SLEEPER',
+      isAc: false,
       layoutType: '2+1',
       totalSeats: 36,
       amenities: ['Charging Point', 'Reading Light', 'Emergency Hammer', 'Pillow'],
+      driverDetails: { name: 'Dinesh Kumar', phone: '+91 9876500003', licenseNumber: 'DL-UP40-2017003', alternatePhone: '+91 9876500013' },
       managerContact: { name: 'Dinesh Kumar', phone: '+91 9876500003' }
     },
     {
       busNumber: 'UP-40-BT-1004',
       name: 'Setra Coach Luxury AC Seater',
+      operatorName: 'Rupadiya Intercity Travels',
       companyCode: 1,
-      busType: 'Setra Coach Bus (2+2 AC Seater)',
+      busType: 'AC Seater (2+2)',
+      category: 'SEATER',
+      isAc: true,
       layoutType: '2+2',
       totalSeats: 40,
       amenities: ['AC', 'WiFi', 'USB Port', 'Pushback Seats', 'Water Bottle'],
+      driverDetails: { name: 'Sunil Singh', phone: '+91 9876500004', licenseNumber: 'DL-UP40-2018004', alternatePhone: '+91 9876500014' },
       managerContact: { name: 'Sunil Singh', phone: '+91 9876500004' }
     },
     {
       busNumber: 'UP-40-BT-1005',
       name: 'Rupadiya Deluxe Non-AC Seater',
+      operatorName: 'Rupadiya Intercity Travels',
       companyCode: 1,
       busType: 'Non-AC Seater (2+2)',
+      category: 'SEATER',
+      isAc: false,
       layoutType: '2+2',
       totalSeats: 40,
       amenities: ['Reading Light', 'First Aid Box', 'Emergency Exit'],
+      driverDetails: { name: 'Anil Gupta', phone: '+91 9876500005', licenseNumber: 'DL-UP40-2019005', alternatePhone: '+91 9876500015' },
       managerContact: { name: 'Anil Gupta', phone: '+91 9876500005' }
     }
   ];
@@ -512,7 +532,7 @@ async function seed() {
     });
   }
 
-  console.log('[Seed] Seeding Handpicked Tour Packages (Matching NTT Design)...');
+  console.log('[Seed] Seeding Handpicked Tour Packages (Matching Rupadiya Design)...');
   const toursData = [
     {
       tourId: 'rann-of-kutch-escape',

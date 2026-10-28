@@ -40,6 +40,11 @@ export const api = {
       body: JSON.stringify({ holdId, holdToken: holdId })
     }),
     
+  // Razorpay Payments
+  getPaymentConfig: () => request('/payments/config'),
+  createPaymentOrder: (payload) => request('/payments/create-order', { method: 'POST', body: JSON.stringify(payload) }),
+  verifyPayment: (payload) => request('/payments/verify', { method: 'POST', body: JSON.stringify(payload) }),
+
   // Bookings
   confirmBooking: (bookingPayload) =>
     request('/bookings/confirm', {

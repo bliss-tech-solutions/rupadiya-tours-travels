@@ -633,15 +633,20 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
     const {
       tripId,
       selectedSeats,
+      seatNumbers,
       passengers,
       boardingPoint,
       droppingPoint,
       contactPhone,
       contactEmail,
-      agentServiceFee = 50
+      contactDetails,
+      agentServiceFee,
+      serviceCharge
     } = req.body;
 
-    if (!tripId || !selectedSeats || selectedSeats.length === 0) {
+    const seatsToBook = (selectedSeats && selectedSeats.length > 0) ? selectedSeats : (seatNumbers || []);
+
+    if (!tripId || seatsToBook.length === 0) {
       return res.status(400).json({ error: 'Trip and seats are required' });
     }
 
@@ -649,9 +654,10 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
     const baseFare = trip.baseFare || 510;
-    const subtotal = selectedSeats.length * baseFare;
+    const subtotal = seatsToBook.length * baseFare;
     const gstAmount = Math.round(subtotal * 0.05);
-    const totalFare = subtotal + gstAmount + Number(agentServiceFee || 0);
+    const fee = Number(agentServiceFee ?? serviceCharge ?? 0);
+    const totalFare = subtotal + gstAmount + fee;
 
     // 1. Verify Agent Wallet Balance
     const wallet = await getOrCreateAgentWallet(agentId, req.user.companyCode);
@@ -679,25 +685,47 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
       transactionType: TRANSACTION_TYPES.TICKET_PURCHASE,
       referenceType: 'BOOKING',
       referenceId: bookingId,
-      description: `Customer Ticket Purchase #${bookingId} (PNR: ${pnr}) - Seats [${selectedSeats.join(', ')}]`,
+      description: `Customer Ticket Purchase #${bookingId} (PNR: ${pnr}) - Seats [${seatsToBook.join(', ')}]`,
       idempotencyKey: `IDEM_${bookingId}_${Date.now()}`
     });
 
     // 4. Update seats in Trip to BOOKED
     trip.seats.forEach(s => {
-      if (selectedSeats.includes(s.seatNumber)) {
+      if (seatsToBook.includes(s.seatNumber)) {
         s.status = SEAT_STATUS.BOOKED;
         const pass = (passengers || []).find(p => p.seatNumber === s.seatNumber);
         if (pass) {
           s.passenger = {
-            name: pass.name,
-            age: pass.age,
-            gender: pass.gender
+            name: pass.name || 'Passenger',
+            age: Number(pass.age || 25),
+            gender: pass.gender || 'male'
           };
         }
       }
     });
     await trip.save();
+
+    const finalPhone = contactPhone || contactDetails?.phone || req.user.phone || '9876543210';
+    const finalEmail = contactEmail || contactDetails?.email || req.user.email || 'passenger@rupadiya.test';
+
+    const depFormatted = new Date(trip.departureTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const arrFormatted = new Date(trip.arrivalTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const formattedPassengers = (passengers && passengers.length > 0)
+      ? passengers.map(p => ({
+          seatNumber: p.seatNumber,
+          name: p.name || 'Passenger',
+          age: Number(p.age || 25),
+          gender: p.gender || 'male',
+          fare: baseFare
+        }))
+      : seatsToBook.map(num => ({
+          seatNumber: num,
+          name: 'Customer Traveler',
+          age: 25,
+          gender: 'male',
+          fare: baseFare
+        }));
 
     // 5. Create Confirmed Booking record
     const booking = await Booking.create({
@@ -706,23 +734,29 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
       passengerId: agentId,
       referralAgentId: agentId,
       contactDetails: {
-        email: contactEmail || req.user.email,
-        phone: contactPhone || req.user.phone
+        email: finalEmail,
+        phone: finalPhone
       },
       tripId: trip._id,
-      routeId: trip.routeId._id,
-      busId: trip.busId._id,
+      routeId: trip.routeId._id || trip.routeId,
+      busId: trip.busId._id || trip.busId,
       companyCode: req.user.companyCode || 1,
-      seatNumbers: selectedSeats,
-      passengers: passengers || selectedSeats.map(num => ({ seatNumber: num, name: 'Customer Traveler' })),
-      boardingPoint: boardingPoint || { name: 'Main Stand', time: '05:30 PM' },
-      droppingPoint: droppingPoint || { name: 'Destination Station', time: '02:00 PM' },
+      seatNumbers: seatsToBook,
+      passengers: formattedPassengers,
+      boardingPoint: {
+        name: boardingPoint?.name || boardingPoint?.location || trip.routeId?.boardingPoints?.[0]?.name || 'Main Stand',
+        time: boardingPoint?.time || depFormatted
+      },
+      droppingPoint: {
+        name: droppingPoint?.name || droppingPoint?.location || trip.routeId?.droppingPoints?.[0]?.name || 'Destination Station',
+        time: droppingPoint?.time || arrFormatted
+      },
       fareBreakdown: {
         baseFare,
-        seatCount: selectedSeats.length,
+        seatCount: seatsToBook.length,
         subtotal,
         gstAmount,
-        agentServiceFee,
+        discountAmount: 0,
         totalPayable: totalFare
       },
       status: 'CONFIRMED',
