@@ -100,18 +100,18 @@ export default function CompanySidebar({ onNavigate }) {
                 key={item.href}
                 href={item.href}
                 onClick={() => onNavigate && onNavigate()}
-                className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer ${
+                className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs transition cursor-pointer ${
                   active
                     ? 'bg-blue-50 text-blue-700 font-semibold border-l-4 border-blue-600 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-normal'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-semibold'
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 font-semibold">
                   <item.icon className={`w-4 h-4 ${active ? 'text-blue-600' : 'text-slate-400'}`} />
                   <span>{item.label}</span>
                 </div>
                 {item.badge != null && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                  <span className="px-2 py-0.5 font-semibold rounded-full text-[10px] bg-amber-100 text-amber-800 border border-amber-200">
                     {item.badge}
                   </span>
                 )}

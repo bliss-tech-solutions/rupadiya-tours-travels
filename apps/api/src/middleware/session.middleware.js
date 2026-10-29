@@ -43,7 +43,7 @@ function browserSessionMiddleware(req, res, next) {
     res.cookie(SESSION_COOKIE_NAME, signedVal, {
       httpOnly: true,
       secure: isProd,
-      sameSite: 'lax',
+      sameSite: env.COOKIE_SAME_SITE, domain: env.COOKIE_DOMAIN,
       path: '/',
       maxAge: SESSION_MAX_AGE_MS
     });

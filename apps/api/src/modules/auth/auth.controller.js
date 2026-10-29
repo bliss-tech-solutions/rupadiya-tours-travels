@@ -9,7 +9,7 @@ function setAuthCookies(res, { accessToken, refreshToken }) {
     res.cookie('rupadiya_access_token', accessToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: 'lax',
+      sameSite: env.COOKIE_SAME_SITE, domain: env.COOKIE_DOMAIN,
       path: '/',
       maxAge: 15 * 60 * 1000 // 15 Minutes
     });
@@ -19,7 +19,7 @@ function setAuthCookies(res, { accessToken, refreshToken }) {
     res.cookie('rupadiya_refresh_token', refreshToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: 'lax',
+      sameSite: env.COOKIE_SAME_SITE, domain: env.COOKIE_DOMAIN,
       path: '/api/v1/auth',
       maxAge: 24 * 60 * 60 * 1000 // 24 Hours
     });
@@ -30,7 +30,7 @@ function clearAuthCookies(res) {
   res.cookie('rupadiya_access_token', '', {
     httpOnly: true,
     secure: isProd,
-    sameSite: 'lax',
+    sameSite: env.COOKIE_SAME_SITE, domain: env.COOKIE_DOMAIN,
     path: '/',
     maxAge: 0
   });
@@ -38,7 +38,7 @@ function clearAuthCookies(res) {
   res.cookie('rupadiya_refresh_token', '', {
     httpOnly: true,
     secure: isProd,
-    sameSite: 'lax',
+    sameSite: env.COOKIE_SAME_SITE, domain: env.COOKIE_DOMAIN,
     path: '/api/v1/auth',
     maxAge: 0
   });

@@ -12,6 +12,7 @@
     "dev:agent": "npm --workspace=@rupadiya/agent-portal run dev",
     "dev:company": "npm --workspace=@rupadiya/company-portal run dev",
     "dev:admin": "npm --workspace=@rupadiya/admin-portal run dev",
+    "start:api": "npm --workspace=@rupadiya/api start",
     "build:user": "npm --workspace=@rupadiya/user-web run build",
     "build:agent": "npm --workspace=@rupadiya/agent-portal run build",
     "build:company": "npm --workspace=@rupadiya/company-portal run build",

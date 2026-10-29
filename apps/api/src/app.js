@@ -29,6 +29,9 @@ const Offer = require('./modules/offers/offer.model');
 
 const app = express();
 
+// Trust proxy for Render / Cloud load balancers (ensures accurate client IP and HTTPS cookies)
+app.set('trust proxy', 1);
+
 // Disable ETag generation to prevent 304 Not Modified empty responses on dynamic API routes
 app.set('etag', false);
 
