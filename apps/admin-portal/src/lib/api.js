@@ -19,22 +19,42 @@ function onRefreshed(success) {
 }
 
 async function request(endpoint, options = {}, isRetry = false) {
+  let token = null;
+  if (typeof window !== 'undefined') {
+    try {
+      token = localStorage.getItem('admin_token');
+    } catch {}
+  }
+
   const headers = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
     'x-rupadiya-client': 'admin-portal',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {})
   };
 
   const url = `${API_BASE}${endpoint}`;
   try {
     const res = await fetch(url, {
+      cache: 'no-store',
       ...options,
       headers,
       credentials: 'include' // Always pass httpOnly cookies
     });
 
+    // Handle 304 Not Modified safely
+    if (res.status === 304) {
+      return { success: true };
+    }
+
     if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh') && !endpoint.startsWith('/auth/otp')) {
-      if (refreshFailed || !isAdminSessionValid()) {
+      const loginTime = typeof window !== 'undefined' ? parseInt(localStorage.getItem('admin_login_time') || '0', 10) : 0;
+      const isRecentLogin = Date.now() - loginTime < 15000;
+
+      if ((refreshFailed && !isRecentLogin) || !isAdminSessionValid()) {
         try { localStorage.removeItem('admin_user'); } catch {}
         if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
           window.location.href = '/login?reason=session_expired';
@@ -47,37 +67,51 @@ async function request(endpoint, options = {}, isRetry = false) {
         try {
           const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
             method: 'POST',
+            cache: 'no-store',
             headers: {
               'Content-Type': 'application/json',
-              'x-rupadiya-client': 'admin-portal'
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'x-rupadiya-client': 'admin-portal',
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
             },
             credentials: 'include'
           });
 
-          if (refreshRes.ok) {
+          if (refreshRes.ok || refreshRes.status === 304) {
+            const refreshData = await refreshRes.json().catch(() => ({}));
+            if (refreshData?.accessToken || refreshData?.token) {
+              try { localStorage.setItem('admin_token', refreshData.accessToken || refreshData.token); } catch {}
+            }
             isRefreshing = false;
             refreshFailed = false;
             onRefreshed(true);
             return request(endpoint, options, true);
           } else {
             isRefreshing = false;
+            if (!isRecentLogin) {
+              refreshFailed = true;
+              onRefreshed(false);
+              try { localStorage.removeItem('admin_user'); } catch {}
+              if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+                window.location.href = '/login?reason=session_expired';
+              }
+              throw new Error('Super Admin session expired. Please sign in again.');
+            }
+            return { success: false, error: 'Token refresh failed' };
+          }
+        } catch (err) {
+          isRefreshing = false;
+          if (!isRecentLogin) {
             refreshFailed = true;
             onRefreshed(false);
             try { localStorage.removeItem('admin_user'); } catch {}
             if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
               window.location.href = '/login?reason=session_expired';
             }
-            throw new Error('Super Admin session expired. Please sign in again.');
+            throw err;
           }
-        } catch (err) {
-          isRefreshing = false;
-          refreshFailed = true;
-          onRefreshed(false);
-          try { localStorage.removeItem('admin_user'); } catch {}
-          if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-            window.location.href = '/login?reason=session_expired';
-          }
-          throw err;
+          return { success: false, error: err.message };
         }
       } else {
         return new Promise((resolve, reject) => {
@@ -110,14 +144,21 @@ export const api = {
   login: async (email, password) => {
     refreshFailed = false;
     const res = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    const token = res.accessToken || res.token || res.data?.token;
+    if (token) {
+      try { localStorage.setItem('admin_token', token); } catch {}
+    }
     if (res?.user) {
       try { localStorage.setItem('admin_user', JSON.stringify(res.user)); } catch {}
     }
+    try { localStorage.setItem('admin_login_time', Date.now().toString()); } catch {}
     return res;
   },
   logout: () => {
     refreshFailed = true;
     try { localStorage.removeItem('admin_user'); } catch {}
+    try { localStorage.removeItem('admin_token'); } catch {}
+    try { localStorage.removeItem('admin_login_time'); } catch {}
     return request('/auth/logout', { method: 'POST' });
   },
   refreshToken: () => request('/auth/refresh', { method: 'POST' }),

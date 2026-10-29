@@ -58,11 +58,14 @@ app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Ensure API responses are never cached by client or proxy
+// Ensure API responses are never cached by client or proxy, and eliminate 304 Not Modified
 app.use('/api', (req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  delete req.headers['if-none-match'];
+  delete req.headers['if-modified-since'];
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
   next();
 });
 

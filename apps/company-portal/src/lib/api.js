@@ -9,13 +9,16 @@ export function isOwnerSessionValid() {
   return Boolean(localStorage.getItem('owner_user'));
 }
 
-export function saveOwnerSession(_token, user) {
+export function saveOwnerSession(token, user) {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem('owner_token'); // Do not save token in localStorage
+    if (token) {
+      localStorage.setItem('owner_token', token);
+    }
     if (user) {
       localStorage.setItem('owner_user', JSON.stringify(user));
     }
+    localStorage.setItem('owner_login_time', Date.now().toString());
     refreshFailed = false; // Reset failure flag on successful login
   } catch {}
 }
@@ -44,23 +47,43 @@ function onRefreshed(success) {
 }
 
 async function request(endpoint, options = {}, isRetry = false) {
+  let token = null;
+  if (typeof window !== 'undefined') {
+    try {
+      token = localStorage.getItem('owner_token');
+    } catch {}
+  }
+
   const headers = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
     'x-rupadiya-client': 'company-portal',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {})
   };
 
   const url = `${API_BASE}${endpoint}`;
   try {
     const res = await fetch(url, {
+      cache: 'no-store',
       ...options,
       headers,
       credentials: 'include' // Passes httpOnly cookies
     });
 
+    // Guard against 304 Not Modified empty responses
+    if (res.status === 304) {
+      return { success: true };
+    }
+
     if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh') && !endpoint.startsWith('/auth/otp')) {
+      const loginTime = typeof window !== 'undefined' ? parseInt(localStorage.getItem('owner_login_time') || '0', 10) : 0;
+      const isRecentLogin = Date.now() - loginTime < 15000;
+
       // If refresh already failed or user not logged in, stop immediately
-      if (refreshFailed || !isOwnerSessionValid()) {
+      if ((refreshFailed && !isRecentLogin) || !isOwnerSessionValid()) {
         clearOwnerSession();
         if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
           window.location.href = '/login?expired=1';
@@ -73,37 +96,51 @@ async function request(endpoint, options = {}, isRetry = false) {
         try {
           const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
             method: 'POST',
+            cache: 'no-store',
             headers: {
               'Content-Type': 'application/json',
-              'x-rupadiya-client': 'company-portal'
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'x-rupadiya-client': 'company-portal',
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
             },
             credentials: 'include'
           });
 
-          if (refreshRes.ok) {
+          if (refreshRes.ok || refreshRes.status === 304) {
+            const refreshData = await refreshRes.json().catch(() => ({}));
+            if (refreshData?.accessToken || refreshData?.token) {
+              try { localStorage.setItem('owner_token', refreshData.accessToken || refreshData.token); } catch {}
+            }
             isRefreshing = false;
             refreshFailed = false;
             onRefreshed(true);
             return request(endpoint, options, true);
           } else {
             isRefreshing = false;
+            if (!isRecentLogin) {
+              refreshFailed = true;
+              onRefreshed(false);
+              clearOwnerSession();
+              if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+                window.location.href = '/login?expired=1';
+              }
+              throw new Error('Company owner session expired. Please sign in again.');
+            }
+            return { success: false, error: 'Token refresh failed' };
+          }
+        } catch (rErr) {
+          isRefreshing = false;
+          if (!isRecentLogin) {
             refreshFailed = true;
             onRefreshed(false);
             clearOwnerSession();
             if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
               window.location.href = '/login?expired=1';
             }
-            throw new Error('Company owner session expired. Please sign in again.');
+            throw rErr;
           }
-        } catch (rErr) {
-          isRefreshing = false;
-          refreshFailed = true;
-          onRefreshed(false);
-          clearOwnerSession();
-          if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-            window.location.href = '/login?expired=1';
-          }
-          throw rErr;
+          return { success: false, error: rErr.message };
         }
       } else {
         return new Promise((resolve, reject) => {
@@ -137,7 +174,7 @@ export const api = {
     refreshFailed = false;
     const res = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
     if (res?.user) {
-      saveOwnerSession(null, res.user);
+      saveOwnerSession(res.accessToken || res.token || res.data?.token, res.user);
     }
     return res;
   },

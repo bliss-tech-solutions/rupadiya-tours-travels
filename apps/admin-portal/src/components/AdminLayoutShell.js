@@ -21,10 +21,6 @@ export default function AdminLayoutShell({ children }) {
     setMounted(true);
     if (isLoginPage) return;
 
-    try {
-      localStorage.removeItem('admin_token'); // Clean legacy token
-    } catch {}
-
     const userRaw = localStorage.getItem('admin_user');
     if (userRaw) {
       try { setAdmin(JSON.parse(userRaw)); } catch (e) {}
@@ -36,11 +32,17 @@ export default function AdminLayoutShell({ children }) {
         if (res?.user) {
           setAdmin(res.user);
           localStorage.setItem('admin_user', JSON.stringify(res.user));
-        } else {
+        } else if (res?.success && userRaw) {
+          // Keep current admin session on safe 304 / empty response
+        } else if (!userRaw) {
           router.push('/login?reason=session_expired');
         }
       } catch (err) {
-        router.push('/login?reason=session_expired');
+        const loginTime = parseInt(localStorage.getItem('admin_login_time') || '0', 10);
+        const isRecentLogin = Date.now() - loginTime < 30000;
+        if (!isRecentLogin && !userRaw) {
+          router.push('/login?reason=session_expired');
+        }
       }
     }
 
@@ -165,4 +167,3 @@ export default function AdminLayoutShell({ children }) {
     </div>
   );
 }
-

@@ -13,19 +13,35 @@ function onRefreshed(success) {
 }
 
 async function request(endpoint, options = {}, isRetry = false) {
+  let token = null;
+  if (typeof window !== 'undefined') {
+    try {
+      token = localStorage.getItem('user_token');
+    } catch {}
+  }
+
   const headers = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
     'x-rupadiya-client': 'web-client',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {})
   };
 
   const url = `${API_BASE}${endpoint}`;
   try {
     const res = await fetch(url, {
+      cache: 'no-store',
       ...options,
       headers,
       credentials: 'include' // Always pass httpOnly cookies (access_token, refresh_token, session)
     });
+
+    if (res.status === 304) {
+      return { success: true };
+    }
 
     // Handle 401 Unauthorized with automatic transparent 24hr silent token refresh
     if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh') && !endpoint.startsWith('/auth/otp')) {
@@ -34,14 +50,22 @@ async function request(endpoint, options = {}, isRetry = false) {
         try {
           const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
             method: 'POST',
+            cache: 'no-store',
             headers: {
               'Content-Type': 'application/json',
-              'x-rupadiya-client': 'web-client'
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'x-rupadiya-client': 'web-client',
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
             },
             credentials: 'include'
           });
 
-          if (refreshRes.ok) {
+          if (refreshRes.ok || refreshRes.status === 304) {
+            const refreshData = await refreshRes.json().catch(() => ({}));
+            if (refreshData?.accessToken || refreshData?.token) {
+              try { localStorage.setItem('user_token', refreshData.accessToken || refreshData.token); } catch {}
+            }
             isRefreshing = false;
             onRefreshed(true);
             return request(endpoint, options, true); // Retry original call
@@ -127,13 +151,30 @@ export const api = {
   getCalendarFares: (from, to, month) =>
     request(`/trips/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&month=${encodeURIComponent(month || '')}`),
 
-  // Auth (httpOnly cookies handled by browser)
+  // Auth (httpOnly cookies handled by browser with token fallback)
   sendOtp: (phone) => request('/auth/otp/send', { method: 'POST', body: JSON.stringify({ phone }) }),
-  verifyOtp: (phone, otp, name, email) => request('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ phone, otp, name, email }) }),
-  login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  verifyOtp: async (phone, otp, name, email) => {
+    const res = await request('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ phone, otp, name, email }) });
+    const token = res.accessToken || res.token || res.data?.token;
+    if (token) {
+      try { localStorage.setItem('user_token', token); } catch {}
+    }
+    return res;
+  },
+  login: async (email, password) => {
+    const res = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    const token = res.accessToken || res.token || res.data?.token;
+    if (token) {
+      try { localStorage.setItem('user_token', token); } catch {}
+    }
+    return res;
+  },
   register: (userData) => request('/auth/register', { method: 'POST', body: JSON.stringify(userData) }),
   refreshToken: () => request('/auth/refresh', { method: 'POST' }),
-  logout: () => request('/auth/logout', { method: 'POST' }),
+  logout: () => {
+    try { localStorage.removeItem('user_token'); } catch {}
+    return request('/auth/logout', { method: 'POST' });
+  },
   session: () => request('/auth/session'),
   me: () => request('/auth/me'),
   updateProfile: (data) => request('/auth/profile', { method: 'PUT', body: JSON.stringify(data) })

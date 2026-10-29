@@ -40,10 +40,12 @@ function browserSessionMiddleware(req, res, next) {
     const signedVal = signSessionId(sessionId);
 
     const isProd = env.NODE_ENV === 'production';
+    const isSecure = isProd || env.COOKIE_SAME_SITE === 'none';
     res.cookie(SESSION_COOKIE_NAME, signedVal, {
       httpOnly: true,
-      secure: isProd,
-      sameSite: env.COOKIE_SAME_SITE, domain: env.COOKIE_DOMAIN,
+      secure: isSecure,
+      sameSite: env.COOKIE_SAME_SITE,
+      domain: env.COOKIE_DOMAIN,
       path: '/',
       maxAge: SESSION_MAX_AGE_MS
     });
@@ -58,4 +60,3 @@ module.exports = {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_MS
 };
-
