@@ -18,52 +18,35 @@ import {
   LogOut,
   Wallet,
   ShieldCheck,
-  X
+  X,
+  Network
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { useWallet } from '../context/WalletContext';
 
 export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
   const pathname = usePathname();
-  const [walletBalance, setWalletBalance] = useState(null);
-  const [agent, setAgent] = useState(null);
-
-  const fetchAgentData = async () => {
-    try {
-      const raw = localStorage.getItem('agent_user');
-      if (raw) {
-        setAgent(JSON.parse(raw));
-      }
-      const dash = await api.getDashboard();
-      if (dash?.success) {
-        const d = dash.data || dash;
-        setWalletBalance(d.walletBalance ?? d.wallet?.availableBalance ?? 0);
-        if (d.agent) setAgent(d.agent);
-      }
-    } catch (e) {
-      try {
-        if (typeof api.getMyWallet === 'function') {
-          const w = await api.getMyWallet();
-          const bal = w?.data?.balance ?? w?.wallet?.availableBalance ?? w?.data?.availableBalance ?? w?.balance;
-          if (bal != null) setWalletBalance(bal);
-        }
-      } catch (err) {}
-    }
-  };
+  const { balance: walletBalance, agent: contextAgent } = useWallet();
+  const [localAgent, setLocalAgent] = useState(null);
 
   useEffect(() => {
-    fetchAgentData();
-    const handleWalletUpdate = () => fetchAgentData();
-    window.addEventListener('wallet-updated', handleWalletUpdate);
-    return () => window.removeEventListener('wallet-updated', handleWalletUpdate);
+    const raw = localStorage.getItem('agent_user');
+    if (raw) {
+      try { setLocalAgent(JSON.parse(raw)); } catch (e) {}
+    }
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('agent_token');
-    localStorage.removeItem('agent_user');
+  const agent = contextAgent || localAgent;
+
+  const handleLogout = async () => {
+    try { await api.logout(); } catch {}
+    try {
+      localStorage.removeItem('agent_token');
+      localStorage.removeItem('agent_user');
+    } catch {}
     window.location.href = '/login';
   };
 
-  // 12 strict menu items in exact order requested
   const menuItems = [
     { label: 'Dashboard', href: '/', icon: LayoutDashboard },
     { label: 'Make Deposit', href: '/deposit', icon: PlusCircle },
@@ -72,6 +55,7 @@ export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
     { label: 'Print Ticket', href: '/print-ticket', icon: Printer },
     { label: 'Cancel Ticket', href: '/cancel-ticket', icon: XCircle },
     { label: 'My Rewards', href: '/rewards', icon: Gift },
+    { label: 'Referral Network', href: '/network', icon: Network },
     { label: 'Booking', href: '/booking', icon: Ticket },
     { label: 'Track a Bus', href: '/track-bus', icon: Navigation },
     { label: 'Profile', href: '/profile', icon: User },
@@ -130,7 +114,7 @@ export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
           </div>
         </div>
 
-        {/* 12 Menu Items Navigation */}
+        {/* Menu Items Navigation */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {menuItems.map((item) => {
             if (item.isAction) {
@@ -186,4 +170,3 @@ export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
     </aside>
   );
 }
-

@@ -256,7 +256,9 @@ class PaymentService {
         },
         referralCode: meta.referralCode,
         tripId: meta.tripId,
-        seatNumbers: meta.seatNumbers || meta.selectedSeats
+        seatNumbers: meta.seatNumbers || meta.selectedSeats,
+        insuranceOpted: meta.insuranceOpted ?? false,
+        insuranceAmount: meta.insuranceAmount ?? 0
       };
 
       const bookingResult = await bookingService.confirmBooking(confirmPayload);

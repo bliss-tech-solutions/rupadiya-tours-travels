@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Wallet, WalletLedger } = require('./wallet.model');
 const { authenticateToken } = require('../../middleware/auth.middleware');
+const { paymentLimiter } = require('../../middleware/rateLimit.middleware');
 const { TRANSACTION_TYPES } = require('../../config/constants');
 
 // Get wallet balance
@@ -63,7 +64,7 @@ router.get('/ledger', authenticateToken, async (req, res, next) => {
 });
 
 // Deposit into wallet
-router.post('/deposit', authenticateToken, async (req, res, next) => {
+router.post('/deposit', paymentLimiter, authenticateToken, async (req, res, next) => {
   try {
     const { amount, paymentMethod } = req.body;
     const numAmount = Number(amount);

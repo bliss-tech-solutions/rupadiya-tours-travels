@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/ui/Toast';
+import { useAuth } from '../../context/AuthContext';
 
 export default function UserProfilePage() {
   const router = useRouter();
@@ -34,23 +35,6 @@ export default function UserProfilePage() {
   const [bookingsCount, setBookingsCount] = useState(0);
 
   useEffect(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('rupadiya_user') : null;
-    const token = typeof window !== 'undefined' ? localStorage.getItem('rupadiya_token') : null;
-
-    if (!token || !raw) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw);
-      setUser(parsed);
-      setName(parsed.name || '');
-      setPhone(parsed.phone || '');
-      setEmail(parsed.email || '');
-    } catch (e) {}
-
-    // Load fresh profile & bookings count
     Promise.allSettled([
       api.me(),
       api.getMyBookings()
@@ -62,7 +46,6 @@ export default function UserProfilePage() {
           setName(freshUser.name || '');
           setPhone(freshUser.phone || '');
           setEmail(freshUser.email || '');
-          localStorage.setItem('rupadiya_user', JSON.stringify(freshUser));
         }
         if (bookingsRes.status === 'fulfilled') {
           const list = bookingsRes.value.bookings || bookingsRes.value.data || [];
@@ -107,11 +90,14 @@ export default function UserProfilePage() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('rupadiya_token');
-    localStorage.removeItem('rupadiya_user');
+  const handleLogout = async () => {
+    try { await api.logout(); } catch {}
+    try {
+      localStorage.removeItem('rupadiya_token');
+      localStorage.removeItem('rupadiya_user');
+    } catch {}
     addToast('Signed out successfully', 'info');
-    window.location.href = '/';
+    window.location.href = '/login';
   };
 
   if (loading) {

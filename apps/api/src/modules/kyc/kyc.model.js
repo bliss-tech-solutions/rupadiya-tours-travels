@@ -13,7 +13,7 @@ const kycSchema = new mongoose.Schema({
   },
   documentType: {
     type: String,
-    enum: ['AADHAAR', 'PAN', 'TRADE_LICENSE', 'VOTER_ID'],
+    enum: ['AADHAAR', 'PAN', 'TRADE_LICENSE', 'VOTER_ID', 'NEPAL_CITIZENSHIP', 'NEPAL_NATIONAL_ID'],
     required: true
   },
   documentNumberMasked: {
@@ -29,6 +29,7 @@ const kycSchema = new mongoose.Schema({
     enum: Object.values(KYC_STATUS),
     default: KYC_STATUS.PENDING
   },
+  fileUrlBack: { type: String, default: '' },
   rejectionReason: {
     type: String,
     default: ''

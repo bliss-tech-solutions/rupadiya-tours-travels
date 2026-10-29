@@ -13,6 +13,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { useToast } from '../../../components/ui/Toast';
+import { formatTime } from '../../../lib/dateUtils';
 
 export default function BoardingPointsSelectionPage() {
   const params = useParams();
@@ -137,8 +138,7 @@ export default function BoardingPointsSelectionPage() {
                 {boardingPoints.map((bp) => {
                   const id = bp.id || bp._id || '0';
                   const isSelected = selectedBoardingId === id;
-                  const depTime = new Date(new Date(trip.departureTime).getTime() + (bp.timeOffsetMinutes || 0) * 60000)
-                    .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const depTime = formatTime(new Date(trip.departureTime).getTime() + (bp.timeOffsetMinutes || 0) * 60000);
 
                   return (
                     <div
@@ -188,8 +188,7 @@ export default function BoardingPointsSelectionPage() {
                 {droppingPoints.map((dp) => {
                   const id = dp.id || dp._id || '0';
                   const isSelected = selectedDroppingId === id;
-                  const arrTime = new Date(new Date(trip.arrivalTime).getTime() + (dp.timeOffsetMinutes || 0) * 60000)
-                    .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const arrTime = formatTime(new Date(trip.arrivalTime).getTime() + (dp.timeOffsetMinutes || 0) * 60000);
 
                   return (
                     <div

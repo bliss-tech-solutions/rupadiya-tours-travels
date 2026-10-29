@@ -45,7 +45,7 @@ export default function CompanyTargetsPage() {
             <Target className="w-3.5 h-3.5" />
             <span>Quota & Performance</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Annual Target & Revenue Statement</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Annual Target & Revenue Statement</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Platform quota compliance: {targetPassengers.toLocaleString('en-IN')} annual passenger commitment for {companyName}.
           </p>
@@ -67,12 +67,12 @@ export default function CompanyTargetsPage() {
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               FY 2026-2027 Passenger Quota Fulfillment
             </h2>
-            <div className="text-3xl font-black text-slate-900 mt-1">
+            <div className="text-3xl font-bold text-slate-900 mt-1">
               {totalPassengers.toLocaleString('en-IN')} <span className="text-base text-slate-400 font-normal">/ {targetPassengers.toLocaleString('en-IN')} Passengers</span>
             </div>
           </div>
           <div className="text-right">
-            <span className="text-3xl font-black text-blue-600">{progressPercent}%</span>
+            <span className="text-3xl font-bold text-blue-600">{progressPercent}%</span>
             <span className="text-[11px] text-slate-400 block font-medium">Annual target</span>
           </div>
         </div>
@@ -100,19 +100,19 @@ export default function CompanyTargetsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200/80 p-6 rounded-3xl shadow-xs space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Ticket Revenue</span>
-          <div className="text-2xl font-black text-emerald-600">₹{totalRevenue.toLocaleString('en-IN')}</div>
+          <div className="text-2xl font-bold text-emerald-600">₹{totalRevenue.toLocaleString('en-IN')}</div>
           <span className="text-[11px] text-slate-500 block">Gross receipts from passenger bookings</span>
         </div>
 
         <div className="bg-white border border-slate-200/80 p-6 rounded-3xl shadow-xs space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">GST (5%) Obligation</span>
-          <div className="text-2xl font-black text-amber-600">₹{totalGst.toLocaleString('en-IN')}</div>
+          <div className="text-2xl font-bold text-amber-600">₹{totalGst.toLocaleString('en-IN')}</div>
           <span className="text-[11px] text-slate-500 block">Statutory tax collected for department</span>
         </div>
 
         <div className="bg-white border border-slate-200/80 p-6 rounded-3xl shadow-xs space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Net Company Gross</span>
-          <div className="text-2xl font-black text-blue-600">₹{netGross.toLocaleString('en-IN')}</div>
+          <div className="text-2xl font-bold text-blue-600">₹{netGross.toLocaleString('en-IN')}</div>
           <span className="text-[11px] text-slate-500 block">Net operational receipts after tax</span>
         </div>
       </div>

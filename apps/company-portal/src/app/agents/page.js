@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   Users, 
   Phone, 
@@ -16,9 +17,14 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  FileText,
+  ExternalLink,
   X
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { formatDate, formatDateTime } from '../../lib/dateUtils';
+import FileUploadProgress from '../../components/FileUploadProgress';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -34,6 +40,8 @@ export default function CompanyAgentsPage() {
   const [topupModalOpen, setTopupModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(null);
+  const [kycPreviewModalOpen, setKycPreviewModalOpen] = useState(false);
+  const [previewAgent, setPreviewAgent] = useState(null);
 
   // Create form state
   const [formData, setFormData] = useState({
@@ -45,7 +53,20 @@ export default function CompanyAgentsPage() {
     initialWalletAmount: '10000',
     address: '',
     city: 'Rupadiya',
-    state: 'Uttar Pradesh'
+    state: 'Uttar Pradesh',
+    nationality: 'INDIA', // 'INDIA' | 'NEPAL'
+    aadharNumber: '',
+    aadharFileUrl: '',
+    panNumber: '',
+    panFileUrl: '',
+    nepalIdNumber: '',
+    nepalIdFileUrl: '',
+    nepalIdFileUrlBack: '',
+    bankAccountName: '',
+    bankAccountNumber: '',
+    bankIfsc: '',
+    bankUpiId: '',
+    bankName: 'State Bank of India'
   });
   const [submitting, setSubmitting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
@@ -85,7 +106,22 @@ export default function CompanyAgentsPage() {
     try {
       const payload = {
         ...formData,
-        initialWalletAmount: Number(formData.initialWalletAmount) || 0
+        initialWalletAmount: Number(formData.initialWalletAmount) || 0,
+        nationality: formData.nationality,
+        aadharNumber: formData.aadharNumber?.trim() || '',
+        aadharFileUrl: formData.aadharFileUrl || null,
+        panNumber: formData.panNumber?.trim()?.toUpperCase() || '',
+        panFileUrl: formData.panFileUrl || null,
+        nepalIdNumber: formData.nepalIdNumber?.trim() || '',
+        nepalIdFileUrl: formData.nepalIdFileUrl || null,
+        nepalIdFileUrlBack: formData.nepalIdFileUrlBack || null,
+        bankDetails: {
+          accountName: formData.bankAccountName || formData.name,
+          accountNumber: formData.bankAccountNumber,
+          ifscCode: formData.bankIfsc?.toUpperCase() || '',
+          upiId: formData.bankUpiId || '',
+          bankName: formData.bankName || 'State Bank of India'
+        }
       };
       const res = await api.createAgent(payload);
       if (res.success) {
@@ -99,7 +135,20 @@ export default function CompanyAgentsPage() {
           initialWalletAmount: '10000',
           address: '',
           city: 'Rupadiya',
-          state: 'Uttar Pradesh'
+          state: 'Uttar Pradesh',
+          nationality: 'INDIA',
+          aadharNumber: '',
+          aadharFileUrl: '',
+          panNumber: '',
+          panFileUrl: '',
+          nepalIdNumber: '',
+          nepalIdFileUrl: '',
+          nepalIdFileUrlBack: '',
+          bankAccountName: '',
+          bankAccountNumber: '',
+          bankIfsc: '',
+          bankUpiId: '',
+          bankName: 'State Bank of India'
         });
         setTimeout(() => {
           setCreateModalOpen(false);
@@ -194,23 +243,19 @@ export default function CompanyAgentsPage() {
             <Users className="w-3.5 h-3.5" />
             <span>Franchise Agency Operations</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Authorized Agent Counters</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Authorized Agent Counters</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Create, fund, manage, and monitor booking counters and affiliates under your company franchise.
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setError('');
-            setActionSuccess('');
-            setCreateModalOpen(true);
-          }}
+        <Link
+          href="/agents/add"
           className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-2 self-start sm:self-auto cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>+ Add New Agent</span>
-        </button>
+        </Link>
       </div>
 
       {actionSuccess && (
@@ -261,12 +306,12 @@ export default function CompanyAgentsPage() {
           <div className="py-16 text-center text-slate-500 text-xs space-y-3">
             <Users className="w-8 h-8 mx-auto text-slate-400" />
             <p>No agents found matching your query.</p>
-            <button
-              onClick={() => setCreateModalOpen(true)}
+            <Link
+              href="/agents/add"
               className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs"
             >
               + Create First Agent
-            </button>
+            </Link>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -286,8 +331,13 @@ export default function CompanyAgentsPage() {
                 {paginatedAgents.map((ag) => (
                   <tr key={ag._id} className="hover:bg-slate-50/80 transition">
                     <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900 text-sm">{ag.name}</div>
-                      <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 text-sm">{ag.name}</span>
+                        <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
+                          {ag.nationality === 'NEPAL' ? '🇳🇵 Nepal' : '🇮🇳 India'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                         <Building2 className="w-3 h-3 text-slate-400" />
                         <span>{ag.agencyName || 'Agency Counter'}</span>
                       </div>
@@ -299,7 +349,7 @@ export default function CompanyAgentsPage() {
                       <div className="font-medium text-slate-800">{ag.phone}</div>
                       <div className="text-[11px] text-slate-400">{ag.email}</div>
                     </td>
-                    <td className="py-3.5 px-4 text-right font-black text-emerald-600 text-sm">
+                    <td className="py-3.5 px-4 text-right font-bold text-emerald-600 text-sm">
                       ₹{Number(ag.availableBalance || 0).toLocaleString('en-IN')}
                     </td>
                     <td className="py-3.5 px-4 text-center">
@@ -326,6 +376,18 @@ export default function CompanyAgentsPage() {
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            setPreviewAgent(ag);
+                            setKycPreviewModalOpen(true);
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] border border-blue-200 flex items-center gap-1 transition cursor-pointer"
+                          title="Inspect KYC Documents"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>KYC Docs</span>
+                        </button>
+
                         <button
                           onClick={() => {
                             setSelectedAgent(ag);
@@ -500,6 +562,192 @@ export default function CompanyAgentsPage() {
                   />
                 </div>
 
+                {/* Statutory KYC Details Section with India & Nepal Dual-Country Support */}
+                <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-amber-700" />
+                      Statutory KYC Verification (Mandatory for Agency Compliance)
+                    </span>
+                    <span className="text-[10px] font-bold bg-amber-200/70 text-amber-900 px-2 py-0.5 rounded-full">
+                      Section 4.3
+                    </span>
+                  </div>
+
+                  {/* Nationality Toggle */}
+                  <div>
+                    <label className="text-[11px] font-bold text-amber-950 block mb-1.5">
+                      Agent Nationality / Jurisdiction *
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, nationality: 'INDIA' })}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                          formData.nationality === 'INDIA'
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-50'
+                        }`}
+                      >
+                        <span>🇮🇳 Indian Resident Agent</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, nationality: 'NEPAL' })}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                          formData.nationality === 'NEPAL'
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-50'
+                        }`}
+                      >
+                        <span>🇳🇵 Nepal Border Agent</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Indian KYC Fields */}
+                  {formData.nationality === 'INDIA' ? (
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-amber-950 block mb-1">
+                            Aadhaar Card Number (12 Digits) *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            maxLength={12}
+                            placeholder="12-digit Aadhaar number"
+                            value={formData.aadharNumber}
+                            onChange={(e) => setFormData({ ...formData, aadharNumber: e.target.value.replace(/\D/g, '') })}
+                            className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-slate-900 font-mono text-xs focus:outline-none focus:border-amber-500 font-bold"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-amber-950 block mb-1">
+                            PAN Card Number (10 Chars) *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            maxLength={10}
+                            placeholder="ABCDE1234F"
+                            value={formData.panNumber}
+                            onChange={(e) => setFormData({ ...formData, panNumber: e.target.value.toUpperCase() })}
+                            className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-slate-900 font-mono text-xs uppercase focus:outline-none focus:border-amber-500 font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <FileUploadProgress
+                          label="Aadhaar Card Document"
+                          folder="kyc-documents"
+                          fileUrl={formData.aadharFileUrl}
+                          onUploadComplete={(url) => setFormData({ ...formData, aadharFileUrl: url })}
+                          onRemove={() => setFormData({ ...formData, aadharFileUrl: '' })}
+                        />
+                        <FileUploadProgress
+                          label="PAN Card Document"
+                          folder="kyc-documents"
+                          fileUrl={formData.panFileUrl}
+                          onUploadComplete={(url) => setFormData({ ...formData, panFileUrl: url })}
+                          onRemove={() => setFormData({ ...formData, panFileUrl: '' })}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    /* Nepal KYC Fields */
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <label className="text-[11px] font-bold text-amber-950 block mb-1">
+                          Nepal National ID / Nagarikta (Citizenship) Number *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. 05-01-78-01928"
+                          value={formData.nepalIdNumber}
+                          onChange={(e) => setFormData({ ...formData, nepalIdNumber: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-slate-900 font-mono text-xs focus:outline-none focus:border-amber-500 font-bold"
+                        />
+                        <span className="text-[10px] text-amber-900/70 mt-0.5 block">
+                          Official citizenship number issued by District Administration Office
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <FileUploadProgress
+                          label="Citizenship Front Document"
+                          folder="kyc-documents"
+                          fileUrl={formData.nepalIdFileUrl}
+                          onUploadComplete={(url) => setFormData({ ...formData, nepalIdFileUrl: url })}
+                          onRemove={() => setFormData({ ...formData, nepalIdFileUrl: '' })}
+                        />
+                        <FileUploadProgress
+                          label="Citizenship Back Document"
+                          folder="kyc-documents"
+                          fileUrl={formData.nepalIdFileUrlBack}
+                          onUploadComplete={(url) => setFormData({ ...formData, nepalIdFileUrlBack: url })}
+                          onRemove={() => setFormData({ ...formData, nepalIdFileUrlBack: '' })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Settlement Bank Account Details */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                    Commission Payout & Settlement Bank Account
+                  </span>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">Bank Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. State Bank of India, HDFC"
+                        value={formData.bankName}
+                        onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">Account Number</label>
+                      <input
+                        type="text"
+                        placeholder="Bank account number"
+                        value={formData.bankAccountNumber}
+                        onChange={(e) => setFormData({ ...formData, bankAccountNumber: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">IFSC Code</label>
+                      <input
+                        type="text"
+                        maxLength={11}
+                        placeholder="SBIN0002145"
+                        value={formData.bankIfsc}
+                        onChange={(e) => setFormData({ ...formData, bankIfsc: e.target.value.toUpperCase() })}
+                        className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-mono uppercase text-slate-800 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">UPI ID for instant settlement</label>
+                      <input
+                        type="text"
+                        placeholder="user@okhdfcbank"
+                        value={formData.bankUpiId}
+                        onChange={(e) => setFormData({ ...formData, bankUpiId: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Initial Wallet Balance Allocation */}
                 <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-2">
                   <div className="flex items-center justify-between">
@@ -515,7 +763,7 @@ export default function CompanyAgentsPage() {
                     required
                     value={formData.initialWalletAmount}
                     onChange={(e) => setFormData({ ...formData, initialWalletAmount: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-blue-300 text-emerald-600 font-black text-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-blue-300 text-emerald-600 font-bold text-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                   />
                   <div className="grid grid-cols-4 gap-2 pt-1">
                     {['2000', '5000', '10000', '20000'].map((preset) => (
@@ -584,7 +832,7 @@ export default function CompanyAgentsPage() {
                   required
                   value={topupAmount}
                   onChange={(e) => setTopupAmount(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-emerald-600 font-black text-xl focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-emerald-600 font-bold text-xl focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
                 <div className="grid grid-cols-4 gap-2 mt-2">
                   {['2000', '5000', '10000', '25000'].map(p => (
@@ -670,6 +918,129 @@ export default function CompanyAgentsPage() {
                 className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition cursor-pointer"
               >
                 Confirm Removal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* KYC PREVIEW MODAL */}
+      {kycPreviewModalOpen && previewAgent && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200/90 w-full max-w-xl rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
+                      KYC Compliance Dossier
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                      {previewAgent.nationality === 'NEPAL' ? '🇳🇵 Nepal Citizen' : '🇮🇳 Indian Resident'}
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {previewAgent.name} ({previewAgent.referralCode})
+                  </h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setKycPreviewModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* KYC Status Badge */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+              <span className="text-slate-600 font-semibold">Verification Audit Status</span>
+              <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                previewAgent.kycStatus === 'VERIFIED'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-amber-100 text-amber-800'
+              }`}>
+                {previewAgent.kycStatus || 'PENDING'}
+              </span>
+            </div>
+
+            {/* Document Cards */}
+            <div className="space-y-3">
+              <span className="text-xs font-bold text-slate-900 uppercase block">
+                Submitted Identity Documents ({previewAgent.kycDocuments?.length || 0})
+              </span>
+
+              {(!previewAgent.kycDocuments || previewAgent.kycDocuments.length === 0) ? (
+                <div className="p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-400">
+                  No scanned document files attached to this agent profile.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {previewAgent.kycDocuments.map((doc, idx) => {
+                    const isPdf = doc.fileUrl?.toLowerCase().endsWith('.pdf');
+                    return (
+                      <div key={idx} className="p-3 rounded-2xl border border-slate-200 bg-white space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-slate-900 truncate">
+                            {doc.documentType?.replace(/_/g, ' ')}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                            doc.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                          }`}>
+                            {doc.status}
+                          </span>
+                        </div>
+
+                        {doc.documentNumber && (
+                          <div className="text-[11px] font-mono font-bold text-blue-700">
+                            #{doc.documentNumber}
+                          </div>
+                        )}
+
+                        {doc.fileUrl ? (
+                          <div className="space-y-1.5">
+                            {isPdf ? (
+                              <div className="h-24 rounded-xl bg-slate-50 flex items-center justify-center text-rose-600 border border-slate-100">
+                                <FileText className="w-8 h-8" />
+                              </div>
+                            ) : (
+                              <div className="h-24 rounded-xl overflow-hidden bg-slate-100 border border-slate-100">
+                                <img
+                                  src={doc.fileUrl}
+                                  alt={doc.documentType}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            )}
+                            <a
+                              href={doc.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center gap-1.5 transition"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>View Full Document</span>
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">No file image attached</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setKycPreviewModalOpen(false)}
+                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+              >
+                Close Dossier
               </button>
             </div>
           </div>

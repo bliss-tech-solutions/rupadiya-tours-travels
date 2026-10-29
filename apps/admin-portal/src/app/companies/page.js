@@ -11,15 +11,20 @@ import {
   AlertCircle,
   Edit3,
   Bus,
-  Users
+  Users,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { api } from '../../lib/api';
+
+const ITEMS_PER_PAGE = 10;
 
 export default function AdminCompaniesPage() {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Modals
   const [assignModalOpen, setAssignModalOpen] = useState(false);
@@ -111,19 +116,26 @@ export default function AdminCompaniesPage() {
     c.ownerId?.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE) || 1;
+  const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   const assignedCount = companies.filter(c => c.ownerId != null).length;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="w-full space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/90 pb-6">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 text-xs font-bold uppercase tracking-wider mb-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200/60 text-blue-700 text-xs font-bold uppercase tracking-wider mb-2">
             <Building2 className="w-3.5 h-3.5" />
             <span>Master Franchise Registry</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white">33 Companies Registry</h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900">33 Companies Registry</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Complete platform management, franchise ownership binding, and annual passenger quota controls for all 33 operator codes.
           </p>
         </div>
@@ -131,23 +143,23 @@ export default function AdminCompaniesPage() {
         <div className="flex items-center gap-3 self-start sm:self-auto">
           <button
             onClick={fetchCompanies}
-            className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 font-bold text-xs flex items-center gap-2"
+            className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200/90 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-2 cursor-pointer transition"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-purple-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
       {successMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2">
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/60 text-emerald-700 text-xs font-bold flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
 
       {error && (
-        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center gap-2">
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200/60 text-rose-700 text-xs font-semibold flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
@@ -155,29 +167,29 @@ export default function AdminCompaniesPage() {
 
       {/* Summary KPI Badges */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-slate-950 border border-slate-800 p-5 rounded-3xl space-y-1">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Company Codes</span>
-          <div className="text-2xl font-black text-white">33 Franchise Slots</div>
+        <div className="bg-white border border-slate-200/90 p-5 rounded-3xl space-y-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Company Codes</span>
+          <div className="text-2xl font-black text-slate-900">33 Franchise Slots</div>
           <span className="text-[11px] text-slate-500">Fixed Codes 1 to 33</span>
         </div>
 
-        <div className="bg-slate-950 border border-slate-800 p-5 rounded-3xl space-y-1">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Assigned Franchise Owners</span>
-          <div className="text-2xl font-black text-purple-400">{assignedCount} Assigned</div>
+        <div className="bg-white border border-slate-200/90 p-5 rounded-3xl space-y-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Assigned Franchise Owners</span>
+          <div className="text-2xl font-black text-blue-700">{assignedCount} Assigned</div>
           <span className="text-[11px] text-slate-500">{33 - assignedCount} slots pending assignment</span>
         </div>
 
-        <div className="bg-slate-950 border border-slate-800 p-5 rounded-3xl space-y-1">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Default Annual Quota</span>
-          <div className="text-2xl font-black text-emerald-400">10,000 / Company</div>
+        <div className="bg-white border border-slate-200/90 p-5 rounded-3xl space-y-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Default Annual Quota</span>
+          <div className="text-2xl font-black text-emerald-700">10,000 / Company</div>
           <span className="text-[11px] text-slate-500">Yearly passenger commitment</span>
         </div>
       </div>
 
       {/* Companies Table Card */}
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 space-y-4">
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-white">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900">
             Franchise Directory ({filtered.length} of 33)
           </h2>
 
@@ -188,21 +200,21 @@ export default function AdminCompaniesPage() {
               placeholder="Search by code, company name, owner..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600"
             />
           </div>
         </div>
 
         {loading ? (
           <div className="py-16 text-center text-slate-500 flex flex-col items-center gap-2">
-            <RefreshCw className="w-6 h-6 animate-spin text-purple-500" />
+            <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
             <span className="text-xs">Loading 33 companies registry...</span>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
+                <tr className="border-b border-slate-200/90 text-slate-500 uppercase text-[10px] font-bold">
                   <th className="py-3 px-4">Code</th>
                   <th className="py-3 px-4">Franchise Company Name</th>
                   <th className="py-3 px-4">Assigned Franchise Owner</th>
@@ -211,39 +223,39 @@ export default function AdminCompaniesPage() {
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
-                {filtered.map((c) => {
+              <tbody className="divide-y divide-slate-100">
+                {paginated.map((c) => {
                   const owner = c.ownerId;
                   const target = c.annualTarget?.targetPassengers || 10000;
                   return (
-                    <tr key={c.companyCode} className="hover:bg-slate-900/50 transition">
-                      <td className="py-3.5 px-4 font-mono font-bold text-purple-400 text-sm">
+                    <tr key={c.companyCode} className="hover:bg-slate-50/50 transition">
+                      <td className="py-3.5 px-4 font-mono font-bold text-blue-700 text-sm">
                         #{String(c.companyCode).padStart(2, '0')}
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="font-bold text-white text-sm">{c.name}</div>
+                        <div className="font-bold text-slate-900 text-sm">{c.name}</div>
                         <div className="text-[10px] text-slate-500 font-mono">slug: {c.slug || `comp-${c.companyCode}`}</div>
                       </td>
                       <td className="py-3.5 px-4">
                         {owner ? (
                           <div>
-                            <div className="font-semibold text-white">{owner.name}</div>
-                            <div className="text-[10px] text-slate-400">{owner.email} · {owner.phone}</div>
+                            <div className="font-semibold text-slate-900">{owner.name}</div>
+                            <div className="text-[10px] text-slate-500">{owner.email} · {owner.phone}</div>
                           </div>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-900 text-slate-500 border border-slate-800">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-50 text-slate-500 border border-slate-200/90">
                             Unassigned
                           </span>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-black text-slate-200">
+                      <td className="py-3.5 px-4 text-right font-black text-slate-900">
                         {target.toLocaleString('en-IN')} <span className="text-[10px] text-slate-500 font-normal">pax/yr</span>
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           c.status === 'ACTIVE'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-slate-100 text-slate-500 border border-slate-200'
                         }`}>
                           {c.status || 'ACTIVE'}
                         </span>
@@ -257,7 +269,7 @@ export default function AdminCompaniesPage() {
                               setCompanyName(c.name || '');
                               setAssignModalOpen(true);
                             }}
-                            className="px-2.5 py-1.5 rounded-lg bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 font-bold text-[11px] border border-purple-500/30 transition flex items-center gap-1"
+                            className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] border border-blue-200 transition flex items-center gap-1 cursor-pointer"
                           >
                             <UserCheck className="w-3.5 h-3.5" />
                             <span>{c.ownerId ? 'Edit Owner' : 'Assign Owner'}</span>
@@ -269,7 +281,7 @@ export default function AdminCompaniesPage() {
                               setTargetQuota(String(c.annualTarget?.targetPassengers || 10000));
                               setTargetModalOpen(true);
                             }}
-                            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition"
+                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-900 border border-slate-200/90 transition cursor-pointer"
                             title="Adjust Annual Target"
                           >
                             <Target className="w-3.5 h-3.5" />
@@ -283,44 +295,94 @@ export default function AdminCompaniesPage() {
             </table>
           </div>
         )}
+
+        {/* 10-Item Pagination */}
+        {filtered.length > 0 && (
+          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <span className="text-slate-500 font-medium">
+              Showing <strong className="text-slate-900 font-bold">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</strong> to{' '}
+              <strong className="text-slate-900 font-bold">{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}</strong> of{' '}
+              <strong className="text-slate-900 font-bold">{filtered.length}</strong> franchise companies
+            </span>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold flex items-center gap-1 transition"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Prev</span>
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-8 h-8 rounded-xl font-bold transition ${
+                      currentPage === page
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold flex items-center gap-1 transition"
+              >
+                <span>Next</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ASSIGN OWNER MODAL */}
       {assignModalOpen && selectedComp && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200/90 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200/90 pb-3">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <UserCheck className="w-5 h-5 text-purple-400" />
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-blue-700" />
                   <span>Assign Franchise Owner</span>
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">Company Code #{String(selectedComp.companyCode).padStart(2, '0')}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Company Code #{String(selectedComp.companyCode).padStart(2, '0')}</p>
               </div>
-              <button onClick={() => setAssignModalOpen(false)} className="text-slate-500 hover:text-white text-sm">✕</button>
+              <button onClick={() => setAssignModalOpen(false)} className="text-slate-500 hover:text-slate-900 text-sm">✕</button>
             </div>
 
             <form onSubmit={handleAssignOwnerSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="text-slate-300 font-bold block mb-1">Company Display Name</label>
+                <label className="text-slate-700 font-bold block mb-1">Company Display Name</label>
                 <input
                   type="text"
                   required
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-purple-500 font-semibold"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200/90 text-slate-900 focus:outline-none focus:border-blue-600 font-semibold"
                 />
               </div>
 
               <div>
-                <label className="text-slate-300 font-bold block mb-1">Owner Email ID *</label>
+                <label className="text-slate-700 font-bold block mb-1">Owner Email ID *</label>
                 <input
                   type="email"
                   required
                   placeholder="owner1@rupadiya.test"
                   value={ownerEmail}
                   onChange={(e) => setOwnerEmail(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-purple-500"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200/90 text-slate-900 focus:outline-none focus:border-blue-600"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">
                   The user with this email will be assigned COMPANY_OWNER role for Code #{selectedComp.companyCode}.
@@ -331,14 +393,14 @@ export default function AdminCompaniesPage() {
                 <button
                   type="button"
                   onClick={() => setAssignModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 font-bold"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold disabled:opacity-50"
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-md shadow-blue-500/20"
                 >
                   {submitting ? 'Binding...' : 'Save & Assign Owner'}
                 </button>
@@ -350,22 +412,22 @@ export default function AdminCompaniesPage() {
 
       {/* ADJUST TARGET MODAL */}
       {targetModalOpen && selectedComp && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200/90 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200/90 pb-3">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Target className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-emerald-700" />
                   <span>Adjust Annual Quota Target</span>
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">Code #{selectedComp.companyCode} · {selectedComp.name}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Code #{selectedComp.companyCode} · {selectedComp.name}</p>
               </div>
-              <button onClick={() => setTargetModalOpen(false)} className="text-slate-500 hover:text-white text-sm">✕</button>
+              <button onClick={() => setTargetModalOpen(false)} className="text-slate-500 hover:text-slate-900 text-sm">✕</button>
             </div>
 
             <form onSubmit={handleTargetSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="text-slate-300 font-bold block mb-1">Annual Passenger Target Quota</label>
+                <label className="text-slate-700 font-bold block mb-1">Annual Passenger Target Quota</label>
                 <input
                   type="number"
                   min="500"
@@ -373,7 +435,7 @@ export default function AdminCompaniesPage() {
                   required
                   value={targetQuota}
                   onChange={(e) => setTargetQuota(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-emerald-400 font-black text-lg focus:outline-none focus:border-purple-500"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200/90 text-emerald-700 font-black text-lg focus:outline-none focus:border-blue-600"
                 />
                 <div className="grid grid-cols-4 gap-2 mt-2">
                   {['2000', '5000', '10000', '15000'].map(p => (
@@ -381,8 +443,8 @@ export default function AdminCompaniesPage() {
                       key={p}
                       type="button"
                       onClick={() => setTargetQuota(p)}
-                      className={`py-1 rounded-lg text-xs font-bold border transition ${
-                        targetQuota === p ? 'bg-purple-600 text-white border-purple-500' : 'bg-slate-950 text-slate-400 border-slate-800'
+                      className={`py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                        targetQuota === p ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       {Number(p).toLocaleString('en-IN')}
@@ -395,14 +457,14 @@ export default function AdminCompaniesPage() {
                 <button
                   type="button"
                   onClick={() => setTargetModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 font-bold"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold disabled:opacity-50"
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-md shadow-emerald-500/20"
                 >
                   {submitting ? 'Updating...' : 'Save Target Quota'}
                 </button>

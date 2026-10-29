@@ -18,6 +18,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { getLocalDateString, formatDate, formatTime } from '../../lib/dateUtils';
 
 export default function UserTravelCalendarPage() {
   const router = useRouter();
@@ -28,23 +29,15 @@ export default function UserTravelCalendarPage() {
   
   // Current view month & selected date
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDateIso, setSelectedDateIso] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+  const [selectedDateIso, setSelectedDateIso] = useState(() => getLocalDateString(new Date()));
 
   useEffect(() => {
-    const rawUser = localStorage.getItem('rupadiya_user');
-    const token = localStorage.getItem('rupadiya_token');
-
-    if (rawUser && token) {
+    async function loadUserBookings() {
+      setLoading(true);
       try {
-        setUser(JSON.parse(rawUser));
-      } catch (e) {}
-
-      // Load user's personal bookings
-      async function loadUserBookings() {
-        setLoading(true);
-        try {
+        const userRes = await api.me().catch(() => null);
+        if (userRes?.user) {
+          setUser(userRes.user);
           const [busRes, tourRes] = await Promise.allSettled([
             api.getMyBookings(),
             api.getMyTourBookings()
@@ -53,13 +46,12 @@ export default function UserTravelCalendarPage() {
             const list = busRes.value.bookings || busRes.value.data || [];
             setBookings(list);
 
-            // Auto-select the first trip date or latest confirmed booking
             if (list.length > 0) {
               const firstB = list[0];
               const t = firstB.trip || firstB.tripId || {};
               const timeVal = t.departureTime || firstB.travelDate || firstB.createdAt;
               if (timeVal) {
-                const tripIso = new Date(timeVal).toISOString().split('T')[0];
+                const tripIso = getLocalDateString(new Date(timeVal));
                 setSelectedDateIso(tripIso);
                 setCurrentDate(new Date(timeVal));
               }
@@ -69,34 +61,32 @@ export default function UserTravelCalendarPage() {
             const tList = tourRes.value.bookings || tourRes.value.data || [];
             setTourBookings(tList);
           }
-        } catch (err) {
-          console.error(err);
-        } finally {
-          setLoading(false);
-        }
-      }
-      loadUserBookings();
-    } else {
-      // Check if session has a recently booked ticket for guest
-      const confRaw = typeof window !== 'undefined' ? sessionStorage.getItem('rupadiya_confirmed_ticket') : null;
-      if (confRaw) {
-        try {
-          const parsed = JSON.parse(confRaw);
-          if (parsed.booking) {
-            const b = parsed.booking;
-            setBookings([b]);
-            const t = b.trip || b.tripId || {};
-            const timeVal = t.departureTime || b.travelDate || b.createdAt;
-            if (timeVal) {
-              const tripIso = new Date(timeVal).toISOString().split('T')[0];
-              setSelectedDateIso(tripIso);
-              setCurrentDate(new Date(timeVal));
-            }
+        } else {
+          const confRaw = typeof window !== 'undefined' ? sessionStorage.getItem('rupadiya_confirmed_ticket') : null;
+          if (confRaw) {
+            try {
+              const parsed = JSON.parse(confRaw);
+              if (parsed.booking) {
+                const b = parsed.booking;
+                setBookings([b]);
+                const t = b.trip || b.tripId || {};
+                const timeVal = t.departureTime || b.travelDate || b.createdAt;
+                if (timeVal) {
+                  const tripIso = getLocalDateString(new Date(timeVal));
+                  setSelectedDateIso(tripIso);
+                  setCurrentDate(new Date(timeVal));
+                }
+              }
+            } catch (e) {}
           }
-        } catch (e) {}
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
+    loadUserBookings();
   }, []);
 
   // Map trips by date (YYYY-MM-DD)
@@ -105,7 +95,7 @@ export default function UserTravelCalendarPage() {
     const trip = b.trip || b.tripId || {};
     const depTime = trip.departureTime || b.travelDate || b.createdAt;
     if (depTime) {
-      const iso = new Date(depTime).toISOString().split('T')[0];
+      const iso = getLocalDateString(new Date(depTime));
       if (!tripsByDate[iso]) tripsByDate[iso] = [];
       tripsByDate[iso].push({ ...b, type: 'bus' });
     }
@@ -114,7 +104,7 @@ export default function UserTravelCalendarPage() {
   tourBookings.forEach(tb => {
     const dateVal = tb.departureDate || tb.travelDate || tb.createdAt;
     if (dateVal) {
-      const iso = new Date(dateVal).toISOString().split('T')[0];
+      const iso = getLocalDateString(new Date(dateVal));
       if (!tripsByDate[iso]) tripsByDate[iso] = [];
       tripsByDate[iso].push({ ...tb, type: 'tour' });
     }
@@ -237,7 +227,7 @@ export default function UserTravelCalendarPage() {
                 {Array.from({ length: daysInMonth }).map((_, i) => {
                   const dayNum = i + 1;
                   const dayDate = new Date(year, month, dayNum);
-                  const iso = dayDate.toISOString().split('T')[0];
+                  const iso = getLocalDateString(dayDate);
                   const trips = tripsByDate[iso] || [];
                   const hasTrips = trips.length > 0;
                   const isSelected = selectedDateIso === iso;
@@ -292,7 +282,7 @@ export default function UserTravelCalendarPage() {
                   </div>
                   <div>
                     <h3 className="text-sm sm:text-base font-bold text-slate-900">
-                      Journeys on {new Date(selectedDateIso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      Journeys on {formatDate(selectedDateIso, 'medium')}
                     </h3>
                     <p className="text-[11px] sm:text-xs text-slate-400 font-medium">
                       {selectedTrips.length} scheduled reservation{selectedTrips.length === 1 ? '' : 's'} on this date
@@ -316,11 +306,7 @@ export default function UserTravelCalendarPage() {
                     const trip = item.trip || item.tripId || item;
                     const bus = trip.bus || trip.busId || item.bus || item.busId || {};
                     
-                    const depTime = item.boardingPoint?.time && item.boardingPoint.time !== 'Scheduled Time'
-                      ? item.boardingPoint.time
-                      : trip.departureTime 
-                      ? new Date(trip.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                      : '05:30 PM';
+                    const depTime = formatTime(item.boardingPoint?.time || trip.departureTime || item.createdAt, '05:30 PM');
                     
                     const seatNumbers = (item.seatNumbers && item.seatNumbers.length > 0)
                       ? item.seatNumbers.join(', ')

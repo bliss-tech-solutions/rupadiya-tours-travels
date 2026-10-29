@@ -1,5 +1,5 @@
 import './globals.css';
-import AdminSidebar from '../components/Sidebar';
+import AdminLayoutShell from '../components/AdminLayoutShell';
 
 export const metadata = {
   title: 'Super Admin Portal — Rupadiya Platform HQ',
@@ -9,13 +9,11 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="bg-[#030712] text-slate-100 flex min-h-screen">
-        <AdminSidebar />
-        <main className="flex-1 overflow-y-auto min-h-screen bg-[#030712] p-6 sm:p-10">
+      <body className="bg-[#F8FAFC] text-slate-900 min-h-screen">
+        <AdminLayoutShell>
           {children}
-        </main>
+        </AdminLayoutShell>
       </body>
     </html>
   );
 }
-

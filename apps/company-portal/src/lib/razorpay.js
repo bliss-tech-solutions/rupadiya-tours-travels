@@ -28,6 +28,7 @@ export async function openRazorpayCheckout({
   description = 'Company Wallet Fund Deposit',
   prefill = {},
   notes = {},
+  allowedMethods = null,
   onSuccess = () => {},
   onDismiss = () => {}
 }) {
@@ -86,6 +87,31 @@ export async function openRazorpayCheckout({
       }
     }
   };
+
+
+  // Filter Razorpay checkout instruments based on Super Admin / Company rules
+  if (allowedMethods && typeof allowedMethods === 'object') {
+    const instruments = [];
+    if (allowedMethods.upi) instruments.push({ method: 'upi' });
+    if (allowedMethods.card) instruments.push({ method: 'card' });
+    if (allowedMethods.netbanking) instruments.push({ method: 'netbanking' });
+    if (allowedMethods.wallet) instruments.push({ method: 'wallet' });
+
+    if (instruments.length > 0) {
+      options.config = {
+        display: {
+          blocks: {
+            allowed: {
+              name: 'Accepted Payment Methods',
+              instruments
+            }
+          },
+          sequence: ['block.allowed'],
+          preferences: { show_default_blocks: false }
+        }
+      };
+    }
+  }
 
   const rzp = new window.Razorpay(options);
   rzp.on('payment.failed', function (response) {

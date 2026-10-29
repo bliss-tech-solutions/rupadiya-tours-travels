@@ -64,6 +64,19 @@ const tripSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Trip',
     default: null
+  },
+  chartPrepared: {
+    type: Boolean,
+    default: false
+  },
+  chartPreparedAt: {
+    type: Date,
+    default: null
+  },
+  chartPreparedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   }
 }, {
   timestamps: true

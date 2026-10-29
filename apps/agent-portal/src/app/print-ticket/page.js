@@ -228,7 +228,7 @@ export default function PrintTicketPage() {
               </div>
 
               {/* Coach & Seat Details */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
                   <span className="text-[10px] text-slate-500 uppercase block font-semibold">Coach</span>
                   <span className="text-slate-900 font-bold mt-0.5 block">
@@ -247,6 +247,15 @@ export default function PrintTicketPage() {
                   <span className="text-[10px] text-slate-500 uppercase block font-semibold">Total Fare Paid</span>
                   <span className="text-slate-900 font-bold mt-0.5 block">
                     ₹{Number(ticket.pricing?.totalPrice || ticket.totalAmount || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                  <span className="text-[10px] text-slate-500 uppercase block font-semibold">Travel Insurance</span>
+                  <span className="text-slate-900 font-bold mt-0.5 block">
+                    {ticket.insuranceOpted || ticket.fareBreakdown?.insuranceAmount > 0 ? (
+                      <span className="text-emerald-700 font-bold">✓ Insured (₹{ticket.insurancePremium || ticket.fareBreakdown?.insuranceAmount || 5})</span>
+                    ) : '₹0 (Not Opted)'}
                   </span>
                 </div>
 

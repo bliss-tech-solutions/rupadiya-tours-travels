@@ -22,6 +22,7 @@ import { api } from '../../lib/api';
 import { SPOKE_CITIES, HUB_CITY } from '../../lib/routes';
 import { useToast } from '../../components/ui/Toast';
 import { useLanguage } from '../../context/LanguageContext';
+import { getLocalDateString, generateDateStrip, formatTime, formatDate } from '../../lib/dateUtils';
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -29,7 +30,7 @@ function SearchContent() {
   const { addToast } = useToast();
   const { t } = useLanguage();
 
-  const todayIso = new Date().toISOString().split('T')[0];
+  const todayIso = getLocalDateString(new Date());
 
   const from = searchParams.get('from') || 'rupadiya';
   const to = searchParams.get('to') || 'ahmedabad';
@@ -44,24 +45,8 @@ function SearchContent() {
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Generate 7-day horizontal calendar strip for PRESENT & FUTURE ONLY
-  const generateDateStrip = () => {
-    const dates = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      const iso = d.toISOString().split('T')[0];
-      const dayNum = d.getDate();
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-      dates.push({ iso, dayNum, dayName });
-    }
-    return dates;
-  };
-
-  const dateStrip = generateDateStrip();
+  // 7-day horizontal calendar strip anchored to local timezone dates
+  const dateStrip = generateDateStrip(new Date(), 7);
 
   // Load scheduled trips from backend
   useEffect(() => {
@@ -255,12 +240,8 @@ function SearchContent() {
           <div className="space-y-4">
             {filteredTrips.map((trip) => {
               const availableSeats = trip.seats?.filter(s => s.status === 'AVAILABLE').length ?? 38;
-              const depTime = trip.departureTime 
-                ? new Date(trip.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                : '06:00 PM';
-              const arrTime = trip.arrivalTime 
-                ? new Date(trip.arrivalTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                : '06:30 AM';
+              const depTime = formatTime(trip.departureTime, '06:00 PM');
+              const arrTime = formatTime(trip.arrivalTime, '06:30 AM');
               const boardingPointName = trip.boardingPoints?.[0]?.name || 'Rupadiya Border Main Stand';
 
               return (

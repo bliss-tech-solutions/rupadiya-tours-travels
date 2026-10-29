@@ -16,6 +16,7 @@ import {
   Check
 } from 'lucide-react';
 import { api } from '../../../lib/api';
+import { formatDate, formatTime } from '../../../lib/dateUtils';
 import { useToast } from '../../../components/ui/Toast';
 
 // SVGs for Steering Wheel and Passenger Silhouettes matching RedBus style
@@ -351,7 +352,7 @@ export default function TripSeatSelectionPage() {
               {trip.bus?.name || 'Rupadiya Intercity Express'}
             </h1>
             <p className="text-[11px] text-slate-500">
-              {trip.departureTime ? new Date(trip.departureTime).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' : ''}
+              {trip.departureTime ? formatDate(trip.departureTime, 'medium') + ' · ' : ''}
               {trip.bus?.busType || 'AC Sleeper 2+1'} · Step 1: Select Seats
             </p>
           </div>

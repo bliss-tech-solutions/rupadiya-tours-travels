@@ -25,24 +25,24 @@ export default function AdminRoutesPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      <div className="border-b border-slate-800 pb-6">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 text-xs font-bold uppercase tracking-wider mb-2">
+    <div className="w-full space-y-6">
+      <div className="border-b border-slate-200/90 pb-6">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200/60 text-blue-700 text-xs font-bold uppercase tracking-wider mb-2">
           <Route className="w-3.5 h-3.5" />
           <span>Intercity Corridors</span>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-black text-white">Hub-and-Spoke Routes & Base Fares</h1>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1">
+        <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Hub-and-Spoke Routes & Base Fares</h1>
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">
           Governed corridors between Rupadiya Central Hub and authorized spoke cities.
         </p>
       </div>
 
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-white">
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-200/90 pb-4">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900">
             Authorized Bidirectional Corridors (6 Corridors / 12 Two-Way Trips)
           </h2>
-          <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
+          <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
             <ShieldCheck className="w-4 h-4" /> Strictly Hub-Enforced
           </span>
         </div>
@@ -50,7 +50,7 @@ export default function AdminRoutesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
+              <tr className="border-b border-slate-200/90 text-slate-500 uppercase text-[10px] font-bold">
                 <th className="py-3 px-4">Corridor Name</th>
                 <th className="py-3 px-4">Distance</th>
                 <th className="py-3 px-4">Standard Duration</th>
@@ -59,41 +59,41 @@ export default function AdminRoutesPage() {
                 <th className="py-3 px-4 text-center">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80">
+            <tbody className="divide-y divide-slate-100">
               {routes.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-900/40 transition">
-                  <td className="py-3 px-4 font-bold text-white flex items-center gap-2">
-                    <MapPin className="w-3.5 h-3.5 text-purple-400" />
+                <tr key={r.id} className="hover:bg-slate-50/40 transition">
+                  <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-blue-600" />
                     <span>{r.name}</span>
                   </td>
-                  <td className="py-3 px-4 text-slate-400">{r.distance}</td>
-                  <td className="py-3 px-4 text-slate-400">{r.duration}</td>
-                  <td className="py-3 px-4 text-slate-300 font-semibold">{r.frequency}</td>
-                  <td className="py-3 px-4 text-right font-black text-white">
+                  <td className="py-3 px-4 text-slate-500">{r.distance}</td>
+                  <td className="py-3 px-4 text-slate-500">{r.duration}</td>
+                  <td className="py-3 px-4 text-slate-700 font-semibold">{r.frequency}</td>
+                  <td className="py-3 px-4 text-right font-black text-slate-900">
                     {editingId === r.id ? (
                       <input
                         type="number"
                         value={newFare}
                         onChange={(e) => setNewFare(e.target.value)}
-                        className="w-24 p-1 rounded-lg bg-slate-900 border border-purple-500 text-right text-xs text-white"
+                        className="w-24 p-1 rounded-lg bg-slate-50 border border-blue-600 text-right text-xs text-slate-900"
                         autoFocus
                       />
                     ) : (
-                      <span className="text-emerald-400">₹{r.baseFare}</span>
+                      <span className="text-emerald-700">₹{r.baseFare}</span>
                     )}
                   </td>
                   <td className="py-3 px-4 text-center">
                     {editingId === r.id ? (
                       <button
                         onClick={() => handleSaveFare(r.id)}
-                        className="p-1 rounded-lg bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+                        className="p-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
                       >
                         <Check className="w-3.5 h-3.5" />
                       </button>
                     ) : (
                       <button
                         onClick={() => { setEditingId(r.id); setNewFare(String(r.baseFare)); }}
-                        className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white"
+                        className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-900 cursor-pointer"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>

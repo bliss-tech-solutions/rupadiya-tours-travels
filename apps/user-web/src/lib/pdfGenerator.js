@@ -79,6 +79,9 @@ export function downloadTicketPdf({
   // Box 4: Total Amount Paid
   addText('TOTAL FARE PAID', 430, 604, 8, true, 0.35, 0.45, 0.55);
   addText(`Rs. ${totalFare}`, 430, 586, 12, true, 0.1, 0.15, 0.2);
+  if (insuranceAmount && Number(insuranceAmount) > 0) {
+    addText(`* Incl. Rs. ${insuranceAmount} Travel Insurance`, 380, 568, 7, false, 0.05, 0.55, 0.35);
+  }
 
   // Boarding Point & Dropping Point
   addText('BOARDING POINT:', 74, 552, 8, true, 0.35, 0.45, 0.55);

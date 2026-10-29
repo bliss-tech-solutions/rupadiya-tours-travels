@@ -130,7 +130,7 @@ export default function CompanyWithdrawalsPage() {
             <CreditCard className="w-3.5 h-3.5" />
             <span>Franchise Payout Desk</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Agent Withdrawal Requests</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Agent Withdrawal Requests</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Maker-Checker workflow: Review and settle payout requests submitted by authorized franchise agents.
           </p>
@@ -163,13 +163,13 @@ export default function CompanyWithdrawalsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Pending Review</span>
-          <div className="text-2xl font-black text-amber-600">{pendingCount} Requests</div>
+          <div className="text-2xl font-bold text-amber-600">{pendingCount} Requests</div>
           <span className="text-[11px] text-slate-500 block">Requires franchise owner approval</span>
         </div>
 
         <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Settled Payouts</span>
-          <div className="text-2xl font-black text-emerald-600">₹{approvedSum.toLocaleString('en-IN')}</div>
+          <div className="text-2xl font-bold text-emerald-600">₹{approvedSum.toLocaleString('en-IN')}</div>
           <span className="text-[11px] text-slate-500 block">Total paid out to franchise agents</span>
         </div>
 
@@ -272,7 +272,7 @@ export default function CompanyWithdrawalsPage() {
                             : `${bank.bankName || 'Bank'} · A/C: ${bank.accountNumberMasked || '****'}`}
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-black text-slate-900 text-sm">
+                      <td className="py-3.5 px-4 text-right font-bold text-slate-900 text-sm">
                         ₹{Number(w.amount).toLocaleString('en-IN')}
                       </td>
                       <td className="py-3.5 px-4 text-center">

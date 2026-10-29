@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../users/user.model');
+const RefreshToken = require('./refreshToken.model');
 const { Wallet } = require('../wallets/wallet.model');
 const env = require('../../config/env');
 const { ROLES } = require('../../config/constants');
@@ -11,7 +12,11 @@ class AuthService {
     this.otpStore = new Map();
   }
 
-  generateTokens(user) {
+  hashToken(token) {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  async generateTokens(user, meta = {}) {
     const payload = {
       id: user._id,
       email: user.email,
@@ -21,12 +26,30 @@ class AuthService {
     };
 
     const accessToken = jwt.sign(payload, env.AUTH_ACCESS_SECRET, {
-      expiresIn: env.AUTH_ACCESS_EXPIRES_IN
+      expiresIn: env.AUTH_ACCESS_EXPIRES_IN || '15m'
     });
 
     const refreshToken = jwt.sign(payload, env.AUTH_REFRESH_SECRET, {
-      expiresIn: env.AUTH_REFRESH_EXPIRES_IN
+      expiresIn: env.AUTH_REFRESH_EXPIRES_IN || '24h'
     });
+
+    // Store refresh token in MongoDB for 24-hr session revocation & tracking when DB connected
+    const mongoose = require('mongoose');
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      try {
+        const tokenHash = this.hashToken(refreshToken);
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 Hours
+        await RefreshToken.create({
+          userId: user._id,
+          tokenHash,
+          expiresAt,
+          ipAddress: meta.ipAddress,
+          userAgent: meta.userAgent
+        });
+      } catch (err) {
+        console.error('Failed to persist refresh token in database:', err.message);
+      }
+    }
 
     return { accessToken, refreshToken };
   }
@@ -58,7 +81,7 @@ class AuthService {
    * Verify mobile OTP and log in / register passenger
    * Links all historical guest bookings made with this phone number
    */
-  async verifyPhoneOtp({ phone, otp, name, email }) {
+  async verifyPhoneOtp({ phone, otp, name, email }, meta = {}) {
     if (!phone || !otp) {
       throw new Error('Mobile number and OTP are required');
     }
@@ -115,14 +138,14 @@ class AuthService {
       { $set: { passengerId: user._id } }
     );
 
-    const tokens = this.generateTokens(user);
+    const tokens = await this.generateTokens(user, meta);
     const sanitized = user.toObject();
     delete sanitized.passwordHash;
 
     return { user: sanitized, ...tokens };
   }
 
-  async register({ name, email, phone, password, role = ROLES.PASSENGER, companyCode, referralCode }) {
+  async register({ name, email, phone, password, role = ROLES.PASSENGER, companyCode, referralCode }, meta = {}) {
     const existing = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone }] });
     if (existing) {
       throw new Error('User with this email or phone already exists.');
@@ -163,14 +186,14 @@ class AuthService {
       });
     }
 
-    const tokens = this.generateTokens(user);
+    const tokens = await this.generateTokens(user, meta);
     const sanitized = user.toObject();
     delete sanitized.passwordHash;
 
     return { user: sanitized, ...tokens };
   }
 
-  async login({ email, password }) {
+  async login({ email, password }, meta = {}) {
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
       throw new Error('Invalid email or password');
@@ -185,7 +208,7 @@ class AuthService {
       throw new Error('Account has been deactivated. Please contact support.');
     }
 
-    const tokens = this.generateTokens(user);
+    const tokens = await this.generateTokens(user, meta);
     const sanitized = user.toObject();
     delete sanitized.passwordHash;
 
@@ -197,17 +220,48 @@ class AuthService {
     return { user: sanitized, wallet, ...tokens };
   }
 
-  async refreshToken(token) {
+  async refreshToken(token, meta = {}) {
     if (!token) throw new Error('Refresh token is required');
     try {
       const decoded = jwt.verify(token, env.AUTH_REFRESH_SECRET);
-      const user = await User.findById(decoded.id);
-      if (!user || !user.isActive) throw new Error('Invalid session');
+      const tokenHash = this.hashToken(token);
 
-      return this.generateTokens(user);
-    } catch {
-      throw new Error('Invalid or expired refresh token');
+      // Check DB revocation
+      const stored = await RefreshToken.findOne({ tokenHash });
+      if (!stored || stored.isRevoked || stored.expiresAt < new Date()) {
+        throw new Error('Session has expired or was revoked. Please log in again.');
+      }
+
+      const user = await User.findById(decoded.id);
+      if (!user || !user.isActive) throw new Error('Invalid user account');
+
+      // Rotate Refresh Token
+      const newTokens = await this.generateTokens(user, meta);
+      
+      stored.isRevoked = true;
+      stored.revokedAt = new Date();
+      stored.replacedByTokenHash = this.hashToken(newTokens.refreshToken);
+      await stored.save();
+
+      const sanitized = user.toObject();
+      delete sanitized.passwordHash;
+
+      return { ...newTokens, user: sanitized };
+    } catch (err) {
+      throw new Error(err.message || 'Invalid or expired refresh token');
     }
+  }
+
+  async logout(token) {
+    if (!token) return { success: true };
+    try {
+      const tokenHash = this.hashToken(token);
+      await RefreshToken.updateOne(
+        { tokenHash },
+        { $set: { isRevoked: true, revokedAt: new Date() } }
+      );
+    } catch {}
+    return { success: true };
   }
 }
 

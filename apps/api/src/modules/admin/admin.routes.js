@@ -200,7 +200,7 @@ router.get('/agents', async (req, res, next) => {
 // Super Admin Create Agent
 router.post('/agents', async (req, res, next) => {
   try {
-    const { companyCode, name, email, phone, password, agencyName, initialWalletAmount } = req.body;
+    const { companyCode, name, email, phone, password, agencyName, initialWalletAmount, aadharNumber, panNumber, bankDetails } = req.body;
 
     if (!companyCode || !name || !email || !phone || !password) {
       return res.status(400).json({ error: 'Company code, name, email, phone, and password are required' });
@@ -227,10 +227,40 @@ router.post('/agents', async (req, res, next) => {
       companyCode: code,
       referralCode,
       agencyName: agencyName ? agencyName.trim() : `${name.trim()} Agency`,
+      aadharNumber: aadharNumber ? aadharNumber.trim() : '',
+      panNumber: panNumber ? panNumber.toUpperCase().trim() : '',
+      bankDetails: bankDetails ? {
+        accountName: bankDetails.accountName || name.trim(),
+        accountNumberMasked: bankDetails.accountNumber ? `XXXX-XXXX-${bankDetails.accountNumber.slice(-4)}` : (bankDetails.accountNumberMasked || ''),
+        ifscCode: bankDetails.ifscCode ? bankDetails.ifscCode.toUpperCase().trim() : '',
+        upiId: bankDetails.upiId ? bankDetails.upiId.trim() : '',
+        bankName: bankDetails.bankName || 'State Bank of India'
+      } : {
+        accountName: name.trim(),
+        accountNumberMasked: 'XXXX-XXXX-1234',
+        ifscCode: 'SBIN0002145',
+        upiId: `${phone.trim()}@okaxis`,
+        bankName: 'State Bank of India'
+      },
       agentLevel: 'SILVER',
       kycStatus: 'VERIFIED',
       isActive: true
     });
+
+    if (aadharNumber || panNumber) {
+      try {
+        await KycDocument.create({
+          userId: agent._id,
+          companyCode: code,
+          documentType: aadharNumber ? 'AADHAAR' : 'PAN',
+          documentNumberMasked: aadharNumber ? `XXXX-XXXX-${aadharNumber.slice(-4)}` : `XXXXX${(panNumber || '').slice(-4)}`,
+          fileUrl: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=600&q=80',
+          status: 'VERIFIED',
+          reviewedBy: req.user?.id || req.user?._id,
+          reviewedAt: new Date()
+        });
+      } catch (kErr) {}
+    }
 
     const initAmount = Math.max(0, Number(initialWalletAmount) || 0);
     const wallet = await Wallet.create({
@@ -433,19 +463,152 @@ router.get('/fleet', async (req, res, next) => {
   }
 });
 
-router.post('/buses', async (req, res, next) => {
+// Create New Bus (POST /admin/fleet or POST /admin/buses)
+const handleCreateBus = async (req, res, next) => {
   try {
-    const { busNumber, name, companyCode, busType, amenities, managerContact } = req.body;
+    const { 
+      busNumber, 
+      name, 
+      operatorName,
+      companyCode, 
+      busType, 
+      driverDetails,
+      amenities, 
+      images,
+      documents
+    } = req.body;
+
+    if (!busNumber || !name || !companyCode) {
+      return res.status(400).json({ error: 'Bus plate number, name, and company code are required' });
+    }
+
+    const cleanPlate = busNumber.trim().toUpperCase();
+    const existing = await Bus.findOne({ busNumber: cleanPlate });
+    if (existing) {
+      return res.status(400).json({ error: `Bus with registration plate ${cleanPlate} is already inducted in the fleet` });
+    }
+
+    const typeStr = busType || 'AC Sleeper (2+1)';
+    const isSleeper = typeStr.toLowerCase().includes('sleeper');
+    const isAc = !typeStr.toLowerCase().includes('non-ac');
+
     const bus = new Bus({
-      busNumber: busNumber.toUpperCase(),
-      name,
-      companyCode,
-      busType: busType || 'AC Seater 2+2',
-      amenities: amenities || ['Charging Point', 'WiFi', 'GPS Tracking'],
-      managerContact: managerContact || { name: 'Super Fleet Manager', phone: '+91 9999999999' }
+      busNumber: cleanPlate,
+      name: name.trim(),
+      operatorName: operatorName ? operatorName.trim() : 'Rupadiya Intercity Travels',
+      companyCode: Number(companyCode),
+      busType: typeStr,
+      category: isSleeper ? 'SLEEPER' : 'SEATER',
+      layoutType: isSleeper ? '2+1' : '2+2',
+      totalSeats: isSleeper ? 36 : 40,
+      isAc,
+      amenities: amenities && amenities.length > 0 ? amenities : [
+        'Charging Point', 'Reading Light', 'GPS Tracking', 'First Aid Box'
+      ],
+      driverDetails: driverDetails ? {
+        name: driverDetails.name?.trim() || 'Assigned Pilot',
+        phone: driverDetails.phone?.trim() || '+91 9876500000',
+        licenseNumber: driverDetails.licenseNumber?.trim() || 'DL-UP40-VALID',
+        alternatePhone: driverDetails.alternatePhone?.trim() || ''
+      } : {
+        name: 'Assigned Pilot',
+        phone: '+91 9876500000',
+        licenseNumber: 'DL-UP40-VALID'
+      },
+      managerContact: {
+        name: driverDetails?.name?.trim() || 'Fleet Supervisor',
+        phone: driverDetails?.phone?.trim() || '+91 9876500000'
+      },
+      documents: documents || {
+        rcNumber: `RC-${cleanPlate}`,
+        insurancePolicy: 'INS-NATIONAL-2026',
+        rcExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        insuranceExpiry: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
+        fitnessCert: new Date(Date.now() + 240 * 24 * 60 * 60 * 1000),
+        permitExpiry: new Date(Date.now() + 300 * 24 * 60 * 60 * 1000)
+      },
+      images: images && images.length > 0 ? images : [
+        'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=800&auto=format&fit=crop&q=80'
+      ],
+      status: 'ACTIVE'
     });
+
     await bus.save();
-    res.status(201).json({ success: true, bus });
+    res.status(201).json({
+      success: true,
+      message: `Coach ${cleanPlate} (${isSleeper ? '36 Berths' : '40 Seats'}) inducted into Company #${companyCode} fleet.`,
+      bus
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.post('/buses', handleCreateBus);
+router.post('/fleet', handleCreateBus);
+
+// Update Coach & Driver Details (PUT /admin/fleet/:id)
+router.put('/fleet/:id', async (req, res, next) => {
+  try {
+    const bus = await Bus.findById(req.params.id);
+    if (!bus) return res.status(404).json({ error: 'Bus not found in fleet records' });
+
+    const { 
+      name, 
+      operatorName, 
+      busType, 
+      companyCode,
+      driverDetails, 
+      amenities, 
+      status, 
+      images,
+      documents 
+    } = req.body;
+
+    if (name) bus.name = name.trim();
+    if (operatorName) bus.operatorName = operatorName.trim();
+    if (companyCode) bus.companyCode = Number(companyCode);
+    if (status) bus.status = status;
+    if (amenities) bus.amenities = amenities;
+    if (images) bus.images = images;
+    if (documents) bus.documents = { ...bus.documents, ...documents };
+
+    if (busType) {
+      bus.busType = busType;
+      const isSleeper = busType.toLowerCase().includes('sleeper');
+      bus.category = isSleeper ? 'SLEEPER' : 'SEATER';
+      bus.layoutType = isSleeper ? '2+1' : '2+2';
+      bus.totalSeats = isSleeper ? 36 : 40;
+      bus.isAc = !busType.toLowerCase().includes('non-ac');
+    }
+
+    if (driverDetails) {
+      bus.driverDetails = {
+        name: driverDetails.name || bus.driverDetails?.name || '',
+        phone: driverDetails.phone || bus.driverDetails?.phone || '',
+        licenseNumber: driverDetails.licenseNumber || bus.driverDetails?.licenseNumber || '',
+        alternatePhone: driverDetails.alternatePhone !== undefined ? driverDetails.alternatePhone : (bus.driverDetails?.alternatePhone || '')
+      };
+      if (driverDetails.name) bus.managerContact.name = driverDetails.name;
+      if (driverDetails.phone) bus.managerContact.phone = driverDetails.phone;
+    }
+
+    await bus.save();
+    res.json({ success: true, message: `Coach ${bus.busNumber} updated successfully`, bus });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Decommission / Delete Bus (DELETE /admin/fleet/:id)
+router.delete('/fleet/:id', async (req, res, next) => {
+  try {
+    const bus = await Bus.findById(req.params.id);
+    if (!bus) return res.status(404).json({ error: 'Bus not found in fleet registry' });
+
+    await Bus.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: `Coach ${bus.busNumber} decommissioned from fleet registry` });
   } catch (err) {
     next(err);
   }
@@ -594,6 +757,51 @@ router.get('/audit-logs', async (req, res, next) => {
   try {
     const logs = await AuditLog.find().sort({ createdAt: -1 }).limit(100);
     res.json({ success: true, count: logs.length, logs });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Master Platform Bookings with Insurance Breakdown
+router.get('/bookings', async (req, res, next) => {
+  try {
+    const { companyCode, status, q } = req.query;
+    const filter = {};
+    if (companyCode) filter.companyCode = Number(companyCode);
+    if (status) filter.status = status;
+
+    const bookings = await Booking.find(filter)
+      .populate('passengerId', 'name email phone')
+      .populate('referralAgentId', 'name email phone referralCode agencyName')
+      .populate('busId', 'name busNumber busType operatorName')
+      .populate('routeId', 'fromCity toCity')
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    res.json({
+      success: true,
+      count: bookings.length,
+      bookings: bookings.map(b => ({
+        id: b.bookingId || b.pnr,
+        pnr: b.pnr,
+        bookingId: b.bookingId,
+        companyCode: b.companyCode,
+        passenger: b.contactDetails?.phone ? `${b.passengers?.[0]?.name || 'Traveler'} (${b.contactDetails.phone})` : (b.passengers?.[0]?.name || 'Traveler'),
+        corridor: b.routeId ? `${b.routeId.fromCity?.name} → ${b.routeId.toCity?.name}` : 'Rupadiya Corridor',
+        bus: b.busId ? `${b.busId.busNumber} (${b.busId.busType})` : 'Rupadiya Intercity Bus',
+        operatorName: b.busId?.operatorName || 'Rupadiya Intercity Travels',
+        seats: b.seatNumbers?.join(', ') || '1',
+        seatCount: b.seatNumbers?.length || 1,
+        amount: b.fareBreakdown?.totalPayable || b.totalAmount || 0,
+        fareBreakdown: b.fareBreakdown || {},
+        insuranceOpted: b.insuranceOpted || (b.fareBreakdown?.insuranceAmount > 0) || false,
+        insurancePremium: b.insurancePremium || b.fareBreakdown?.insuranceAmount || 0,
+        paymentMethod: b.paymentProvider === 'razorpay' ? 'Razorpay Gateway' : (b.referralAgentId ? `Agent Wallet (${b.referralAgentId.referralCode || 'AGT'})` : b.paymentProvider),
+        paymentReference: b.paymentReference,
+        status: b.status,
+        date: b.createdAt ? new Date(b.createdAt).toISOString() : new Date().toISOString()
+      }))
+    });
   } catch (err) {
     next(err);
   }

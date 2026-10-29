@@ -6,7 +6,7 @@ import {
   Building2, 
   Bus, 
   CalendarClock, 
-  Users, 
+  Users,
   Target, 
   TrendingUp, 
   ShieldCheck, 
@@ -21,7 +21,7 @@ import {
   ToggleLeft,
   ToggleRight
 } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, isOwnerSessionValid } from '../lib/api';
 import { openRazorpayCheckout } from '../lib/razorpay';
 
 export default function CompanyDashboardPage() {
@@ -45,6 +45,7 @@ export default function CompanyDashboardPage() {
   const [savingPayment, setSavingPayment] = useState(false);
 
   const loadDashboard = async () => {
+    if (!isOwnerSessionValid()) return;
     setLoading(true);
     setError('');
     try {
@@ -177,11 +178,11 @@ export default function CompanyDashboardPage() {
       {/* Top Banner Card */}
       <div className="bg-white border border-slate-200/80 p-5 sm:p-6 rounded-2xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wider mb-2 border border-blue-200">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium uppercase tracking-wider mb-2 border border-blue-200">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Franchise Operations Center</span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900">{companyName}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">{companyName}</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Company Code #{String(code).padStart(2, '0')} · Strictly scoped fleet, verified agents, and passenger operations.
           </p>
@@ -190,14 +191,14 @@ export default function CompanyDashboardPage() {
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <button
             onClick={() => setFundModalOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-2"
+            className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs shadow-xs transition flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
             <span>Add Wallet Funds</span>
           </button>
           <Link
             href="/trips"
-            className="px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-2"
+            className="px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-xs transition flex items-center gap-2"
           >
             <CalendarClock className="w-4 h-4" />
             <span>Dispatch Trip</span>
@@ -217,17 +218,17 @@ export default function CompanyDashboardPage() {
         {/* Company Wallet Balance */}
         <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Company Wallet</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Company Wallet</span>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center text-emerald-600 bg-emerald-50 border border-emerald-100">
               <Wallet className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-black text-slate-900">
+          <div className="text-2xl font-bold text-slate-900">
             ₹{Number(wallet.availableBalance || 0).toLocaleString('en-IN')}
           </div>
           <div className="text-xs text-slate-500 font-medium pt-2 border-t border-slate-100 flex justify-between items-center">
             <span>Franchise Funds</span>
-            <button onClick={() => setFundModalOpen(true)} className="text-emerald-700 font-bold hover:underline">
+            <button onClick={() => setFundModalOpen(true)} className="text-emerald-700 font-medium hover:underline">
               + Top Up
             </button>
           </div>
@@ -236,12 +237,12 @@ export default function CompanyDashboardPage() {
         {/* Total Active Buses */}
         <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Active Fleet</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Active Fleet</span>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center text-blue-600 bg-blue-50 border border-blue-100">
               <Bus className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-black text-slate-900">
+          <div className="text-2xl font-bold text-slate-900">
             {stats.busCount || 0} Buses
           </div>
           <div className="text-xs text-slate-500 font-medium pt-2 border-t border-slate-100">
@@ -252,32 +253,32 @@ export default function CompanyDashboardPage() {
         {/* Authorized Agents */}
         <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Authorized Agents</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Authorized Agents</span>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center text-purple-600 bg-purple-50 border border-purple-100">
               <Users className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-black text-slate-900">
+          <div className="text-2xl font-bold text-slate-900">
             {stats.agentCount || 0} Counters
           </div>
           <div className="text-xs text-slate-500 font-medium pt-2 border-t border-slate-100">
-            <Link href="/agents" className="text-purple-700 font-bold hover:underline">Manage agents →</Link>
+            <Link href="/agents" className="text-purple-700 font-medium hover:underline">Manage agents →</Link>
           </div>
         </div>
 
         {/* Pending Agent Withdrawals */}
         <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Withdrawals Queue</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Withdrawals Queue</span>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center text-amber-600 bg-amber-50 border border-amber-100">
               <CreditCard className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-black text-slate-900">
+          <div className="text-2xl font-bold text-slate-900">
             {stats.pendingWithdrawalsCount || 0} Pending
           </div>
           <div className="text-xs text-slate-500 font-medium pt-2 border-t border-slate-100">
-            <Link href="/withdrawals" className="text-amber-700 font-bold hover:underline">Review & payout →</Link>
+            <Link href="/withdrawals" className="text-amber-700 font-medium hover:underline">Review & payout →</Link>
           </div>
         </div>
       </div>
@@ -288,7 +289,7 @@ export default function CompanyDashboardPage() {
           <div>
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-blue-600" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              <h2 className="text-xs font-medium uppercase tracking-wider text-slate-700">
                 Annual Passenger Commitment Progress (FY 2026-2027)
               </h2>
             </div>
@@ -296,7 +297,7 @@ export default function CompanyDashboardPage() {
               {totalPassengers.toLocaleString('en-IN')} of {targetPassengers.toLocaleString('en-IN')} passengers committed under Company Code #{String(code).padStart(2, '0')}
             </p>
           </div>
-          <span className="text-2xl font-black text-blue-700">{progressPercent}%</span>
+          <span className="text-2xl font-bold text-blue-700">{progressPercent}%</span>
         </div>
 
         {/* Progress bar */}
@@ -312,7 +313,7 @@ export default function CompanyDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Operations Shortcuts */}
         <div className="bg-white border border-slate-200/80 p-6 rounded-2xl shadow-xs space-y-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Operations Shortcuts</h3>
+          <h3 className="text-xs font-medium uppercase tracking-wider text-slate-700">Operations Shortcuts</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Link
               href="/agents"
@@ -322,7 +323,7 @@ export default function CompanyDashboardPage() {
                 <Users className="w-5 h-5" />
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
               </div>
-              <h4 className="text-xs font-bold text-slate-900">Manage Agents</h4>
+              <h4 className="text-xs font-semibold text-slate-900">Manage Agents</h4>
               <p className="text-[11px] text-slate-500 mt-0.5">Create agents with wallet amount, top up, or remove.</p>
             </Link>
 
@@ -334,7 +335,7 @@ export default function CompanyDashboardPage() {
                 <CreditCard className="w-5 h-5" />
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
               </div>
-              <h4 className="text-xs font-bold text-slate-900">Withdrawal Approvals</h4>
+              <h4 className="text-xs font-semibold text-slate-900">Withdrawal Approvals</h4>
               <p className="text-[11px] text-slate-500 mt-0.5">Approve agent payout requests or reject with refund.</p>
             </Link>
 
@@ -346,7 +347,7 @@ export default function CompanyDashboardPage() {
                 <Bus className="w-5 h-5" />
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
               </div>
-              <h4 className="text-xs font-bold text-slate-900">Fleet Buses</h4>
+              <h4 className="text-xs font-semibold text-slate-900">Fleet Buses</h4>
               <p className="text-[11px] text-slate-500 mt-0.5">View 2+2 & sleeper buses and driver contacts.</p>
             </Link>
 
@@ -358,7 +359,7 @@ export default function CompanyDashboardPage() {
                 <TrendingUp className="w-5 h-5" />
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
               </div>
-              <h4 className="text-xs font-bold text-slate-900">P&L & Quota Statement</h4>
+              <h4 className="text-xs font-semibold text-slate-900">P&L & Quota Statement</h4>
               <p className="text-[11px] text-slate-500 mt-0.5">Export gross revenue and monthly quota progress.</p>
             </Link>
           </div>
@@ -368,7 +369,7 @@ export default function CompanyDashboardPage() {
         <div className="bg-white border border-slate-200/80 p-6 rounded-2xl shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Franchise Payment Channels</h3>
+              <h3 className="text-xs font-medium uppercase tracking-wider text-slate-700">Franchise Payment Channels</h3>
               <p className="text-[11px] text-slate-500">Payment methods accepted for tickets issued under your company</p>
             </div>
             {savingPayment && <span className="text-[10px] text-blue-600 font-bold animate-pulse">Saving...</span>}
@@ -411,7 +412,7 @@ export default function CompanyDashboardPage() {
             ) : (
               <form onSubmit={handleDepositSubmit} className="space-y-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1.5">Deposit Amount (₹)</label>
+                  <label className="text-xs font-medium text-slate-700 block mb-1.5">Deposit Amount (₹)</label>
                   <input
                     type="number"
                     min="100"
@@ -419,7 +420,7 @@ export default function CompanyDashboardPage() {
                     required
                     value={depositAmount}
                     onChange={(e) => setDepositAmount(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold text-lg focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                    className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold text-lg focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                   />
                   <div className="grid grid-cols-4 gap-2 mt-2">
                     {['5000', '10000', '25000', '50000'].map(p => (

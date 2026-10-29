@@ -71,6 +71,7 @@ export default function AgentBookingPage() {
   const [contactName, setContactName] = useState('');
   const [contactMobile, setContactMobile] = useState('');
   const [contactEmail, setContactEmail] = useState('');
+  const [insuranceOpted, setInsuranceOpted] = useState(true);
 
   // Payment Mode: 'WALLET' | 'ONLINE'
   const [paymentMode, setPaymentMode] = useState('WALLET');
@@ -318,7 +319,8 @@ export default function AgentBookingPage() {
   const subtotal = selectedSeats.reduce((sum, s) => sum + (s.fare || s.price || basePricePerSeat), 0);
   const gstAmount = Math.round(subtotal * 0.05); // 5% GST
   const serviceCharge = Math.min(200, Number(agentSettings?.bookingCharge || 20) * (agentSettings?.bookingChargeType === 'FIXED' ? 1 : 1));
-  const grandTotal = subtotal + gstAmount + serviceCharge;
+  const insuranceAmount = insuranceOpted ? (seatCount * 5) : 0;
+  const grandTotal = subtotal + gstAmount + serviceCharge + insuranceAmount;
 
   const handleConfirmBooking = async () => {
     if (!contactMobile || contactMobile.trim().length < 10) {
@@ -368,6 +370,8 @@ export default function AgentBookingPage() {
         contactEmail: contactEmail.trim() || 'passenger@rupadiya.test',
         boardingPoint: { name: bpName, time: bpTime },
         droppingPoint: { name: dpName, time: dpTime },
+        insuranceOpted,
+        insuranceAmount,
         serviceCharge,
         agentServiceFee: serviceCharge,
         paymentMethod: paymentMode
@@ -418,7 +422,9 @@ export default function AgentBookingPage() {
           throw new Error(orderRes?.error || 'Failed to initialize payment gateway order');
         }
 
+        const methodsRes = await api.getActivePaymentMethods(agentProfile?.companyCode || 1).catch(() => null);
         await openRazorpayCheckout({
+          allowedMethods: methodsRes?.allowedMethods || null,
           orderId: orderRes.orderId,
           amount: grandTotal,
           currency: 'INR',
@@ -976,6 +982,15 @@ export default function AgentBookingPage() {
                     <span>GST (5%):</span>
                     <span className="font-bold text-slate-900">₹{gstAmount.toLocaleString('en-IN')}</span>
                   </div>
+                  <div className="flex justify-between text-slate-600">
+                    <div className="flex items-center gap-1.5">
+                      <span>Travel Insurance:</span>
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">₹5/pax</span>
+                    </div>
+                    <span className={`font-bold ${insuranceOpted ? 'text-emerald-700' : 'text-slate-400'}`}>
+                      {insuranceOpted ? `+₹${insuranceAmount.toLocaleString('en-IN')}` : '₹0'}
+                    </span>
+                  </div>
                   {serviceCharge > 0 && (
                     <div className="flex justify-between text-slate-600">
                       <span>Agency Convenience Fee:</span>
@@ -1158,6 +1173,36 @@ export default function AgentBookingPage() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Travel Insurance Card */}
+            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3.5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                <div>
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span>Passenger Travel Protection Insurance</span>
+                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded">₹5/pax</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Accidental hospitalization up to ₹2,00,000 & emergency medical transit for {selectedSeats.length} seat(s)
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 shrink-0">
+                <span className={`text-xs font-bold ${insuranceOpted ? 'text-emerald-800' : 'text-slate-400'}`}>
+                  {insuranceOpted ? `+₹${insuranceAmount}` : '₹0'}
+                </span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={insuranceOpted}
+                    onChange={(e) => setInsuranceOpted(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
               </div>
             </div>
 

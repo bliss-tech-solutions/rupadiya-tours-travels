@@ -26,6 +26,7 @@ export default function PaymentPage() {
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [processing, setProcessing] = useState(false);
+  const [allowedMethods, setAllowedMethods] = useState({ upi: true, card: true, netbanking: true, wallet: true });
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes timer
 
   useEffect(() => {
@@ -77,6 +78,20 @@ export default function PaymentPage() {
     return () => clearInterval(timer);
   }, [addToast, router]);
 
+
+  useEffect(() => {
+    if (checkoutData) {
+      const code = checkoutData.companyCode || checkoutData.trip?.companyCode || checkoutData.trip?.bus?.companyCode;
+      api.getActivePaymentMethods(code)
+        .then((res) => {
+          if (res?.success && res.allowedMethods) {
+            setAllowedMethods(res.allowedMethods);
+          }
+        })
+        .catch((e) => console.warn('Could not load payment methods filter:', e));
+    }
+  }, [checkoutData]);
+
   if (!checkoutData) return null;
 
   const minutes = Math.floor(timeLeft / 60);
@@ -86,7 +101,9 @@ export default function PaymentPage() {
   const seatsCount = checkoutData.selectedSeats?.length || 1;
   const baseTotal = seatsCount * baseFare;
   const gstAmount = checkoutData.gstAmount || Math.round(baseTotal * 0.05);
-  const subtotal = checkoutData.totalPrice || (baseTotal + gstAmount);
+  const insuranceOpted = checkoutData.insuranceOpted ?? true;
+  const insuranceAmount = checkoutData.insuranceAmount !== undefined ? checkoutData.insuranceAmount : (insuranceOpted ? seatsCount * 5 : 0);
+  const subtotal = checkoutData.totalPrice || (baseTotal + gstAmount + insuranceAmount);
   const discount = appliedCoupon ? appliedCoupon.discount : 0;
   const finalTotal = Math.max(0, subtotal - discount);
 
@@ -128,6 +145,8 @@ export default function PaymentPage() {
             email: checkoutData.contactEmail || `${checkoutData.contactPhone}@rupadiya.com`,
           },
           totalAmount: finalTotal,
+          insuranceOpted,
+          insuranceAmount,
           couponCode: appliedCoupon?.code || null,
         },
         notes: {
@@ -142,6 +161,7 @@ export default function PaymentPage() {
 
       await openRazorpayCheckout({
         orderId: orderRes.orderId,
+        allowedMethods,
         amount: finalTotal,
         currency: 'INR',
         keyId: orderRes.keyId,
@@ -338,9 +358,26 @@ export default function PaymentPage() {
 
               {/* Simple Guidelines */}
               <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-5 space-y-3.5 text-xs">
-                <p className="text-slate-600 leading-relaxed">
-                  All payment options — <strong className="text-slate-800">UPI (Google Pay, PhonePe, Paytm, BHIM), Credit/Debit Cards (Visa, MasterCard, RuPay), NetBanking (50+ banks)</strong>, and <strong className="text-slate-800">Wallets</strong> — are handled automatically inside Razorpay.
-                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Accepted Instruments:</span>
+                    {allowedMethods.upi && (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">UPI Instant</span>
+                    )}
+                    {allowedMethods.card && (
+                      <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-bold">Credit/Debit Cards</span>
+                    )}
+                    {allowedMethods.netbanking && (
+                      <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold">NetBanking</span>
+                    )}
+                    {allowedMethods.wallet && (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold">Wallets</span>
+                    )}
+                  </div>
+                  <p className="text-slate-600 leading-relaxed text-xs">
+                    All enabled payment channels are handled automatically inside official 256-bit encrypted Razorpay Checkout.
+                  </p>
+                </div>
 
                 <div className="pt-2 border-t border-slate-200/60 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-slate-700 font-medium">
                   <div className="flex items-center gap-1.5">
@@ -461,6 +498,15 @@ export default function PaymentPage() {
                 <div className="flex justify-between text-slate-600 font-medium">
                   <span>GST & Govt. Taxes (5%)</span>
                   <span className="text-emerald-700 font-bold">+₹{gstAmount}</span>
+                </div>
+                <div className="flex justify-between text-slate-600 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <span>Travel Insurance</span>
+                    <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">₹5/pax</span>
+                  </div>
+                  <span className={`font-bold ${insuranceOpted ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    {insuranceOpted ? `+₹${insuranceAmount}` : '₹0'}
+                  </span>
                 </div>
                 {discount > 0 && (
                   <div className="flex justify-between text-emerald-600 font-bold">

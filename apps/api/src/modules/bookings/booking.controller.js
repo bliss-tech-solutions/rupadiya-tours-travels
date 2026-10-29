@@ -33,7 +33,8 @@ class BookingController {
         seatNumbers,
         passengers,
         passengerId,
-        referralCode
+        referralCode,
+        browserSessionId: req.browserSessionId
       });
 
       res.status(201).json({ success: true, ...hold });

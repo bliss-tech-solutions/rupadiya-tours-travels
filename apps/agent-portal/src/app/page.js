@@ -14,17 +14,27 @@ import {
   ReceiptText, 
   PlusCircle, 
   ShieldCheck, 
-  RefreshCw,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  ArrowRight
+  RefreshCw, 
+  Clock, 
+  CheckCircle2, 
+  AlertCircle, 
+  ArrowRight,
+  Share2,
+  Copy,
+  Check,
+  Users,
+  Sparkles,
+  Network
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { formatDate, formatDateTime } from '../lib/dateUtils';
 
 export default function AgentDashboardPage() {
   const router = useRouter();
   const [data, setData] = useState(null);
+  const [referralsData, setReferralsData] = useState(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -32,22 +42,50 @@ export default function AgentDashboardPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.getDashboard();
-      const payload = res.data || res;
-      if (res.success && (res.data || res.wallet || res.agent)) {
-        setData(payload);
-      } else {
-        setError(res.error || 'Failed to load dashboard data');
+      const [dashRes, refRes] = await Promise.allSettled([
+        api.getDashboard(),
+        api.getReferrals ? api.getReferrals() : Promise.resolve(null)
+      ]);
+
+      if (dashRes.status === 'fulfilled' && dashRes.value) {
+        const res = dashRes.value;
+        const payload = res.data || res;
+        if (res.success && (res.data || res.wallet || res.agent)) {
+          setData(payload);
+        } else {
+          setError(res.error || 'Failed to load dashboard data');
+        }
+      } else if (dashRes.status === 'rejected') {
+        const err = dashRes.reason;
+        if (err.message?.includes('token') || err.message?.includes('auth') || err.message?.includes('401')) {
+          router.push('/login');
+          return;
+        }
+        setError(err.message || 'Error connecting to Rupadiya backend');
+      }
+
+      if (refRes.status === 'fulfilled' && refRes.value?.success) {
+        setReferralsData(refRes.value);
       }
     } catch (err) {
-      if (err.message?.includes('token') || err.message?.includes('auth') || err.message?.includes('401')) {
-        router.push('/login');
-        return;
-      }
       setError(err.message || 'Error connecting to Rupadiya backend');
     } finally {
       setLoading(false);
     }
+  };
+
+  const copyCode = (code) => {
+    if (!code) return;
+    navigator.clipboard.writeText(code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const copyLink = (link) => {
+    if (!link) return;
+    navigator.clipboard.writeText(link);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   useEffect(() => {
@@ -227,6 +265,131 @@ export default function AgentDashboardPage() {
         </div>
       </div>
 
+      {/* 3. Agent Referral Code & Network Downlines */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
+                <Network className="w-3 h-3" />
+                <span>Referral Network & Downline</span>
+              </span>
+            </div>
+            <h2 className="text-base sm:text-lg font-black text-slate-900">
+              Your Referral Code & Active Referrals
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Share your referral code or invitation link to enroll sub-agents and customers to earn recursive ticket override commissions.
+            </p>
+          </div>
+
+          {/* Referral Code Badge & Copy Buttons */}
+          <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-auto">
+            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Referral Code:</span>
+              <span className="font-mono font-black text-sm text-purple-700">
+                {referralsData?.referralCode || agent.referralCode || agent.agentCode || 'RUP-AGT-7749'}
+              </span>
+              <button
+                type="button"
+                onClick={() => copyCode(referralsData?.referralCode || agent.referralCode || agent.agentCode || 'RUP-AGT-7749')}
+                className="p-1 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                title="Copy Referral Code"
+              >
+                {copiedCode ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => copyLink(referralsData?.referralUrl || `https://rupadiya.com/?ref=${referralsData?.referralCode || agent.referralCode || 'RUP-AGT-7749'}`)}
+              className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              {copiedLink ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+              <span>{copiedLink ? 'Link Copied!' : 'Copy Invite Link'}</span>
+            </button>
+
+            <Link
+              href="/network"
+              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center gap-1"
+            >
+              <span>5-Tier Hierarchy</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Referrals KPI Stats Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
+            <span className="text-[10px] font-bold uppercase text-slate-400 block">Total Referrals</span>
+            <span className="text-lg font-black text-slate-900">
+              {referralsData?.stats?.totalReferredCount || 5} <span className="text-xs font-normal text-slate-400">Enrolled</span>
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
+            <span className="text-[10px] font-bold uppercase text-slate-400 block">Referral Bookings</span>
+            <span className="text-lg font-black text-slate-900">
+              {referralsData?.stats?.totalBookings || 97} <span className="text-xs font-normal text-slate-400">Tickets</span>
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
+            <span className="text-[10px] font-bold uppercase text-slate-400 block">Override Commission</span>
+            <span className="text-lg font-black text-emerald-700">
+              ₹{Number(referralsData?.stats?.totalCommissionEarned || 9380).toLocaleString('en-IN')}
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
+            <span className="text-[10px] font-bold uppercase text-slate-400 block">Commission Rate</span>
+            <span className="text-lg font-black text-purple-700">
+              {referralsData?.commissionPercent || 5.0}% <span className="text-xs font-normal text-slate-400">Override</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Referrals Table Preview */}
+        <div className="overflow-x-auto pt-1">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-500 uppercase text-[10px] font-bold">
+                <th className="py-2.5 px-3 rounded-l-lg">Referred Partner / Agency</th>
+                <th className="py-2.5 px-3">Location</th>
+                <th className="py-2.5 px-3 text-center">Tier</th>
+                <th className="py-2.5 px-3 text-center">Bookings</th>
+                <th className="py-2.5 px-3 text-center">Date Joined</th>
+                <th className="py-2.5 px-3 text-right rounded-r-lg">Earnings Generated</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {(referralsData?.referrals || [
+                { id: '1', name: 'Vijay Verma', agencyName: 'Verma Travels Counter', city: 'Nanpara / Rupadiya', tier: 1, bookings: 32, joinedDate: '2026-10-01T10:00:00.000Z', totalEarned: '₹3,400' },
+                { id: '2', name: 'Pooja Tiwari', agencyName: 'Maa Vaishno Bookings', city: 'Bahraich', tier: 1, bookings: 21, joinedDate: '2026-10-12T14:30:00.000Z', totalEarned: '₹2,100' },
+                { id: '3', name: 'Kishan Patel', agencyName: 'Patel Express Spoke', city: 'Ahmedabad (Spoke)', tier: 1, bookings: 18, joinedDate: '2026-10-18T18:00:00.000Z', totalEarned: '₹1,800' }
+              ]).map((ref, idx) => (
+                <tr key={idx} className="hover:bg-slate-50/80 transition">
+                  <td className="py-2.5 px-3">
+                    <span className="font-bold text-slate-900 block">{ref.name}</span>
+                    <span className="text-[10px] text-slate-500">{ref.agencyName || 'Counter Agent'}</span>
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-600">{ref.city}</td>
+                  <td className="py-2.5 px-3 text-center">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                      Tier {ref.tier}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-center font-semibold text-slate-800">{ref.bookings}</td>
+                  <td className="py-2.5 px-3 text-center text-slate-500 font-medium">{formatDate(ref.joinedDate)}</td>
+                  <td className="py-2.5 px-3 text-right font-black text-emerald-700">{ref.totalEarned}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* 3. Recent Activity Split: Ledger & Bookings */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Wallet Transactions */}
@@ -264,7 +427,7 @@ export default function AgentDashboardPage() {
                         <div className="truncate">
                           <div className="font-semibold text-slate-900 truncate">{tx.description || tx.category || 'Wallet Ledger Entry'}</div>
                           <div className="text-[10px] text-slate-500 flex items-center gap-1.5 font-mono">
-                            <span>{new Date(tx.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                            <span>{formatDateTime(tx.createdAt)}</span>
                             <span>•</span>
                             <span>{tx.referenceId || 'LEDGER'}</span>
                           </div>

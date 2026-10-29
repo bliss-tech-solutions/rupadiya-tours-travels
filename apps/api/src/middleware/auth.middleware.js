@@ -2,12 +2,30 @@ const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 const User = require('../modules/users/user.model');
 
-async function authenticateToken(req, res, next) {
+function extractToken(req) {
+  // 1. Try reading from httpOnly cookie first
+  if (req.cookies && req.cookies.rupadiya_access_token) {
+    return req.cookies.rupadiya_access_token;
+  }
+
+  // 2. Fall back to Authorization Bearer header
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.split(' ')[1];
+  }
+
+  return null;
+}
+
+async function authenticateToken(req, res, next) {
+  const token = extractToken(req);
 
   if (!token) {
-    return res.status(401).json({ error: 'Authentication token required' });
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Authentication required. Please sign in.', 
+      code: 'AUTH_REQUIRED' 
+    });
   }
 
   try {
@@ -15,13 +33,21 @@ async function authenticateToken(req, res, next) {
     const user = await User.findById(decoded.id).select('-passwordHash');
 
     if (!user || !user.isActive) {
-      return res.status(401).json({ error: 'User account not found or deactivated' });
+      return res.status(401).json({ 
+        success: false, 
+        error: 'User account not found or deactivated', 
+        code: 'ACCOUNT_DEACTIVATED' 
+      });
     }
 
     req.user = user;
     next();
   } catch (err) {
-    return res.status(403).json({ error: 'Invalid or expired authentication token' });
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Invalid or expired authentication token', 
+      code: 'TOKEN_EXPIRED' 
+    });
   }
 }
 
@@ -29,8 +55,7 @@ async function authenticateToken(req, res, next) {
  * Optional authentication: If token is provided, decode and attach user; otherwise proceed as guest
  */
 async function optionalAuth(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  const token = extractToken(req);
 
   if (!token) {
     req.user = null;
@@ -56,4 +81,3 @@ module.exports = {
   authorizeRoles,
   authorize: authorizeRoles
 };
-

@@ -14,6 +14,7 @@ import {
   Bus
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { formatDate, formatTime } from '../../lib/dateUtils';
 
 export default function MyBookingsHistoryPage() {
   const [user, setUser] = useState(null);
@@ -23,16 +24,11 @@ export default function MyBookingsHistoryPage() {
   const [activeTab, setActiveTab] = useState('bus'); // 'bus' | 'tours'
 
   useEffect(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('rupadiya_user') : null;
-    const token = typeof window !== 'undefined' ? localStorage.getItem('rupadiya_token') : null;
-
-    if (raw && token) {
+    async function loadData() {
       try {
-        setUser(JSON.parse(raw));
-      } catch (e) {}
-
-      async function loadData() {
-        try {
+        const userRes = await api.me().catch(() => null);
+        if (userRes?.user) {
+          setUser(userRes.user);
           const [busRes, tourRes] = await Promise.allSettled([
             api.getMyBookings(),
             api.getMyTourBookings()
@@ -45,26 +41,25 @@ export default function MyBookingsHistoryPage() {
             const tList = tourRes.value.bookings || tourRes.value.data || [];
             setTourBookings(tList);
           }
-        } catch (err) {
-          console.error(err);
-        } finally {
-          setLoading(false);
-        }
-      }
-      loadData();
-    } else {
-      // Check if session has a recently confirmed ticket for guest
-      const confRaw = typeof window !== 'undefined' ? sessionStorage.getItem('rupadiya_confirmed_ticket') : null;
-      if (confRaw) {
-        try {
-          const parsed = JSON.parse(confRaw);
-          if (parsed.booking) {
-            setBookings([parsed.booking]);
+        } else {
+          // Check if session has a recently confirmed ticket for guest
+          const confRaw = typeof window !== 'undefined' ? sessionStorage.getItem('rupadiya_confirmed_ticket') : null;
+          if (confRaw) {
+            try {
+              const parsed = JSON.parse(confRaw);
+              if (parsed.booking) {
+                setBookings([parsed.booking]);
+              }
+            } catch (e) {}
           }
-        } catch (e) {}
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
+    loadData();
   }, []);
 
   return (
@@ -168,9 +163,8 @@ export default function MyBookingsHistoryPage() {
                 const trip = b.trip || b.tripId || {};
                 const bus = trip.bus || trip.busId || b.bus || b.busId || {};
                 const depTime = trip.departureTime || b.travelDate || b.createdAt;
-                const date = depTime 
-                  ? new Date(depTime).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })
-                  : 'Upcoming';
+                const date = depTime ? formatDate(depTime, 'medium') : 'Upcoming';
+                const timeStr = formatTime(b.boardingPoint?.time || trip.departureTime, '05:30 PM');
 
                 const seatList = (b.seatNumbers && b.seatNumbers.length > 0)
                   ? b.seatNumbers.join(', ')
@@ -209,7 +203,7 @@ export default function MyBookingsHistoryPage() {
 
                       <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
                         <span className="flex items-center gap-1 font-semibold text-slate-700">
-                          <Calendar className="w-3.5 h-3.5 text-sky-500" /> {date}
+                          <Calendar className="w-3.5 h-3.5 text-sky-500" /> {date} · {timeStr}
                         </span>
                         <span className="flex items-center gap-1">
                           <MapPin className="w-3.5 h-3.5 text-slate-400" /> {b.boardingPoint?.name || 'Rupadiya Border Main Stand'}

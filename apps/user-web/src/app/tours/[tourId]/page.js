@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { useToast } from '../../../components/ui/Toast';
+import { getLocalDateString, formatDate } from '../../../lib/dateUtils';
 
 export default function TourDetailPage() {
   const params = useParams();
@@ -42,13 +43,13 @@ export default function TourDetailPage() {
         
         // Handle departure dates from DB (departureDates array)
         if (data?.departureDates && data.departureDates.length > 0) {
-          setSelectedDepartureDate(new Date(data.departureDates[0]).toISOString().split('T')[0]);
+          setSelectedDepartureDate(getLocalDateString(new Date(data.departureDates[0])));
         } else if (data?.upcomingDepartures && data.upcomingDepartures.length > 0) {
-          setSelectedDepartureDate(new Date(data.upcomingDepartures[0]).toISOString().split('T')[0]);
+          setSelectedDepartureDate(getLocalDateString(new Date(data.upcomingDepartures[0])));
         } else {
           const d = new Date();
           d.setDate(d.getDate() + 5);
-          setSelectedDepartureDate(d.toISOString().split('T')[0]);
+          setSelectedDepartureDate(getLocalDateString(d));
         }
       } catch (err) {
         addToast(err.message || 'Tour not found', 'error');
@@ -286,8 +287,8 @@ export default function TourDetailPage() {
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:border-sky-500 cursor-pointer"
                     >
                       {availableDates.map((d, i) => {
-                        const dateStr = new Date(d).toISOString().split('T')[0];
-                        const display = new Date(d).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+                        const dateStr = getLocalDateString(new Date(d));
+                        const display = formatDate(d, 'medium');
                         return (
                           <option key={i} value={dateStr}>
                             {display}

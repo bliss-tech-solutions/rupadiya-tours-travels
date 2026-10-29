@@ -1,82 +1,121 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4500/api/v1';
 
-const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+let isRefreshing = false;
+let refreshSubscribers = [];
+let refreshFailed = false;
 
 export function isOwnerSessionValid() {
-  if (typeof window === 'undefined') return false;
-  const token = localStorage.getItem('owner_token');
-  const loginTimeStr = localStorage.getItem('owner_login_time');
-  if (!token || !loginTimeStr) return false;
-
-  const loginTime = parseInt(loginTimeStr, 10);
-  if (isNaN(loginTime)) return false;
-
-  const isExpired = Date.now() - loginTime > SESSION_MAX_AGE_MS;
-  if (isExpired) {
-    clearOwnerSession();
-    return false;
-  }
-  return true;
+  if (typeof window === 'undefined') return true;
+  return Boolean(localStorage.getItem('owner_user'));
 }
 
-export function saveOwnerSession(token, user) {
+export function saveOwnerSession(_token, user) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem('owner_token', token);
-  localStorage.setItem('owner_user', JSON.stringify(user));
-  localStorage.setItem('owner_login_time', String(Date.now()));
+  try {
+    localStorage.removeItem('owner_token'); // Do not save token in localStorage
+    if (user) {
+      localStorage.setItem('owner_user', JSON.stringify(user));
+    }
+    refreshFailed = false; // Reset failure flag on successful login
+  } catch {}
 }
 
 export function clearOwnerSession() {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem('owner_token');
-  localStorage.removeItem('owner_user');
-  localStorage.removeItem('owner_login_time');
+  try {
+    localStorage.removeItem('owner_token');
+    localStorage.removeItem('owner_user');
+    localStorage.removeItem('owner_login_time');
+    refreshFailed = true;
+  } catch {}
 }
 
 export function getSessionRemainingTime() {
-  if (typeof window === 'undefined') return null;
-  const loginTimeStr = localStorage.getItem('owner_login_time');
-  if (!loginTimeStr) return null;
-  const loginTime = parseInt(loginTimeStr, 10);
-  if (isNaN(loginTime)) return null;
-  const elapsed = Date.now() - loginTime;
-  const remaining = SESSION_MAX_AGE_MS - elapsed;
-  if (remaining <= 0) return 0;
-  const hours = Math.floor(remaining / (60 * 60 * 1000));
-  const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
-  return `${hours}h ${minutes}m left`;
+  return '24h active';
 }
 
-async function request(endpoint, options = {}) {
-  const isAuthRoute = endpoint.startsWith('/auth/login') || endpoint.startsWith('/auth/register');
+function subscribeTokenRefresh(cb) {
+  refreshSubscribers.push(cb);
+}
 
-  if (!isAuthRoute && typeof window !== 'undefined') {
-    if (!isOwnerSessionValid()) {
-      clearOwnerSession();
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login?expired=1';
-      }
-      throw new Error('24-hour session expired. Please sign in again.');
-    }
-  }
+function onRefreshed(success) {
+  refreshSubscribers.forEach(cb => cb(success));
+  refreshSubscribers = [];
+}
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('owner_token') : null;
+async function request(endpoint, options = {}, isRetry = false) {
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    'x-rupadiya-client': 'company-portal',
     ...(options.headers || {})
   };
 
   const url = `${API_BASE}${endpoint}`;
   try {
-    const res = await fetch(url, { ...options, headers });
-    
-    if (res.status === 401 && !isAuthRoute && typeof window !== 'undefined') {
-      clearOwnerSession();
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login?expired=1';
+    const res = await fetch(url, {
+      ...options,
+      headers,
+      credentials: 'include' // Passes httpOnly cookies
+    });
+
+    if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh') && !endpoint.startsWith('/auth/otp')) {
+      // If refresh already failed or user not logged in, stop immediately
+      if (refreshFailed || !isOwnerSessionValid()) {
+        clearOwnerSession();
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login?expired=1';
+        }
+        throw new Error('Authentication required. Please sign in.');
       }
-      throw new Error('Session unauthorized or expired.');
+
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-rupadiya-client': 'company-portal'
+            },
+            credentials: 'include'
+          });
+
+          if (refreshRes.ok) {
+            isRefreshing = false;
+            refreshFailed = false;
+            onRefreshed(true);
+            return request(endpoint, options, true);
+          } else {
+            isRefreshing = false;
+            refreshFailed = true;
+            onRefreshed(false);
+            clearOwnerSession();
+            if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+              window.location.href = '/login?expired=1';
+            }
+            throw new Error('Company owner session expired. Please sign in again.');
+          }
+        } catch (rErr) {
+          isRefreshing = false;
+          refreshFailed = true;
+          onRefreshed(false);
+          clearOwnerSession();
+          if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+            window.location.href = '/login?expired=1';
+          }
+          throw rErr;
+        }
+      } else {
+        return new Promise((resolve, reject) => {
+          subscribeTokenRefresh((success) => {
+            if (success) {
+              resolve(request(endpoint, options, true));
+            } else {
+              reject(new Error('Company owner session expired. Please sign in again.'));
+            }
+          });
+        });
+      }
     }
 
     const data = await res.json().catch(() => ({}));
@@ -85,15 +124,27 @@ async function request(endpoint, options = {}) {
     }
     return data;
   } catch (err) {
-    console.error(`Company API Error: ${endpoint}`, err);
+    if (!isRetry) {
+      console.error(`Company API Error: ${endpoint}`, err);
+    }
     throw err;
   }
 }
 
 export const api = {
   // Auth
-  login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: async (email, password) => {
+    refreshFailed = false;
+    const res = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    if (res?.user) {
+      saveOwnerSession(null, res.user);
+    }
+    return res;
+  },
   register: (payload) => request('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  refreshToken: () => request('/auth/refresh', { method: 'POST' }),
+  session: () => request('/auth/session'),
   me: () => request('/auth/me'),
 
   // Company Overview & Wallet
@@ -112,9 +163,66 @@ export const api = {
   updateBus: (id, busData) => request(`/owner/fleet/${id}`, { method: 'PUT', body: JSON.stringify(busData) }),
   deleteBus: (id) => request(`/owner/fleet/${id}`, { method: 'DELETE' }),
 
+  // File Upload with Live Progress
+  uploadFile: (file, folder = 'documents', onProgress = null) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const base64Data = reader.result;
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `${API_BASE}/upload/direct`);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.setRequestHeader('x-rupadiya-client', 'company-portal');
+          xhr.withCredentials = true;
+
+          if (xhr.upload && onProgress) {
+            xhr.upload.onprogress = (evt) => {
+              if (evt.lengthComputable) {
+                const percent = Math.round((evt.loaded / evt.total) * 100);
+                onProgress(percent);
+              }
+            };
+          }
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const data = JSON.parse(xhr.responseText);
+              let url = data.url;
+              if (url && url.startsWith('/uploads')) {
+                url = `http://localhost:4500${url}`;
+              }
+              resolve({ success: true, url, key: data.key });
+            } else {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
+          };
+
+          xhr.onerror = () => reject(new Error('Network error during file upload'));
+          xhr.send(JSON.stringify({
+            folder,
+            fileName: file.name,
+            contentType: file.type || 'application/octet-stream',
+            base64Data
+          }));
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  },
+
   // Trips & Scheduler
-  getTrips: () => request('/trips'),
-  scheduleTrip: (tripData) => request('/trips', { method: 'POST', body: JSON.stringify(tripData) }),
+  getTrips: () => request('/owner/trips'),
+  scheduleTrip: (tripData) => request('/owner/trips', { method: 'POST', body: JSON.stringify(tripData) }),
+  prepareSeatChart: (tripId) => request(`/owner/trips/${tripId}/prepare-chart`, { method: 'POST' }),
+  getSeatChart: (tripId) => request(`/owner/trips/${tripId}/seat-chart`),
+
+  // Levels & Hierarchy
+  getLevels: () => request('/owner/levels'),
+  updateAgentLevel: (id, payload) => request(`/owner/agents/${id}/level`, { method: 'PUT', body: JSON.stringify(payload) }),
 
   // Agents Management
   getAgents: () => request('/owner/agents'),
@@ -133,4 +241,8 @@ export const api = {
   getReports: () => request('/owner/reports'),
   getTargets: () => request('/owner/reports'),
   getNetwork: () => request('/owner/network'),
+
+  // Payment Methods Governance
+  getPaymentMethodConfig: () => request('/payments/methods/config'),
+  updatePaymentMethodConfig: (allowedMethods) => request('/payments/methods/config', { method: 'PUT', body: JSON.stringify({ allowedMethods }) }),
 };

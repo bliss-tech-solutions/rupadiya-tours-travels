@@ -69,8 +69,17 @@ const bookingSchema = new mongoose.Schema({
     seatCount: { type: Number, required: true },
     subtotal: { type: Number, required: true },
     gstAmount: { type: Number, required: true },
+    insuranceAmount: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
     totalPayable: { type: Number, required: true }
+  },
+  insuranceOpted: {
+    type: Boolean,
+    default: false
+  },
+  insurancePremium: {
+    type: Number,
+    default: 0
   },
   status: {
     type: String,

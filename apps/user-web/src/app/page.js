@@ -27,12 +27,13 @@ import {
   getAllowedOrigins,
 } from "../lib/routes";
 import { useLanguage } from "../context/LanguageContext";
+import { getLocalDateString } from "../lib/dateUtils";
 
 export default function HomePage() {
   const router = useRouter();
   const { t } = useLanguage();
 
-  const todayIso = new Date().toISOString().split("T")[0];
+  const todayIso = getLocalDateString(new Date());
 
   // Active Seat Hold State (RedBus style)
   const [activeHold, setActiveHold] = useState(null);

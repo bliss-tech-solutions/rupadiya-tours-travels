@@ -2,6 +2,23 @@ const express = require('express');
 const router = express.Router();
 const paymentService = require('./payment.service');
 const { authenticateToken } = require('../../middleware/auth.middleware');
+const { paymentLimiter } = require('../../middleware/rateLimit.middleware');
+const PaymentMethodConfig = require('./paymentMethodConfig.model');
+const { authorizeRoles } = require('../../middleware/rbac.middleware');
+const { ROLES } = require('../../config/constants');
+const jwt = require('jsonwebtoken');
+const env = require('../../config/env');
+
+function resolveUserFromRequest(req) {
+  const token = req.cookies?.rupadiya_access_token || 
+    (req.headers['authorization']?.startsWith('Bearer ') ? req.headers['authorization'].split(' ')[1] : null);
+  if (!token) return null;
+  try {
+    return jwt.verify(token, env.AUTH_ACCESS_SECRET);
+  } catch {
+    return null;
+  }
+}
 
 // Public config: Returns the active Razorpay Key ID
 router.get('/config', (req, res) => {
@@ -14,19 +31,9 @@ router.get('/config', (req, res) => {
 
 // Create Razorpay Order
 // Allows authenticated users (Agents, Owners, Passengers) and guest public passengers
-router.post('/create-order', async (req, res, next) => {
+router.post('/create-order', paymentLimiter, async (req, res, next) => {
   try {
-    // Optional token extraction if header present
-    const authHeader = req.headers['authorization'];
-    let user = null;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const jwt = require('jsonwebtoken');
-        const env = require('../../config/env');
-        const token = authHeader.split(' ')[1];
-        user = jwt.verify(token, env.AUTH_ACCESS_SECRET);
-      } catch (e) {}
-    }
+    const user = resolveUserFromRequest(req);
 
     const {
       amount,
@@ -60,18 +67,9 @@ router.post('/create-order', async (req, res, next) => {
 });
 
 // Verify Payment and Fulfill Purpose
-router.post('/verify', async (req, res, next) => {
+router.post('/verify', paymentLimiter, async (req, res, next) => {
   try {
-    const authHeader = req.headers['authorization'];
-    let user = null;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const jwt = require('jsonwebtoken');
-        const env = require('../../config/env');
-        const token = authHeader.split(' ')[1];
-        user = jwt.verify(token, env.AUTH_ACCESS_SECRET);
-      } catch (e) {}
-    }
+    const user = resolveUserFromRequest(req);
 
     const {
       orderId,
@@ -111,6 +109,165 @@ router.get('/history', authenticateToken, async (req, res, next) => {
   try {
     const payments = await paymentService.getUserPaymentHistory(req.user._id);
     res.json({ success: true, count: payments.length, payments });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// =========================================================================
+// PAYMENT METHOD GOVERNANCE (Global Super Admin & Company Agent Scopes)
+// =========================================================================
+
+// Active payment methods for checkout (Public/Semi-public)
+router.get('/methods/active', async (req, res, next) => {
+  try {
+    const { companyCode } = req.query;
+    
+    // 1. Fetch Global config
+    let globalConfig = await PaymentMethodConfig.findOne({ scope: 'GLOBAL' });
+    if (!globalConfig) {
+      globalConfig = {
+        allowedMethods: { upi: true, card: true, netbanking: true, wallet: true }
+      };
+    }
+
+    // 2. If companyCode is provided, fetch company-specific config
+    let companyConfig = null;
+    const parsedCompanyCode = companyCode ? Number(companyCode) : null;
+    if (parsedCompanyCode) {
+      companyConfig = await PaymentMethodConfig.findOne({ scope: 'COMPANY', companyCode: parsedCompanyCode });
+    }
+
+    // Compute effective allowed methods
+    const effective = {
+      upi: Boolean(globalConfig.allowedMethods?.upi ?? true) && (!companyConfig || Boolean(companyConfig.allowedMethods?.upi ?? true)),
+      card: Boolean(globalConfig.allowedMethods?.card ?? true) && (!companyConfig || Boolean(companyConfig.allowedMethods?.card ?? true)),
+      netbanking: Boolean(globalConfig.allowedMethods?.netbanking ?? true) && (!companyConfig || Boolean(companyConfig.allowedMethods?.netbanking ?? true)),
+      wallet: Boolean(globalConfig.allowedMethods?.wallet ?? true) && (!companyConfig || Boolean(companyConfig.allowedMethods?.wallet ?? true))
+    };
+
+    res.json({
+      success: true,
+      allowedMethods: effective,
+      globalAllowedMethods: globalConfig.allowedMethods,
+      companyAllowedMethods: companyConfig ? companyConfig.allowedMethods : null,
+      scope: parsedCompanyCode ? 'COMPANY' : 'GLOBAL',
+      companyCode: parsedCompanyCode
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get Payment Methods Configuration (Super Admin gets GLOBAL, Company Owner gets COMPANY config)
+router.get('/methods/config', authenticateToken, authorizeRoles(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER), async (req, res, next) => {
+  try {
+    const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+    
+    let globalConfig = await PaymentMethodConfig.findOne({ scope: 'GLOBAL' });
+    if (!globalConfig) {
+      globalConfig = await PaymentMethodConfig.create({
+        scope: 'GLOBAL',
+        allowedMethods: { upi: true, card: true, netbanking: true, wallet: true },
+        updatedBy: req.user._id
+      });
+    }
+
+    if (isSuperAdmin) {
+      return res.json({
+        success: true,
+        scope: 'GLOBAL',
+        config: globalConfig,
+        allowedMethods: globalConfig.allowedMethods
+      });
+    }
+
+    // Company Owner
+    const companyCode = req.user.companyCode;
+    let companyConfig = await PaymentMethodConfig.findOne({ scope: 'COMPANY', companyCode });
+    if (!companyConfig) {
+      companyConfig = await PaymentMethodConfig.create({
+        scope: 'COMPANY',
+        companyCode,
+        allowedMethods: {
+          upi: globalConfig.allowedMethods.upi,
+          card: globalConfig.allowedMethods.card,
+          netbanking: globalConfig.allowedMethods.netbanking,
+          wallet: globalConfig.allowedMethods.wallet
+        },
+        updatedBy: req.user._id
+      });
+    }
+
+    res.json({
+      success: true,
+      scope: 'COMPANY',
+      companyCode,
+      config: companyConfig,
+      allowedMethods: companyConfig.allowedMethods,
+      globalAllowedMethods: globalConfig.allowedMethods
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update Payment Methods Configuration
+router.put('/methods/config', authenticateToken, authorizeRoles(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER), async (req, res, next) => {
+  try {
+    const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+    const { allowedMethods } = req.body;
+
+    if (!allowedMethods || typeof allowedMethods !== 'object') {
+      return res.status(400).json({ error: 'allowedMethods object required with upi, card, netbanking, wallet booleans' });
+    }
+
+    const cleanMethods = {
+      upi: Boolean(allowedMethods.upi),
+      card: Boolean(allowedMethods.card),
+      netbanking: Boolean(allowedMethods.netbanking),
+      wallet: Boolean(allowedMethods.wallet)
+    };
+
+    if (isSuperAdmin) {
+      const updated = await PaymentMethodConfig.findOneAndUpdate(
+        { scope: 'GLOBAL' },
+        {
+          scope: 'GLOBAL',
+          allowedMethods: cleanMethods,
+          updatedBy: req.user._id
+        },
+        { new: true, upsert: true }
+      );
+
+      return res.json({
+        success: true,
+        message: 'Platform global payment methods updated successfully.',
+        config: updated,
+        allowedMethods: updated.allowedMethods
+      });
+    }
+
+    // Company Owner
+    const companyCode = req.user.companyCode;
+    const updated = await PaymentMethodConfig.findOneAndUpdate(
+      { scope: 'COMPANY', companyCode },
+      {
+        scope: 'COMPANY',
+        companyCode,
+        allowedMethods: cleanMethods,
+        updatedBy: req.user._id
+      },
+      { new: true, upsert: true }
+    );
+
+    res.json({
+      success: true,
+      message: `Company #${companyCode} agent payment methods updated successfully.`,
+      config: updated,
+      allowedMethods: updated.allowedMethods
+    });
   } catch (err) {
     next(err);
   }

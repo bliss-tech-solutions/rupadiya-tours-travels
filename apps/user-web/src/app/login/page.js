@@ -6,11 +6,13 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Bus, Lock, Mail, ArrowRight, ShieldCheck, Phone, Sparkles, CheckCircle2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/ui/Toast';
+import { useAuth } from '../../context/AuthContext';
 
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { addToast } = useToast();
+  const { login } = useAuth();
   const redirectUrl = searchParams.get('redirect') || '/';
 
   // Primary mode: 'otp' (Mobile OTP as 1st priority) vs 'password' (Email password)
@@ -68,8 +70,8 @@ function LoginContent() {
         throw new Error(res.error || 'Authentication token missing from server');
       }
 
-      localStorage.setItem('rupadiya_token', token);
-      localStorage.setItem('rupadiya_user', JSON.stringify(user || { name: 'Traveler', phone: cleanPhone }));
+      login(null, user || { name: 'Traveler', email });
+
       addToast(`Welcome, ${user?.name || 'Traveler'}! All trips linked to your mobile number are now synced.`, 'success', 'Login Successful');
 
       router.push(redirectUrl);
@@ -93,8 +95,8 @@ function LoginContent() {
         throw new Error(res.error || 'Authentication token missing from server');
       }
 
-      localStorage.setItem('rupadiya_token', token);
-      localStorage.setItem('rupadiya_user', JSON.stringify(user || { name: 'Traveler', email }));
+      login(null, user || { name: 'Traveler', email });
+
       addToast(`Welcome back, ${user?.name || 'Traveler'}!`, 'success', 'Signed In');
       
       router.push(redirectUrl);

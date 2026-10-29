@@ -95,7 +95,7 @@ function LoginContent() {
           <Building2 className="w-4 h-4" />
           <span>Rupadiya Franchise Network</span>
         </div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Company Franchise Terminal</h1>
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Company Franchise Terminal</h1>
         <p className="text-xs text-slate-500 mt-1">
           Sign in to access your company dashboard and operations.
         </p>

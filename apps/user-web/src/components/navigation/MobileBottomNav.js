@@ -1,24 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Bus, Compass, Calendar, Ticket, User } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const { t } = useLanguage();
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('rupadiya_user') : null;
-    if (raw) {
-      try {
-        setUser(JSON.parse(raw));
-      } catch (e) {}
-    }
-  }, []);
+  const { user } = useAuth();
 
   // Hide bottom nav during active seat selection / checkout flows where full bottom action bar is present
   const hideOnPaths = ['/trips/', '/checkout/', '/payment/', '/boarding-points/'];

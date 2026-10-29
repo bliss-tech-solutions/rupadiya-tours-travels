@@ -79,10 +79,14 @@ const busSchema = new mongoose.Schema({
   documents: {
     rcNumber: { type: String, default: 'RC-UP40-TEMP' },
     rcExpiry: { type: Date, default: () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+    rcFileUrl: { type: String, default: '' },
     insurancePolicy: { type: String, default: 'INS-ORIENTAL-2026' },
     insuranceExpiry: { type: Date, default: () => new Date(Date.now() + 180 * 24 * 60 * 60 * 1000) },
+    insuranceFileUrl: { type: String, default: '' },
     fitnessCert: { type: Date, default: () => new Date(Date.now() + 240 * 24 * 60 * 60 * 1000) },
-    permitExpiry: { type: Date, default: () => new Date(Date.now() + 300 * 24 * 60 * 60 * 1000) }
+    fitnessFileUrl: { type: String, default: '' },
+    permitExpiry: { type: Date, default: () => new Date(Date.now() + 300 * 24 * 60 * 60 * 1000) },
+    permitFileUrl: { type: String, default: '' }
   },
   status: {
     type: String,
@@ -95,16 +99,25 @@ const busSchema = new mongoose.Schema({
 
 busSchema.pre('save', function(next) {
   const typeLower = (this.busType || '').toLowerCase();
-  const isSleeper = typeLower.includes('sleeper') || this.category === 'SLEEPER';
-  
+  const isSleeper = typeLower.includes('sleeper');
+  const isSeater = typeLower.includes('seater');
+
   if (isSleeper) {
     this.category = 'SLEEPER';
     this.totalSeats = 36;
     this.layoutType = '2+1';
-  } else {
+  } else if (isSeater) {
     this.category = 'SEATER';
     this.totalSeats = 40;
     this.layoutType = '2+2';
+  } else if (this.category === 'SEATER' || this.totalSeats === 40) {
+    this.category = 'SEATER';
+    this.totalSeats = 40;
+    this.layoutType = '2+2';
+  } else {
+    this.category = 'SLEEPER';
+    this.totalSeats = 36;
+    this.layoutType = '2+1';
   }
   
   this.isAc = !typeLower.includes('non-ac');

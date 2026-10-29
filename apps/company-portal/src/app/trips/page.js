@@ -15,9 +15,13 @@ import {
   Bus,
   ChevronLeft,
   ChevronRight,
+  Printer,
+  FileText,
+  Lock,
   X
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { formatDeparture, formatDateTime, formatDate } from '../../lib/dateUtils';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -32,6 +36,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 34,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-102',
@@ -43,6 +48,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 37,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-103',
@@ -54,6 +60,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 29,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-104',
@@ -65,6 +72,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 36,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-105',
@@ -76,6 +84,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 32,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-106',
@@ -87,6 +96,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 35,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-107',
@@ -98,6 +108,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 38,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-108',
@@ -109,6 +120,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 31,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-109',
@@ -120,6 +132,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 27,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-110',
@@ -131,6 +144,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 39,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-111',
@@ -142,6 +156,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 33,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   },
   {
     id: 'TRP-112',
@@ -153,6 +168,7 @@ const DEFAULT_SCHEDULED = [
     bookedSeats: 35,
     totalSeats: 40,
     status: 'SCHEDULED',
+    chartPrepared: false
   }
 ];
 
@@ -163,6 +179,12 @@ export default function CompanyTripsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
+
+  // Seat Sheet Manifest Modal State
+  const [manifestModalOpen, setManifestModalOpen] = useState(false);
+  const [manifestData, setManifestData] = useState(null);
+  const [manifestLoading, setManifestLoading] = useState(false);
+  const [chartPreparing, setChartPreparing] = useState(false);
 
   const [form, setForm] = useState({
     origin: 'Rupadiya (Hub)',
@@ -177,23 +199,40 @@ export default function CompanyTripsPage() {
     try {
       const res = await api.getTrips();
       if (res?.trips && res.trips.length > 0) {
-        const formatted = res.trips.map(t => ({
-          id: t.tripNumber || t._id?.slice(-6) || 'TRP',
-          corridor: `${t.fromCity?.name || 'Rupadiya'} → ${t.toCity?.name || 'Destination'}`,
-          bus: t.bus?.busNumber ? `${t.bus.busNumber} (${t.bus.name})` : 'Assigned Fleet Bus',
-          departure: t.departureTime ? `${t.departureTime}` : 'Daily Schedule',
-          duration: t.duration || '20h',
-          baseFare: t.fare || 1650,
-          bookedSeats: t.bookedSeats?.length || 28,
-          totalSeats: 40,
-          status: 'ACTIVE'
-        }));
+        const formatted = res.trips.map(t => {
+          const totSeats = t.totalSeats ?? 36;
+          const bkSeats = t.bookedSeats ?? 0;
+          const occ = t.occupancyRate ?? (totSeats > 0 ? Math.round((bkSeats / totSeats) * 100) : 0);
+
+          return {
+            id: t.tripNumber || `TRP-${String(t._id || t.id).slice(-4).toUpperCase()}`,
+            rawTripId: t.rawTripId || t._id,
+            chartPrepared: Boolean(t.chartPrepared),
+            chartPreparedAt: t.chartPreparedAt,
+            corridor: t.corridor || `${t.fromCity || 'Rupadiya'} → ${t.toCity || 'Destination'}`,
+            bus: t.bus || (t.busNumber ? `${t.busNumber} (${t.busName || 'Fleet Coach'})` : 'Assigned Fleet Bus'),
+            departureTime: t.departureTime,
+            departure: formatDeparture(t.departureTime),
+            duration: t.duration || '20h',
+            baseFare: t.baseFare || t.fare || 1650,
+            bookedSeats: bkSeats,
+            totalSeats: totSeats,
+            occupancyRate: occ,
+            status: t.chartPrepared ? 'BOARDING' : (t.status || 'SCHEDULED')
+          };
+        });
         setTrips(formatted);
       } else {
-        setTrips(DEFAULT_SCHEDULED);
+        setTrips(DEFAULT_SCHEDULED.map(d => ({
+          ...d,
+          departure: formatDeparture(d.departure)
+        })));
       }
     } catch {
-      setTrips(DEFAULT_SCHEDULED);
+      setTrips(DEFAULT_SCHEDULED.map(d => ({
+        ...d,
+        departure: formatDeparture(d.departure)
+      })));
     } finally {
       setLoading(false);
     }
@@ -202,6 +241,84 @@ export default function CompanyTripsPage() {
   useEffect(() => {
     fetchTrips();
   }, []);
+
+  const handlePrepareChart = async (trip) => {
+    if (!trip.rawTripId) {
+      setTrips(prev => prev.map(t => t.id === trip.id ? { ...t, chartPrepared: true, status: 'BOARDING' } : t));
+      setActionSuccess(`Seat chart locked for ${trip.corridor}. Higher cancellation fee (85%) is now active.`);
+      return;
+    }
+    setChartPreparing(true);
+    try {
+      const res = await api.prepareSeatChart(trip.rawTripId);
+      if (res?.success) {
+        setActionSuccess(`Seat chart manifest generated! Trip status changed to BOARDING.`);
+        fetchTrips();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setChartPreparing(false);
+    }
+  };
+
+  const handleOpenManifest = async (trip) => {
+    setManifestLoading(true);
+    setManifestModalOpen(true);
+    try {
+      if (trip.rawTripId) {
+        const res = await api.getSeatChart(trip.rawTripId);
+        if (res?.success) {
+          setManifestData(res);
+          return;
+        }
+      }
+      // Demo fallback manifest for simulated data
+      setManifestData({
+        trip: {
+          _id: trip.id,
+          departureTime: new Date().toISOString(),
+          status: trip.status || 'SCHEDULED',
+          chartPrepared: trip.chartPrepared || false,
+          chartPreparedAt: new Date().toISOString(),
+          route: { 
+            fromCity: { name: trip.corridor.split('→')[0]?.trim() || 'Rupadiya' }, 
+            toCity: { name: trip.corridor.split('→')[1]?.trim() || 'Ahmedabad' } 
+          },
+          bus: { busNumber: trip.bus, busType: 'Setra Coach (2+2 Seater)' },
+          companyCode: 1
+        },
+        summary: {
+          totalSeats: trip.totalSeats || 40,
+          bookedSeats: trip.bookedSeats || 32,
+          vacantSeats: (trip.totalSeats || 40) - (trip.bookedSeats || 32),
+          occupancyRate: Math.round(((trip.bookedSeats || 32) / (trip.totalSeats || 40)) * 100)
+        },
+        manifest: Array.from({ length: trip.totalSeats || 40 }, (_, idx) => {
+          const seatNum = String(idx + 1);
+          const isBooked = idx < (trip.bookedSeats || 32);
+          return {
+            seatNumber: seatNum,
+            passengerName: isBooked ? `Passenger ${idx + 1}` : '— VACANT —',
+            age: isBooked ? 25 + (idx % 20) : null,
+            gender: isBooked ? (idx % 2 === 0 ? 'male' : 'female') : null,
+            fare: trip.baseFare || 1650,
+            pnr: isBooked ? `RUP${1000 + idx}` : '—',
+            bookingId: isBooked ? `BK-${7000 + idx}` : '—',
+            contactPhone: isBooked ? '+91 9876500000' : '—',
+            boardingPoint: 'Main Stand',
+            droppingPoint: 'Central Drop',
+            status: isBooked ? 'CONFIRMED' : 'VACANT',
+            deck: 'LOWER'
+          };
+        })
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setManifestLoading(false);
+    }
+  };
 
   const handleDispatch = (e) => {
     e.preventDefault();
@@ -215,7 +332,8 @@ export default function CompanyTripsPage() {
       baseFare: Number(form.fare) || 1650,
       bookedSeats: 0,
       totalSeats: 40,
-      status: 'SCHEDULED'
+      status: 'SCHEDULED',
+      chartPrepared: false
     };
     setTrips(prev => [newTrip, ...prev]);
     setTimeout(() => {
@@ -244,7 +362,7 @@ export default function CompanyTripsPage() {
             <CalendarClock className="w-3.5 h-3.5" />
             <span>Trip Dispatcher</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Scheduled Corridor Departures</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Scheduled Corridor Departures</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Assign company fleet buses and drivers to authorized Hub-and-Spoke intercity routes.
           </p>
@@ -283,7 +401,7 @@ export default function CompanyTripsPage() {
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900">
               Active Fleet Corridor Departures ({filtered.length})
             </h2>
-            <p className="text-xs text-slate-500">Live operational timetable for Hub-and-Spoke service network</p>
+            <p className="text-xs text-slate-500">Live operational timetable with seat chart manifests</p>
           </div>
 
           <div className="relative w-full sm:w-64">
@@ -310,37 +428,71 @@ export default function CompanyTripsPage() {
                 <th className="py-3 px-4">Assigned Fleet Vehicle</th>
                 <th className="py-3 px-4">Departure Time</th>
                 <th className="py-3 px-4">Base Fare</th>
-                <th className="py-3 px-4 text-center">Occupancy (40 Seats)</th>
-                <th className="py-3 px-4 text-right rounded-r-xl">Status</th>
+                <th className="py-3 px-4 text-center">Occupancy</th>
+                <th className="py-3 px-4 text-center">Seat Chart</th>
+                <th className="py-3 px-4 text-right rounded-r-xl">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginated.map((t) => {
-                const occupancyPercent = Math.round((t.bookedSeats / t.totalSeats) * 100);
+                const occupancyPercent = t.occupancyRate ?? Math.round((t.bookedSeats / (t.totalSeats || 1)) * 100);
+                const occColor = occupancyPercent >= 80 ? 'bg-emerald-500' : occupancyPercent >= 50 ? 'bg-blue-500' : 'bg-amber-500';
                 return (
                   <tr key={t.id} className="hover:bg-slate-50/80 transition">
                     <td className="py-3.5 px-4 font-mono font-bold text-blue-700">{t.id}</td>
                     <td className="py-3.5 px-4 font-bold text-slate-900">{t.corridor}</td>
                     <td className="py-3.5 px-4 text-slate-600 font-medium">{t.bus}</td>
                     <td className="py-3.5 px-4 text-slate-500 font-medium">{t.departure}</td>
-                    <td className="py-3.5 px-4 font-black text-slate-900">₹{t.baseFare}</td>
+                    <td className="py-3.5 px-4 font-bold text-slate-900">₹{t.baseFare}</td>
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex flex-col items-center gap-1">
                         <span className="font-bold text-slate-800 text-[11px]">
                           {t.bookedSeats} / {t.totalSeats} ({occupancyPercent}%)
                         </span>
-                        <div className="w-24 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div className="w-20 bg-slate-100 rounded-full h-1.5 overflow-hidden">
                           <div 
-                            className="bg-emerald-500 h-1.5 rounded-full" 
-                            style={{ width: `${occupancyPercent}%` }}
+                            className={`${occColor} h-1.5 rounded-full`}
+                            style={{ width: `${Math.min(100, occupancyPercent)}%` }}
                           />
                         </div>
                       </div>
                     </td>
+                    <td className="py-3.5 px-4 text-center">
+                      {t.chartPrepared ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                          <Lock className="w-3 h-3 text-blue-600" />
+                          <span>Locked</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold">
+                          <span>Pending</span>
+                        </span>
+                      )}
+                    </td>
                     <td className="py-3.5 px-4 text-right">
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
-                        {t.status}
-                      </span>
+                      <div className="flex items-center justify-end gap-1.5">
+                        {!t.chartPrepared && (
+                          <button
+                            type="button"
+                            onClick={() => handlePrepareChart(t)}
+                            disabled={chartPreparing}
+                            className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] shadow-xs flex items-center gap-1 transition cursor-pointer"
+                            title="Generate seat chart & activate boarding"
+                          >
+                            <FileText className="w-3 h-3" />
+                            <span>Prepare Chart</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenManifest(t)}
+                          className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] border border-slate-200 flex items-center gap-1 transition cursor-pointer"
+                          title="View and print passenger manifest chart"
+                        >
+                          <Printer className="w-3 h-3" />
+                          <span>Seat Sheet</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -349,7 +501,7 @@ export default function CompanyTripsPage() {
           </table>
         </div>
 
-        {/* Pagination Controls */}
+        {/* 10-Item Pagination Controls */}
         {filtered.length > ITEMS_PER_PAGE && (
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
             <span className="text-slate-500 font-medium">
@@ -449,20 +601,19 @@ export default function CompanyTripsPage() {
                     <option value="Bengaluru">Bengaluru</option>
                     <option value="Hyderabad">Hyderabad</option>
                     <option value="Mumbai (Borivali)">Mumbai (Borivali)</option>
-                    <option value="Rupadiya (Hub)">Rupadiya (Hub)</option>
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Departure Time *</label>
+                  <label className="text-slate-700 font-bold block mb-1">Scheduled Departure Time *</label>
                   <input
                     type="time"
                     required
                     value={form.departureTime}
                     onChange={(e) => setForm({ ...form, departureTime: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold focus:outline-none focus:bg-white focus:border-blue-500"
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:bg-white focus:border-blue-500"
                   />
                 </div>
 
@@ -510,6 +661,176 @@ export default function CompanyTripsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* PRINTABLE SEAT SHEET MANIFEST MODAL */}
+      {manifestModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white border border-slate-200/90 w-full max-w-4xl rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl my-8 max-h-[90vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:p-0">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4 print:hidden">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+                  <Printer className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                      Official Passenger Manifest
+                    </span>
+                    <span className="text-xs text-slate-400 font-medium">· Conductor & Pilot Seat Sheet</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Seat Sheet Chart · Departure Manifest
+                  </h3>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Print Sheet</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManifestModalOpen(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {manifestLoading ? (
+              <div className="py-20 text-center text-slate-400 flex flex-col items-center gap-2">
+                <RefreshCw className="w-7 h-7 animate-spin text-blue-600" />
+                <span className="text-xs font-bold">Generating Seat Chart Manifest...</span>
+              </div>
+            ) : manifestData ? (
+              <div className="space-y-6 print:space-y-4">
+                
+                {/* Print Banner */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Corridor Route</span>
+                    <span className="font-bold text-slate-900 text-sm">
+                      {manifestData.trip?.route?.fromCity?.name || 'Rupadiya'} → {manifestData.trip?.route?.toCity?.name || 'Ahmedabad'}
+                    </span>
+                    <span className="text-[10px] font-bold text-blue-700 block mt-0.5">
+                      {formatDeparture(manifestData.trip?.departureTime)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Assigned Coach</span>
+                    <span className="font-bold text-blue-700">
+                      {manifestData.trip?.bus?.busNumber || 'UP-40-BT-1001'}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block truncate">
+                      {manifestData.trip?.bus?.busType || '36 Sleeper / 40 Seater'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Driver In-Charge</span>
+                    <span className="font-bold text-slate-800">
+                      {manifestData.trip?.bus?.driverName || 'Vikram Singh'}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-500 block">
+                      {manifestData.trip?.bus?.driverPhone || '+91 9876543210'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Chart Status</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold text-[11px] border border-blue-200 mt-0.5">
+                      <Lock className="w-3 h-3 text-blue-600" />
+                      <span>{manifestData.trip?.chartPrepared ? 'Chart Prepared' : 'Scheduled'}</span>
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Occupancy</span>
+                    <span className="font-bold text-emerald-700 text-sm">
+                      {manifestData.summary?.bookedSeats} / {manifestData.summary?.totalSeats} ({manifestData.summary?.occupancyRate}%)
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-500 block">
+                      ₹{Number(manifestData.summary?.totalCollected || 0).toLocaleString('en-IN')} collected
+                    </span>
+                  </div>
+                </div>
+
+                {/* Manifest Table */}
+                <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
+                        <th className="py-2.5 px-3">Seat #</th>
+                        <th className="py-2.5 px-3">Deck</th>
+                        <th className="py-2.5 px-3">Passenger Name</th>
+                        <th className="py-2.5 px-3">Age / Gender</th>
+                        <th className="py-2.5 px-3">PNR</th>
+                        <th className="py-2.5 px-3">Contact</th>
+                        <th className="py-2.5 px-3">Boarding Point</th>
+                        <th className="py-2.5 px-3 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(manifestData.manifest || []).map((row, idx) => (
+                        <tr 
+                          key={idx}
+                          className={row.status === 'CONFIRMED' ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 text-slate-400'}
+                        >
+                          <td className="py-2 px-3 font-mono font-bold text-blue-900">
+                            {row.seatNumber}
+                          </td>
+                          <td className="py-2 px-3 text-[10px] font-bold text-slate-500">
+                            {row.deck}
+                          </td>
+                          <td className="py-2 px-3 font-bold text-slate-900">
+                            {row.passengerName}
+                          </td>
+                          <td className="py-2 px-3 text-slate-600">
+                            {row.age ? `${row.age}y / ${row.gender?.toUpperCase()}` : '—'}
+                          </td>
+                          <td className="py-2 px-3 font-mono font-bold text-slate-700">
+                            {row.pnr}
+                          </td>
+                          <td className="py-2 px-3 font-mono text-[11px] text-slate-600">
+                            {row.contactPhone}
+                          </td>
+                          <td className="py-2 px-3 text-slate-700 font-medium">
+                            {row.boardingPoint}
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${
+                              row.status === 'CONFIRMED' 
+                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                                : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {row.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer notes */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-500 gap-2 border-t border-slate-100">
+                  <span>• Generated via Rupadiya Intercity Automated Dispatch Authority</span>
+                  <span className="font-semibold text-rose-600">
+                    ⚠️ Cutoff Locked: Cancellation fee is 85% post-chart preparation.
+                  </span>
+                </div>
+
+              </div>
+            ) : null}
+
           </div>
         </div>
       )}

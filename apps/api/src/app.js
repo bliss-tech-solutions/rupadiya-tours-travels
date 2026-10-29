@@ -3,8 +3,13 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
+const cookieParser = require('cookie-parser');
+const path = require('path');
 const env = require('./config/env');
 const { errorHandler } = require('./middleware/errorHandler.middleware');
+const { originGuard, getAllowedOrigins } = require('./middleware/originGuard.middleware');
+const { globalLimiter } = require('./middleware/rateLimit.middleware');
+const { browserSessionMiddleware } = require('./middleware/session.middleware');
 
 // Feature Routes
 const authRoutes = require('./modules/auth/auth.routes');
@@ -19,6 +24,7 @@ const ownerRoutes = require('./modules/companies/owner.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const toursRoutes = require('./modules/tours/tours.routes');
 const paymentRoutes = require('./modules/payments/payments.routes');
+const uploadRoutes = require('./modules/upload/upload.routes');
 const Offer = require('./modules/offers/offer.model');
 
 const app = express();
@@ -28,37 +34,23 @@ app.set('etag', false);
 
 // Security and utility middleware
 app.use(helmet());
-// Dynamic CORS supporting multiple origins, wildcards, and production frontend deployments
+
+// Dynamic CORS supporting multiple origins and cookies with credentials: true
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow non-browser requests (Postman, curl, server-to-server)
+    // Allow non-browser requests (Postman, curl, server-to-server) or test runner
     if (!origin) return callback(null, true);
 
-    const configured = [
-      env.WEB_ORIGIN,
-      process.env.ALLOWED_ORIGINS,
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3001',
-      'http://localhost:3002',
-      'http://127.0.0.1:3002',
-      'http://localhost:3003',
-      'http://127.0.0.1:3003',
-      'http://localhost:3004',
-      'http://127.0.0.1:3004'
-    ]
-      .filter(Boolean)
-      .flatMap(s => s.split(',').map(item => item.trim().replace(/\/$/, '')));
-
-    if (configured.includes('*') || configured.includes(origin) || env.NODE_ENV !== 'production') {
+    const allowed = getAllowedOrigins();
+    if (allowed.includes('*') || allowed.includes(origin) || env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
-    // Also allow any frontend origin in production if configured with wildcard or open policy
-    return callback(null, true);
+    return callback(null, false);
   },
   credentials: true
 }));
+
+app.use(cookieParser(env.COOKIE_SECRET));
 app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -75,7 +67,22 @@ if (env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
-// Health Check
+// Origin & Anti-Scraping Guard
+app.use('/api', originGuard);
+
+// Global Rate Limiter for all API routes
+app.use('/api', globalLimiter);
+
+// Browser session middleware for unauthenticated visitors
+app.use('/api', browserSessionMiddleware);
+
+// Health Check & Static
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
+
+app.get('/api/v1/health', (req, res) => {
+  res.json({ status: 'ok', service: 'rupadiya-api', uptime: process.uptime(), timestamp: new Date().toISOString(), dbConnected: true });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -111,6 +118,7 @@ app.use('/api/v1/companies', ownerRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/tours', toursRoutes);
 app.use('/api/v1/payments', paymentRoutes);
+app.use('/api/v1/upload', uploadRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -121,4 +129,3 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 module.exports = app;
-

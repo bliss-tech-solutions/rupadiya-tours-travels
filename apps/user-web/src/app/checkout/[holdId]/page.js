@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { useToast } from '../../../components/ui/Toast';
+import { formatDate, formatTime } from '../../../lib/dateUtils';
 
 export default function CheckoutPassengerDetailsPage() {
   const params = useParams();
@@ -25,6 +26,7 @@ export default function CheckoutPassengerDetailsPage() {
   const [checkoutData, setCheckoutData] = useState(null);
   const [passengers, setPassengers] = useState([]);
   const [contactPhone, setContactPhone] = useState('');
+  const [insuranceOpted, setInsuranceOpted] = useState(true);
   const [submittingHold, setSubmittingHold] = useState(false);
 
   useEffect(() => {
@@ -67,7 +69,8 @@ export default function CheckoutPassengerDetailsPage() {
   const seatsCount = checkoutData.selectedSeats?.length || 1;
   const baseTotal = seatsCount * baseFare;
   const gstAmount = Math.round(baseTotal * 0.05); // 5% GST
-  const totalPayable = baseTotal + gstAmount;
+  const insuranceAmount = insuranceOpted ? (seatsCount * 5) : 0; // ₹5/passenger
+  const totalPayable = baseTotal + gstAmount + insuranceAmount;
 
   // Helper: check if two seats are side-by-side in Sleeper or Seater
   const areSeatsSideBySide = (seatA, seatB) => {
@@ -232,6 +235,8 @@ export default function CheckoutPassengerDetailsPage() {
         baseFare,
         baseTotal,
         gstAmount,
+        insuranceOpted,
+        insuranceAmount,
         totalPrice: totalPayable,
         expiresAt,
         routeLabel: `${checkoutData.trip?.route?.fromCity?.name || 'Rupadiya'} → ${checkoutData.trip?.route?.toCity?.name || 'Ahmedabad'}`
@@ -424,6 +429,15 @@ export default function CheckoutPassengerDetailsPage() {
                   <span>GST & Govt. Taxes (5%)</span>
                   <span className="font-bold text-emerald-700">+₹{gstAmount}</span>
                 </div>
+                <div className="flex justify-between text-slate-600 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <span>Travel Insurance</span>
+                    <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">₹5/pax</span>
+                  </div>
+                  <span className={`font-bold ${insuranceOpted ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    {insuranceOpted ? `+₹${insuranceAmount}` : '₹0 (Not Opted)'}
+                  </span>
+                </div>
                 <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-100">
                   <span>Total Payable Amount</span>
                   <span className="text-sky-600">₹{totalPayable}</span>
@@ -480,7 +494,10 @@ export default function CheckoutPassengerDetailsPage() {
               {/* Boarding Point */}
               {checkoutData.boardingPoint && (
                 <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs">
-                  <span className="text-slate-400 font-medium block">Boarding Point:</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-medium">Boarding Point:</span>
+                    <span className="font-bold text-sky-600">{formatTime(checkoutData.boardingPoint.time)}</span>
+                  </div>
                   <span className="font-bold text-slate-800 mt-0.5 block">{checkoutData.boardingPoint.name}</span>
                 </div>
               )}
@@ -494,6 +511,15 @@ export default function CheckoutPassengerDetailsPage() {
                 <div className="flex justify-between text-slate-600 font-medium">
                   <span>GST & Govt. Taxes (5%)</span>
                   <span className="text-emerald-700 font-bold">+₹{gstAmount}</span>
+                </div>
+                <div className="flex justify-between text-slate-600 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <span>Passenger Insurance</span>
+                    <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">₹5/pax</span>
+                  </div>
+                  <span className={`font-bold ${insuranceOpted ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    {insuranceOpted ? `+₹${insuranceAmount}` : '₹0'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-100">
                   <span>Total Payable</span>

@@ -18,10 +18,11 @@ export default function AgentLoginPage() {
     setError('');
     try {
       const res = await api.login(email, password);
-      const token = res.accessToken || res.token || res.data?.token;
       const user = res.user || res.data?.user;
-      localStorage.setItem('agent_token', token);
-      localStorage.setItem('agent_user', JSON.stringify(user));
+      try { localStorage.removeItem('agent_token'); } catch {}
+      if (user) {
+        localStorage.setItem('agent_user', JSON.stringify(user));
+      }
       router.push('/');
     } catch (err) {
       setError(err.message || 'Login failed');

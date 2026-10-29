@@ -1,31 +1,20 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bus, Compass, Ticket, User, LogOut, Menu, X, Calendar } from 'lucide-react';
+import { Bus, Compass, Ticket, User, LogOut, Calendar } from 'lucide-react';
 import LanguageSelector from './LanguageSelector';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 
 export default function Navbar() {
   const pathname = usePathname();
   const { t } = useLanguage();
-  const [user, setUser] = useState(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('rupadiya_user') : null;
-    if (raw) {
-      try {
-        setUser(JSON.parse(raw));
-      } catch (e) {}
-    }
-  }, []);
+  const { user, logout } = useAuth();
 
   const handleLogout = () => {
-    localStorage.removeItem('rupadiya_token');
-    localStorage.removeItem('rupadiya_user');
-    setUser(null);
+    logout();
     window.location.href = '/';
   };
 
@@ -90,7 +79,7 @@ export default function Navbar() {
                     className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-medium transition"
                     title="View Profile"
                   >
-                    <div className="w-6 h-6 rounded-full bg-sky-500 text-white flex items-center justify-center text-xs font-bold">
+                    <div className="w-6 h-6 rounded-full bg-sky-500 text-white flex items-center justify-center text-xs font-bold shadow-xs">
                       {user.name ? user.name[0].toUpperCase() : 'U'}
                     </div>
                     <span className="font-semibold">{user.name || 'Account'}</span>
@@ -98,7 +87,7 @@ export default function Navbar() {
                   <button
                     onClick={handleLogout}
                     title="Sign out"
-                    className="text-slate-400 hover:text-rose-600 p-1.5 transition"
+                    className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer"
                   >
                     <LogOut className="w-4 h-4" />
                   </button>

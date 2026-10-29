@@ -27,6 +27,7 @@ import {
 import { useToast } from '../../../components/ui/Toast';
 import { api } from '../../../lib/api';
 import { downloadTicketPdf } from '../../../lib/pdfGenerator';
+import { formatDate, formatTime } from '../../../lib/dateUtils';
 
 export default function TicketConfirmationPage() {
   const params = useParams();
@@ -98,14 +99,10 @@ export default function TicketConfirmationPage() {
   
   const departureDate = trip?.departureTime || booking?.createdAt;
   const dateStr = departureDate 
-    ? new Date(departureDate).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })
-    : 'Mon, 27th Oct';
+    ? formatDate(departureDate, 'medium')
+    : 'Thu, 29 Oct 2026';
 
-  const timeStr = booking?.boardingPoint?.time 
-    ? new Date(booking.boardingPoint.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : trip?.departureTime
-    ? new Date(trip.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : '05:30 PM';
+  const timeStr = formatTime(booking?.boardingPoint?.time || trip?.departureTime, '05:30 PM');
 
   const seatsStr = (booking?.seatNumbers && booking.seatNumbers.length > 0)
     ? booking.seatNumbers.join(', ')
@@ -133,6 +130,8 @@ export default function TicketConfirmationPage() {
     ?? 1733
   );
   const totalPaid = finalTotalPaid;
+  const insuranceAmount = Number(booking?.insurancePremium ?? fb.insuranceAmount ?? (booking?.insuranceOpted ? seatCount * 5 : 0));
+  const insuranceOpted = Boolean(booking?.insuranceOpted || insuranceAmount > 0);
 
   const discountAmount = Number(fb.discountAmount || 0);
 
@@ -186,6 +185,8 @@ export default function TicketConfirmationPage() {
         boardingName,
         droppingName,
         totalFare: totalPaid,
+        insuranceAmount,
+        insuranceOpted,
         passengers: booking?.passengers || [],
         cashbackCode: cashbackCoupon?.code || 'NEXTTRIP150'
       });
@@ -645,6 +646,23 @@ export default function TicketConfirmationPage() {
                   </span>
                 </div>
 
+                {/* Passenger Travel Protection Insurance */}
+                <div className="flex items-center justify-between text-slate-700">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-800">Passenger Travel Insurance</span>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                        {insuranceOpted ? '✓ Covered (₹5/pax)' : 'Not Opted'}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      Accidental transit cover up to ₹2,00,000 for {seatCount} traveler(s)
+                    </span>
+                  </div>
+                  <span className={`font-bold text-sm ${insuranceOpted ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    {insuranceOpted ? `+₹${insuranceAmount.toLocaleString('en-IN')}` : '₹0'}
+                  </span>
+                </div>
                 {/* 3. Promo / Coupon Discount (if applied) */}
                 {discountAmount > 0 && (
                   <div className="flex items-center justify-between text-emerald-700 bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200/60">

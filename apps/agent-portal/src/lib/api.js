@@ -1,12 +1,29 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4500/api/v1';
 
-async function request(endpoint, options = {}) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('agent_token') : null;
+let isRefreshing = false;
+let refreshSubscribers = [];
+let refreshFailed = false;
+
+export function isAgentSessionValid() {
+  if (typeof window === 'undefined') return false;
+  return Boolean(localStorage.getItem('agent_user'));
+}
+
+function subscribeTokenRefresh(cb) {
+  refreshSubscribers.push(cb);
+}
+
+function onRefreshed(success) {
+  refreshSubscribers.forEach(cb => cb(success));
+  refreshSubscribers = [];
+}
+
+async function request(endpoint, options = {}, isRetry = false) {
   const headers = {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
     'Pragma': 'no-cache',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    'x-rupadiya-client': 'agent-portal',
     ...(options.headers || {})
   };
 
@@ -15,25 +32,104 @@ async function request(endpoint, options = {}) {
     const res = await fetch(url, {
       cache: 'no-store',
       ...options,
-      headers
+      headers,
+      credentials: 'include' // Send httpOnly cookies
     });
+
     if (res.status === 304) {
       return { success: true };
     }
+
+    // 401 Auto-refresh transparent 24hr revalidation
+    if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh') && !endpoint.startsWith('/auth/otp')) {
+      if (refreshFailed || !isAgentSessionValid()) {
+        try { localStorage.removeItem('agent_user'); } catch {}
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
+        throw new Error('Agent authentication required.');
+      }
+
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-rupadiya-client': 'agent-portal'
+            },
+            credentials: 'include'
+          });
+
+          if (refreshRes.ok) {
+            isRefreshing = false;
+            refreshFailed = false;
+            onRefreshed(true);
+            return request(endpoint, options, true);
+          } else {
+            isRefreshing = false;
+            refreshFailed = true;
+            onRefreshed(false);
+            try { localStorage.removeItem('agent_user'); } catch {}
+            if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+              window.location.href = '/login';
+            }
+            throw new Error('Agent session expired. Please sign in again.');
+          }
+        } catch (err) {
+          isRefreshing = false;
+          refreshFailed = true;
+          onRefreshed(false);
+          try { localStorage.removeItem('agent_user'); } catch {}
+          if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+            window.location.href = '/login';
+          }
+          throw err;
+        }
+      } else {
+        return new Promise((resolve, reject) => {
+          subscribeTokenRefresh((success) => {
+            if (success) {
+              resolve(request(endpoint, options, true));
+            } else {
+              reject(new Error('Agent session expired. Please sign in again.'));
+            }
+          });
+        });
+      }
+    }
+
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.error || data.message || `Request failed with status ${res.status}`);
     }
     return data;
   } catch (err) {
-    console.error(`Agent API Error: ${endpoint}`, err);
+    if (!isRetry) {
+      console.error(`Agent API Error: ${endpoint}`, err);
+    }
     throw err;
   }
 }
 
 export const api = {
   // Authentication
-  login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: async (email, password) => {
+    refreshFailed = false;
+    const res = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    if (res?.user) {
+      try { localStorage.setItem('agent_user', JSON.stringify(res.user)); } catch {}
+    }
+    return res;
+  },
+  logout: () => {
+    refreshFailed = true;
+    try { localStorage.removeItem('agent_user'); } catch {}
+    return request('/auth/logout', { method: 'POST' });
+  },
+  refreshToken: () => request('/auth/refresh', { method: 'POST' }),
+  session: () => request('/auth/session'),
   me: () => request('/auth/me'),
 
   // Wallet
@@ -47,6 +143,7 @@ export const api = {
 
   // Unified Razorpay Payment Module
   getPaymentConfig: () => request('/payments/config'),
+  getActivePaymentMethods: (companyCode) => request(`/payments/methods/active${companyCode ? `?companyCode=${companyCode}` : ''}`),
   createPaymentOrder: (payload) => request('/payments/create-order', { method: 'POST', body: JSON.stringify(payload) }),
   verifyPayment: (payload) => request('/payments/verify', { method: 'POST', body: JSON.stringify(payload) }),
 
@@ -86,8 +183,9 @@ export const api = {
   // 6. Cancel Ticket
   cancelTicket: (payload) => request('/agent/tickets/cancel', { method: 'POST', body: JSON.stringify(payload) }),
 
-  // 7. My Rewards
+  // 7. My Rewards & Referrals
   getRewards: () => request('/agent/rewards'),
+  getReferrals: () => request('/agent/referrals'),
 
   // 8. Booking Engine
   searchTrips: (from, to, date) => request(`/trips?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`),

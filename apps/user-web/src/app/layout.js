@@ -5,6 +5,7 @@ import MobileBottomNav from '../components/navigation/MobileBottomNav';
 import SplashScreen from '../components/ui/SplashScreen';
 import { ToastProvider } from '../components/ui/Toast';
 import { LanguageProvider } from '../context/LanguageContext';
+import { AuthProvider } from '../context/AuthContext';
 
 export const viewport = {
   width: 'device-width',
@@ -22,17 +23,19 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className="min-h-screen flex flex-col bg-[#F8FAFC] pb-16 md:pb-0">
-        <LanguageProvider>
-          <ToastProvider>
-            <SplashScreen />
-            <Navbar />
-            <main className="flex-1">
-              {children}
-            </main>
-            <Footer />
-            <MobileBottomNav />
-          </ToastProvider>
-        </LanguageProvider>
+        <AuthProvider>
+          <LanguageProvider>
+            <ToastProvider>
+              <SplashScreen />
+              <Navbar />
+              <main className="flex-1">
+                {children}
+              </main>
+              <Footer />
+              <MobileBottomNav />
+            </ToastProvider>
+          </LanguageProvider>
+        </AuthProvider>
       </body>
     </html>
   );

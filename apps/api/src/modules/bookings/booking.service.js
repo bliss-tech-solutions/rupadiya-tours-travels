@@ -16,7 +16,7 @@ class BookingService {
   /**
    * Quote fare for selected seats
    */
-  async calculateQuote({ tripId, seatNumbers, offerCode }) {
+  async calculateQuote({ tripId, seatNumbers, offerCode, insuranceOpted = false }) {
     const trip = await Trip.findById(tripId);
     if (!trip) throw new Error('Trip not found');
 
@@ -24,6 +24,8 @@ class BookingService {
     const baseFare = trip.baseFare;
     const subtotal = baseFare * seatCount;
     const gstAmount = Math.round(subtotal * env.GST_RATE);
+    const isInsurance = Boolean(insuranceOpted === true || insuranceOpted === 'true' || insuranceOpted === 1);
+    const insuranceAmount = isInsurance ? (seatCount * 5) : 0;
 
     let discountAmount = 0;
     let appliedOffer = null;
@@ -48,7 +50,7 @@ class BookingService {
       }
     }
 
-    const totalPayable = subtotal + gstAmount - discountAmount;
+    const totalPayable = subtotal + gstAmount + insuranceAmount - discountAmount;
 
     return {
       tripId,
@@ -57,6 +59,8 @@ class BookingService {
       baseFare,
       subtotal,
       gstAmount,
+      insuranceOpted: isInsurance,
+      insuranceAmount,
       discountAmount,
       appliedOffer,
       totalPayable
@@ -465,8 +469,14 @@ class BookingService {
     const hoursToDep = (new Date(trip.departureTime) - now) / (1000 * 60 * 60);
 
     let refundPercent = 0.50;
-    if (hoursToDep > 24) refundPercent = 0.90;
-    else if (hoursToDep > 12) refundPercent = 0.70;
+    if (trip.chartPrepared) {
+      // Post-chart manifest generation: 85% cancellation fee (15% refund only)
+      refundPercent = 0.15;
+    } else if (hoursToDep > 24) {
+      refundPercent = 0.90;
+    } else if (hoursToDep > 12) {
+      refundPercent = 0.70;
+    }
 
     const paidTotal = booking.fareBreakdown.totalPayable;
     const refundAmount = Math.round(paidTotal * refundPercent);
