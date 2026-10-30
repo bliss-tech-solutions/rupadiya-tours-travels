@@ -376,6 +376,13 @@ export default function CompanyAgentsPage() {
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/agents/${ag._id || ag.id}`}
+                          className="px-2.5 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-[11px] shadow-xs flex items-center gap-1 transition"
+                        >
+                          <span>View Profile</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </Link>
                         <button
                           onClick={() => {
                             setPreviewAgent(ag);

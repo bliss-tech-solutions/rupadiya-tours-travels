@@ -7,13 +7,16 @@ const { KYC_STATUS } = require('../../config/constants');
 // Submit KYC Document
 router.post('/upload', authenticateToken, async (req, res, next) => {
   try {
-    const { documentType, documentNumber, fileUrl } = req.body;
+    const { documentType, documentNumber, fileUrl, fileUrlBack } = req.body;
     if (!documentType || !documentNumber) {
       return res.status(400).json({ error: 'documentType and documentNumber are required' });
     }
+    if (!fileUrl) {
+      return res.status(400).json({ error: 'Document front image (fileUrl) is required' });
+    }
 
     // Mask the document number for privacy (keep last 4 chars)
-    const cleanNum = documentNumber.replace(/\s+/g, '');
+    const cleanNum = String(documentNumber).replace(/\s+/g, '');
     const masked = cleanNum.length > 4
       ? 'X'.repeat(cleanNum.length - 4) + cleanNum.slice(-4)
       : cleanNum;
@@ -23,7 +26,8 @@ router.post('/upload', authenticateToken, async (req, res, next) => {
       companyCode: req.user.companyCode,
       documentType,
       documentNumberMasked: masked,
-      fileUrl: fileUrl || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=600&q=80',
+      fileUrl,
+      fileUrlBack: fileUrlBack || '',
       status: KYC_STATUS.PENDING
     });
     await doc.save();

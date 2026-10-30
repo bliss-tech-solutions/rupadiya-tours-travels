@@ -13,6 +13,7 @@ const WithdrawalRequest = require('../withdrawals/withdrawal.model');
 const { Wallet, WalletLedger } = require('../wallets/wallet.model');
 const { ROLES, WITHDRAWAL_STATUS, TRANSACTION_TYPES } = require('../../config/constants');
 const Trip = require('../trips/trip.model');
+const websocketService = require('../../services/websocket.service');
 
 // Guard all owner routes: User must be COMPANY_OWNER and scoped to their own companyCode
 router.use(authenticateToken);
@@ -102,6 +103,43 @@ router.get('/agents', async (req, res, next) => {
     });
 
     res.json({ success: true, count: agentsWithWallets.length, agents: agentsWithWallets });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Company Owner - Get Single Agent Details (Scoped to Owner's companyCode)
+router.get('/agents/:id', async (req, res, next) => {
+  try {
+    const agent = await User.findOne({ 
+      _id: req.params.id, 
+      role: ROLES.AGENT,
+      companyCode: req.user.companyCode 
+    }).select('-passwordHash').populate('referredBy', 'name email phone referralCode');
+
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found in your company registry' });
+    }
+
+    const wallet = await Wallet.findOne({ userId: agent._id }) || { balance: 0, availableBalance: 0 };
+    const ledger = await WalletLedger.find({ userId: agent._id }).sort({ createdAt: -1 }).limit(25);
+    const kycDocuments = await KycDocument.find({ userId: agent._id }).sort({ createdAt: -1 });
+    const bookings = await Booking.find({ referralAgentId: agent._id, companyCode: req.user.companyCode }).sort({ createdAt: -1 }).limit(25);
+
+    const totalBookings = await Booking.countDocuments({ referralAgentId: agent._id, companyCode: req.user.companyCode, status: 'CONFIRMED' });
+
+    res.json({
+      success: true,
+      agent,
+      wallet,
+      ledger,
+      kycDocuments,
+      bookings,
+      stats: {
+        totalBookings,
+        commissionTier: agent.commissionTier || 'TIER_1'
+      }
+    });
   } catch (err) {
     next(err);
   }
@@ -406,7 +444,22 @@ router.post('/wallet/deposit', async (req, res, next) => {
     }
 
     companyWallet.availableBalance += numAmount;
+    companyWallet.ownerType = 'COMPANY';
     await companyWallet.save();
+
+    await WalletLedger.create({
+      walletId: companyWallet._id,
+      userId: req.user._id,
+      companyCode: code,
+      entryType: 'CREDIT',
+      amount: numAmount,
+      balanceAfter: companyWallet.availableBalance,
+      transactionType: TRANSACTION_TYPES.WALLET_DEPOSIT,
+      referenceType: 'DEPOSIT',
+      referenceId: 'COMP_DEP_' + Date.now(),
+      description: 'Company Wallet deposit (' + (paymentMethod || 'Online Gateway') + ') by Company Owner',
+      idempotencyKey: 'COMP_DEP_' + code + '_' + Date.now()
+    });
 
     res.json({
       success: true,

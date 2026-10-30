@@ -104,7 +104,9 @@ class PaymentService {
     orderId,
     paymentId,
     signature,
-    userId = null
+    userId = null,
+    paymentMethod = null,
+    gatewayEntity = null
   }) {
     if (!orderId || !paymentId) {
       throw new Error('Order ID and Payment ID are required for verification.');
@@ -149,6 +151,70 @@ class PaymentService {
     payment.signature = signature || 'TEST_SIMULATED_SIG';
     payment.verifiedAt = new Date();
     await payment.save();
+
+    // Discover detailed Razorpay payment method (UPI, Card, Netbanking, Wallet)
+    let rzpMethod = 'RAZORPAY';
+    let rzpDetailInfo = '';
+    let depositorAccount = '';
+
+    if (gatewayEntity && gatewayEntity.method) {
+      const m = String(gatewayEntity.method).toUpperCase();
+      if (['UPI', 'CARD', 'NETBANKING', 'WALLET'].includes(m)) rzpMethod = m;
+      if (gatewayEntity.vpa) {
+        rzpDetailInfo = `UPI (${gatewayEntity.vpa})`;
+        depositorAccount = gatewayEntity.vpa;
+      } else if (gatewayEntity.card) {
+        const net = gatewayEntity.card.network || 'Card';
+        const l4 = gatewayEntity.card.last4 ? `*${gatewayEntity.card.last4}` : '';
+        rzpDetailInfo = `${net} ${l4}`.trim();
+        depositorAccount = rzpDetailInfo;
+      } else if (gatewayEntity.bank) {
+        rzpDetailInfo = `NetBanking (${gatewayEntity.bank})`;
+        depositorAccount = gatewayEntity.bank;
+      } else if (gatewayEntity.wallet) {
+        rzpDetailInfo = `Wallet (${gatewayEntity.wallet})`;
+        depositorAccount = gatewayEntity.wallet;
+      }
+    } else if (this.isConfigured() && !paymentId?.startsWith('pay_sim_')) {
+      try {
+        const authHeader = Buffer.from(`${this.keyId}:${this.keySecret}`).toString('base64');
+        const pRes = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}`, {
+          headers: { 'Authorization': `Basic ${authHeader}` }
+        });
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          const m = (pData.method || '').toUpperCase();
+          if (['UPI', 'CARD', 'NETBANKING', 'WALLET'].includes(m)) rzpMethod = m;
+          if (pData.vpa) {
+            rzpDetailInfo = `UPI (${pData.vpa})`;
+            depositorAccount = pData.vpa;
+          } else if (pData.card) {
+            const net = pData.card.network || 'Card';
+            const l4 = pData.card.last4 ? `*${pData.card.last4}` : '';
+            rzpDetailInfo = `${net} ${l4}`.trim();
+            depositorAccount = rzpDetailInfo;
+          } else if (pData.bank) {
+            rzpDetailInfo = `NetBanking (${pData.bank})`;
+            depositorAccount = pData.bank;
+          } else if (pData.wallet) {
+            rzpDetailInfo = `Wallet (${pData.wallet})`;
+            depositorAccount = pData.wallet;
+          }
+          payment.rawGatewayResponse = pData;
+          payment.paymentMethod = ['UPI', 'CARD', 'NETBANKING', 'WALLET'].includes(rzpMethod) ? rzpMethod : 'RAZORPAY';
+          await payment.save();
+        }
+      } catch (fErr) {
+        console.warn('Could not fetch Razorpay payment mode:', fErr.message);
+      }
+    } else if (paymentMethod) {
+      const pm = String(paymentMethod).toUpperCase();
+      if (['UPI', 'CARD', 'NETBANKING', 'WALLET', 'UPI_QR'].includes(pm)) {
+        rzpMethod = pm;
+        rzpDetailInfo = `${pm} Instant`;
+      }
+    }
+
 
     let fulfillmentResult = {};
 
@@ -198,7 +264,7 @@ class PaymentService {
         transactionType: TRANSACTION_TYPES.WALLET_DEPOSIT,
         referenceType: 'DEPOSIT',
         referenceId: depositRef,
-        description: `Wallet reload via Razorpay (Payment ID: ${paymentId})`,
+        description: `Wallet reload via Razorpay (${rzpDetailInfo ? rzpDetailInfo : rzpMethod}) - Ref: ${paymentId}`,
         idempotencyKey
       });
 
@@ -208,14 +274,15 @@ class PaymentService {
         userId: targetUserId,
         companyCode: payment.companyCode || 1,
         amount: payment.amount,
-        paymentMethod: 'RAZORPAY',
+        paymentMethod: ['UPI', 'CARD', 'NETBANKING', 'WALLET', 'UPI_QR'].includes(rzpMethod) ? rzpMethod : 'RAZORPAY',
         referenceId: paymentId,
         bankDetails: {
-          depositorName: 'Razorpay Online Gateway',
-          notes: `Order ID: ${orderId}`
+          bankName: rzpDetailInfo ? `Razorpay ${rzpDetailInfo}` : 'Razorpay Gateway',
+          senderAccount: depositorAccount || 'Online Terminal',
+          notes: `Order ID: ${orderId} | Gateway: Razorpay (${rzpMethod})`
         },
         status: 'COMPLETED',
-        verifiedBy: 'RAZORPAY_GATEWAY_WEBHOOK',
+        verifiedBy: `RAZORPAY_${rzpMethod}`,
         verifiedAt: new Date()
       });
 

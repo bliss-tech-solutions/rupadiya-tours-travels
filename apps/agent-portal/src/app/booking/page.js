@@ -71,7 +71,7 @@ export default function AgentBookingPage() {
   const [contactName, setContactName] = useState('');
   const [contactMobile, setContactMobile] = useState('');
   const [contactEmail, setContactEmail] = useState('');
-  const [insuranceOpted, setInsuranceOpted] = useState(true);
+  const [insuranceOpted, setInsuranceOpted] = useState(false);
 
   // Payment Mode: 'WALLET' | 'ONLINE'
   const [paymentMode, setPaymentMode] = useState('WALLET');
@@ -988,7 +988,7 @@ export default function AgentBookingPage() {
                       <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">₹5/pax</span>
                     </div>
                     <span className={`font-bold ${insuranceOpted ? 'text-emerald-700' : 'text-slate-400'}`}>
-                      {insuranceOpted ? `+₹${insuranceAmount.toLocaleString('en-IN')}` : '₹0'}
+                      {insuranceOpted ? `+₹${insuranceAmount.toLocaleString('en-IN')}` : '₹0 (Not Opted)'}
                     </span>
                   </div>
                   {serviceCharge > 0 && (
@@ -1176,33 +1176,52 @@ export default function AgentBookingPage() {
               </div>
             </div>
 
-            {/* Travel Insurance Card */}
-            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3.5 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                <div>
-                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                    <span>Passenger Travel Protection Insurance</span>
-                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded">₹5/pax</span>
+            {/* Travel Insurance Card with Explicit Checkbox */}
+            <div className={`border rounded-xl p-4 transition-all duration-200 ${
+              insuranceOpted 
+                ? 'bg-emerald-50/80 border-emerald-300 ring-1 ring-emerald-400' 
+                : 'bg-white border-slate-200'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                    insuranceOpted ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    <ShieldCheck className="w-5 h-5" />
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    Accidental hospitalization up to ₹2,00,000 & emergency medical transit for {selectedSeats.length} seat(s)
-                  </p>
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                      <span>Passenger Travel Protection Insurance</span>
+                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">₹5/pax</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Accidental hospitalization up to ₹2,00,000 & emergency medical transit for {selectedSeats.length} seat(s).
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2.5 shrink-0">
-                <span className={`text-xs font-bold ${insuranceOpted ? 'text-emerald-800' : 'text-slate-400'}`}>
-                  {insuranceOpted ? `+₹${insuranceAmount}` : '₹0'}
-                </span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={insuranceOpted}
-                    onChange={(e) => setInsuranceOpted(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
-                </label>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Status</span>
+                    <span className={`text-xs font-bold ${insuranceOpted ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      {insuranceOpted ? `+₹${insuranceAmount} (Yes)` : '₹0 (No)'}
+                    </span>
+                  </div>
+
+                  <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition select-none ${
+                    insuranceOpted
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={insuranceOpted}
+                      onChange={(e) => setInsuranceOpted(e.target.checked)}
+                      className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                    />
+                    <span>{insuranceOpted ? 'Yes, Covered' : 'No, Skip'}</span>
+                  </label>
+                </div>
               </div>
             </div>
 

@@ -74,7 +74,8 @@ router.post('/verify', paymentLimiter, async (req, res, next) => {
     const {
       orderId,
       paymentId,
-      signature
+      signature,
+      paymentMethod
     } = req.body;
 
     const resolvedUserId = user?.id || user?._id || user?.userId || req.body.userId || req.body.metadata?.userId || null;
@@ -83,7 +84,8 @@ router.post('/verify', paymentLimiter, async (req, res, next) => {
       orderId,
       paymentId,
       signature,
-      userId: resolvedUserId
+      userId: resolvedUserId,
+      paymentMethod
     });
 
     res.json(result);

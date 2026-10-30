@@ -30,7 +30,8 @@ async function authenticateToken(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, env.AUTH_ACCESS_SECRET);
-    const user = await User.findById(decoded.id).select('-passwordHash');
+    const userId = decoded.id || decoded._id || decoded.userId;
+    const user = await User.findById(userId).select('-passwordHash');
 
     if (!user || !user.isActive) {
       return res.status(401).json({ 

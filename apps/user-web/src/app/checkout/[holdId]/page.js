@@ -26,7 +26,7 @@ export default function CheckoutPassengerDetailsPage() {
   const [checkoutData, setCheckoutData] = useState(null);
   const [passengers, setPassengers] = useState([]);
   const [contactPhone, setContactPhone] = useState('');
-  const [insuranceOpted, setInsuranceOpted] = useState(true);
+  const [insuranceOpted, setInsuranceOpted] = useState(false);
   const [submittingHold, setSubmittingHold] = useState(false);
 
   useEffect(() => {
@@ -416,7 +416,58 @@ export default function CheckoutPassengerDetailsPage() {
                 </div>
               </div>
 
-              {/* Mobile Fare & GST Calculation Breakdown */}
+              {/* Travel Protection Insurance Card with Explicit Checkbox */}
+              <div className={`rounded-3xl border p-5 sm:p-6 transition-all duration-200 ${
+                insuranceOpted 
+                  ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/80 shadow-xs' 
+                  : 'bg-white border-slate-200/90 shadow-sm'
+              }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5">
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 mt-0.5 ${
+                      insuranceOpted ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-bold text-slate-900">Passenger Travel Protection Insurance</h3>
+                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                          ₹5 / passenger
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                        Comprehensive cover including accidental hospitalization up to ₹2,00,000, 24x7 emergency medical assistance & baggage loss for {seatsCount} traveler{seatsCount > 1 ? 's' : ''}.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Insurance</span>
+                      <span className={`text-xs font-bold ${insuranceOpted ? 'text-emerald-700' : 'text-slate-500'}`}>
+                        {insuranceOpted ? `+₹${insuranceAmount} (Yes)` : '₹0 (No)'}
+                      </span>
+                    </div>
+
+                    <label className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl border text-xs font-bold cursor-pointer transition select-none ${
+                      insuranceOpted 
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-600/20' 
+                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={insuranceOpted}
+                        onChange={(e) => setInsuranceOpted(e.target.checked)}
+                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                      />
+                      <span>{insuranceOpted ? 'Yes, Covered' : 'No, Skip'}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+                            {/* Mobile Fare & GST Calculation Breakdown */}
               <div className="lg:hidden bg-white rounded-3xl border border-slate-200 p-5 shadow-sm space-y-2.5 text-xs">
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider pb-2 border-b border-slate-100">
                   Fare Calculation & Taxes

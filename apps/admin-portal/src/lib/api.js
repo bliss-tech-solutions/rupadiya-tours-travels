@@ -170,6 +170,7 @@ export const api = {
 
   // 33 Companies Management
   getCompanies: () => request('/admin/companies'),
+  getCompanyByCode: (code) => request(`/admin/companies/${code}`),
   assignCompanyOwner: (code, payload) => request(`/admin/companies/${code}/assign-owner`, { method: 'POST', body: JSON.stringify(payload) }),
   updateCompanyTarget: (code, targetPassengers) => request(`/admin/companies/${code}/target`, { method: 'PATCH', body: JSON.stringify({ targetPassengers }) }),
 
@@ -178,9 +179,11 @@ export const api = {
     const q = new URLSearchParams(params).toString();
     return request(`/admin/agents?${q}`);
   },
+  getAgentById: (id) => request(`/admin/agents/${id}`),
   createAgent: (payload) => request('/admin/agents', { method: 'POST', body: JSON.stringify(payload) }),
   deleteAgent: (id) => request(`/admin/agents/${id}`, { method: 'DELETE' }),
   adjustAgentWallet: (id, payload) => request(`/admin/agents/${id}/wallet`, { method: 'POST', body: JSON.stringify(payload) }),
+  toggleAgentStatus: (id, isActive) => request(`/admin/agents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
 
   // Fleet & Paper Expiry Compliance
   getFleet: () => request('/admin/fleet'),
@@ -189,9 +192,17 @@ export const api = {
   updateBus: (id, payload) => request(`/admin/fleet/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteBus: (id) => request(`/admin/fleet/${id}`, { method: 'DELETE' }),
 
-  // File Upload with Live Progress Tracking
+  // File Upload with Strict 1MB Limit & Live Progress Tracking
   uploadFile: (file, folder = 'documents', onProgress = null) => {
     return new Promise((resolve, reject) => {
+      if (!file) {
+        return reject(new Error('No file selected for upload.'));
+      }
+      // Strict 1MB validation (1,048,576 bytes)
+      if (file.size > 1024 * 1024) {
+        return reject(new Error(`File "${file.name}" exceeds 1MB limit (${(file.size / (1024 * 1024)).toFixed(2)} MB). Please select a file under 1MB.`));
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         try {
@@ -216,11 +227,17 @@ export const api = {
               const data = JSON.parse(xhr.responseText);
               let url = data.url;
               if (url && url.startsWith('/uploads')) {
-                url = `http://localhost:4500${url}`;
+                const backendBase = API_BASE.replace(/\/api\/v1\/?$/, '');
+                url = `${backendBase}${url}`;
               }
               resolve({ success: true, url, key: data.key });
             } else {
-              reject(new Error(`Upload failed with status ${xhr.status}`));
+              let errMsg = `Upload failed with status ${xhr.status}`;
+              try {
+                const errData = JSON.parse(xhr.responseText);
+                if (errData?.error) errMsg = errData.error;
+              } catch {}
+              reject(new Error(errMsg));
             }
           };
 

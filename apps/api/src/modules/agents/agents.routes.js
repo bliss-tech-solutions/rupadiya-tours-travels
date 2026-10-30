@@ -6,6 +6,9 @@ const { authorizeRoles } = require('../../middleware/rbac.middleware');
 const { Wallet, WalletLedger } = require('../wallets/wallet.model');
 const DepositRequest = require('../wallets/deposit.model');
 const { CommissionRecord } = require('../commissions/commission.model');
+const commissionService = require('../commissions/commission.service');
+const taxService = require('../tax/tax.service');
+const websocketService = require('../../services/websocket.service');
 const WithdrawalRequest = require('../withdrawals/withdrawal.model');
 const Booking = require('../bookings/booking.model');
 const Trip = require('../trips/trip.model');
@@ -193,54 +196,63 @@ router.post('/deposits', agentOnly, async (req, res, next) => {
 router.get('/deposits', agentOnly, async (req, res, next) => {
   try {
     const agentId = req.user._id;
-    const { period = 'all', startDate, endDate, status, paymentMethod, search, page = 1, limit = 20 } = req.query;
+    const { period = 'all', startDate, endDate, status, paymentMethod, search, page = 1, limit = 50 } = req.query;
 
+    // Strict user scoping: only fetch records belonging to the authenticated agent
     const query = { userId: agentId };
+
+    const cleanStatus = (status && !['ALL', 'undefined', 'null', ''].includes(String(status).trim())) ? String(status).trim() : null;
+    const cleanMethod = (paymentMethod && !['ALL', 'undefined', 'null', ''].includes(String(paymentMethod).trim())) ? String(paymentMethod).trim() : null;
+    const cleanSearch = (search && !['undefined', 'null', ''].includes(String(search).trim())) ? String(search).trim() : null;
+    const cleanPeriod = (period && !['undefined', 'null', ''].includes(String(period).trim())) ? String(period).trim() : 'all';
 
     // 1. Period date range logic
     const now = new Date();
-    if (period === 'today') {
+    if (cleanPeriod === 'today') {
       const todayStart = new Date(now.setHours(0, 0, 0, 0));
       query.createdAt = { $gte: todayStart };
-    } else if (period === 'yesterday') {
+    } else if (cleanPeriod === 'yesterday') {
       const yStart = new Date(now.setDate(now.getDate() - 1));
       yStart.setHours(0, 0, 0, 0);
       const yEnd = new Date(yStart);
       yEnd.setHours(23, 59, 59, 999);
       query.createdAt = { $gte: yStart, $lte: yEnd };
-    } else if (period === '7d') {
+    } else if (cleanPeriod === '7d') {
       const d7 = new Date(Date.now() - 7 * 24 * 3600 * 1000);
       query.createdAt = { $gte: d7 };
-    } else if (period === '30d') {
+    } else if (cleanPeriod === '30d') {
       const d30 = new Date(Date.now() - 30 * 24 * 3600 * 1000);
       query.createdAt = { $gte: d30 };
-    } else if (period === 'this_month') {
+    } else if (cleanPeriod === 'this_month') {
       const mStart = new Date(now.getFullYear(), now.getMonth(), 1);
       query.createdAt = { $gte: mStart };
-    } else if (period === 'prev_month') {
+    } else if (cleanPeriod === 'prev_month') {
       const pmStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const pmEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
       query.createdAt = { $gte: pmStart, $lte: pmEnd };
-    } else if (period === 'custom' && startDate && endDate) {
-      query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    } else if (cleanPeriod === 'custom' && startDate && endDate && startDate !== 'undefined' && endDate !== 'undefined') {
+      const s = new Date(startDate);
+      const e = new Date(endDate);
+      if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+        query.createdAt = { $gte: s, $lte: new Date(e.setHours(23, 59, 59, 999)) };
+      }
     }
 
     // 2. Status filter
-    if (status && status !== 'ALL') {
-      query.status = status;
+    if (cleanStatus) {
+      query.status = cleanStatus;
     }
 
     // 3. Payment method filter
-    if (paymentMethod && paymentMethod !== 'ALL') {
-      query.paymentMethod = paymentMethod;
+    if (cleanMethod) {
+      query.paymentMethod = cleanMethod;
     }
 
     // 4. Text search
-    if (search) {
-      const s = search.trim();
+    if (cleanSearch) {
       query.$or = [
-        { depositId: { $regex: s, $options: 'i' } },
-        { referenceId: { $regex: s, $options: 'i' } }
+        { depositId: { $regex: cleanSearch, $options: 'i' } },
+        { referenceId: { $regex: cleanSearch, $options: 'i' } }
       ];
     }
 
@@ -253,7 +265,7 @@ router.get('/deposits', agentOnly, async (req, res, next) => {
 
     // Summary totals for selected query
     const allMatches = await DepositRequest.find(query);
-    const totalDepositedSum = allMatches.filter(d => d.status === 'COMPLETED').reduce((acc, d) => acc + d.amount, 0);
+    const totalDepositedSum = allMatches.filter(d => d.status === 'COMPLETED' || d.status === 'SUCCESS').reduce((acc, d) => acc + d.amount, 0);
     const pendingSum = allMatches.filter(d => d.status === 'PENDING').reduce((acc, d) => acc + d.amount, 0);
 
     res.json({
@@ -262,6 +274,14 @@ router.get('/deposits', agentOnly, async (req, res, next) => {
       page: parseInt(page, 10),
       pages: Math.ceil(totalCount / parseInt(limit, 10)),
       deposits,
+      data: {
+        deposits,
+        summary: {
+          totalDepositedSum,
+          pendingSum,
+          count: allMatches.length
+        }
+      },
       summary: {
         totalDepositedSum,
         pendingSum,
@@ -281,25 +301,32 @@ router.get('/statement', agentOnly, async (req, res, next) => {
     const agentId = req.user._id;
     const { startDate, endDate, search, type, page = 1, limit = 50 } = req.query;
 
+    // Strict user scoping: only fetch records belonging to the authenticated agent
     const query = { userId: agentId };
 
-    if (startDate && endDate) {
-      query.createdAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999))
-      };
+    const cleanType = (type && !['ALL', 'undefined', 'null', ''].includes(String(type).trim())) ? String(type).trim().toUpperCase() : null;
+    const cleanSearch = (search && !['undefined', 'null', ''].includes(String(search).trim())) ? String(search).trim() : null;
+
+    if (startDate && endDate && startDate !== 'undefined' && endDate !== 'undefined') {
+      const s = new Date(startDate);
+      const e = new Date(endDate);
+      if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+        query.createdAt = {
+          $gte: s,
+          $lte: new Date(e.setHours(23, 59, 59, 999))
+        };
+      }
     }
 
-    if (type && type !== 'ALL') {
-      query.entryType = type.toUpperCase();
+    if (cleanType) {
+      query.entryType = cleanType;
     }
 
-    if (search) {
-      const s = search.trim();
+    if (cleanSearch) {
       query.$or = [
-        { referenceId: { $regex: s, $options: 'i' } },
-        { description: { $regex: s, $options: 'i' } },
-        { idempotencyKey: { $regex: s, $options: 'i' } }
+        { referenceId: { $regex: cleanSearch, $options: 'i' } },
+        { description: { $regex: cleanSearch, $options: 'i' } },
+        { idempotencyKey: { $regex: cleanSearch, $options: 'i' } }
       ];
     }
 
@@ -320,10 +347,10 @@ router.get('/statement', agentOnly, async (req, res, next) => {
 
     // Opening balance calculation: balance before selected period
     let openingBalance = 0;
-    if (startDate) {
+    if (query.createdAt && query.createdAt.$gte) {
       const priorEntries = await WalletLedger.find({
         userId: agentId,
-        createdAt: { $lt: new Date(startDate) }
+        createdAt: { $lt: query.createdAt.$gte }
       }).sort({ createdAt: 1 });
       const priorCredits = priorEntries.filter(e => e.entryType === 'CREDIT').reduce((acc, e) => acc + e.amount, 0);
       const priorDebits = priorEntries.filter(e => e.entryType === 'DEBIT').reduce((acc, e) => acc + e.amount, 0);
@@ -342,7 +369,19 @@ router.get('/statement', agentOnly, async (req, res, next) => {
       page: parseInt(page, 10),
       pages: Math.ceil(total / parseInt(limit, 10)),
       total,
-      statement: ledgerEntries
+      statement: ledgerEntries,
+      transactions: ledgerEntries,
+      data: {
+        statement: ledgerEntries,
+        transactions: ledgerEntries,
+        summary: {
+          openingBalance,
+          totalCredits,
+          totalDebits,
+          closingBalance: wallet.availableBalance,
+          transactionCount: total
+        }
+      }
     });
   } catch (err) {
     next(err);
@@ -641,7 +680,9 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
       contactEmail,
       contactDetails,
       agentServiceFee,
-      serviceCharge
+      serviceCharge,
+      insuranceOpted,
+      insuranceAmount: reqInsuranceAmount
     } = req.body;
 
     const seatsToBook = (selectedSeats && selectedSeats.length > 0) ? selectedSeats : (seatNumbers || []);
@@ -657,7 +698,9 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
     const subtotal = seatsToBook.length * baseFare;
     const gstAmount = Math.round(subtotal * 0.05);
     const fee = Number(agentServiceFee ?? serviceCharge ?? 0);
-    const totalFare = subtotal + gstAmount + fee;
+    const isInsurance = Boolean(insuranceOpted === true || insuranceOpted === 'true' || insuranceOpted === 1);
+    const insAmount = isInsurance ? (seatsToBook.length * 5) : 0;
+    const totalFare = subtotal + gstAmount + fee + insAmount;
 
     // 1. Verify Agent Wallet Balance
     const wallet = await getOrCreateAgentWallet(agentId, req.user.companyCode);
@@ -756,55 +799,64 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
         seatCount: seatsToBook.length,
         subtotal,
         gstAmount,
+        insuranceAmount: insAmount,
         discountAmount: 0,
         totalPayable: totalFare
       },
+      insuranceOpted: isInsurance,
+      insurancePremium: insAmount,
       status: 'CONFIRMED',
       paymentStatus: 'SUCCESS',
       paymentProvider: 'agent_wallet',
       paymentReference: `WAL_${bookingId}`
     });
 
-    // 6. Calculate & credit instant agent cashback reward
-    const rate = req.user.customCashbackPercent || 2.0;
-    const cashbackAmount = Math.round((subtotal * rate) / 100);
-
-    if (cashbackAmount > 0) {
-      wallet.availableBalance += cashbackAmount;
-      await wallet.save();
-
-      await CommissionRecord.create({
-        agentId,
-        bookingId: booking._id,
-        level: 1,
-        seatCount: selectedSeats.length,
-        ticketFare: subtotal,
-        grossCommission: cashbackAmount,
-        tcsDeducted: 0,
-        netCommission: cashbackAmount,
-        status: 'CREDITED'
+    // Record 5% GST in tax_entries
+    try {
+      await taxService.recordGstEntry({
+        booking,
+        subtotal,
+        gstAmount
       });
+    } catch (taxErr) {
+      console.error('[TaxEngine GST Error]', taxErr);
+    }
 
-      await WalletLedger.create({
-        walletId: wallet._id,
-        userId: agentId,
-        companyCode: req.user.companyCode || 1,
-        entryType: 'CREDIT',
-        amount: cashbackAmount,
-        balanceAfter: wallet.availableBalance,
-        transactionType: TRANSACTION_TYPES.TICKET_COMMISSION_CREDIT,
-        referenceType: 'COMMISSION',
-        referenceId: `CB_${bookingId}`,
-        description: `Instant Agent Cashback (${rate}% on ₹${subtotal}) for #${bookingId}`,
-        idempotencyKey: `IDEM_CB_${bookingId}_${Date.now()}`
+    // 6. Calculate and distribute 5-level referral commissions (L1..L5 less 1% TCS)
+    let commRecords = [];
+    try {
+      commRecords = await commissionService.distributeCommissions({
+        booking,
+        trip,
+        seatCount: seatsToBook.length
       });
+      if (Array.isArray(commRecords)) {
+        commRecords.forEach(cr => {
+          websocketService.broadcastCommissionEarned(cr.agentId, {
+            pnr: booking.pnr,
+            level: cr.level,
+            grossCommission: cr.grossCommission,
+            tcsDeducted: cr.tcsDeducted,
+            netCommission: cr.netCommission
+          });
+        });
+      }
+    } catch (commErr) {
+      console.error('[Commission Engine Error]', commErr);
+    }
+
+    // 7. Broadcast real-time booking confirmation to trip, company, admin, user
+    try {
+      websocketService.broadcastBookingConfirmed(booking, trip);
+    } catch (wsErr) {
+      console.error('[WebSocket Broadcast Error]', wsErr);
     }
 
     res.status(201).json({
       success: true,
       message: `Booking #${bookingId} confirmed successfully via Agent Wallet.`,
       booking,
-      cashbackEarned: cashbackAmount,
+      commissionsEarned: commRecords,
       walletBalance: wallet.availableBalance
     });
   } catch (err) {

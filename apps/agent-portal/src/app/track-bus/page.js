@@ -24,6 +24,7 @@ export default function TrackBusPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [trackedTicket, setTrackedTicket] = useState(null);
+  console.log('trackedTicket >>> ', trackedTicket);
 
   // Quick list of upcoming bookings issued by agent
   const [upcomingList, setUpcomingList] = useState([]);
@@ -138,10 +139,10 @@ export default function TrackBusPage() {
             <div>
               <span className="text-[10px] text-slate-500 uppercase block font-semibold">Boarding Stand</span>
               <div className="text-sm font-bold text-slate-900 mt-0.5">
-                {trackedTicket.trip?.sourceCity || trackedTicket.tripId?.sourceCity || 'Rupadiya'}
+                {trackedTicket.trip?.sourceCity || trackedTicket.tripId?.sourceCity || trackedTicket.tripId?.fromCity?.name || 'Rupadiya'}
               </div>
               <div className="text-emerald-700 font-medium">
-                {trackedTicket.boardingPoint?.location || 'Main Stand'}
+                {trackedTicket.boardingPoint?.location || trackedTicket.boardingPoint?.name || 'Main Stand'}
               </div>
               <div className="text-slate-500 flex items-center gap-1 mt-1">
                 <Clock className="w-3.5 h-3.5 text-slate-400" /> Departure: {trackedTicket.trip?.departureTime || trackedTicket.tripId?.departureTime || '05:30 PM'}
@@ -164,10 +165,10 @@ export default function TrackBusPage() {
             <div className="text-left md:text-right">
               <span className="text-[10px] text-slate-500 uppercase block font-semibold">Dropping Stand</span>
               <div className="text-sm font-bold text-slate-900 mt-0.5">
-                {trackedTicket.trip?.destinationCity || trackedTicket.tripId?.destinationCity || 'Destination'}
+                {trackedTicket.trip?.destinationCity || trackedTicket.tripId?.destinationCity || trackedTicket.tripId?.toCity?.name  || 'Destination'}
               </div>
               <div className="text-slate-700 font-medium">
-                {trackedTicket.droppingPoint?.location || 'Central Stand'}
+                {trackedTicket.droppingPoint?.location || trackedTicket.droppingPoint?.name || 'Central Stand'}
               </div>
               <div className="text-slate-500 flex items-center gap-1 mt-1 md:justify-end">
                 <Clock className="w-3.5 h-3.5 text-slate-400" /> Arrival: {trackedTicket.trip?.arrivalTime || trackedTicket.tripId?.arrivalTime || 'Morning'}

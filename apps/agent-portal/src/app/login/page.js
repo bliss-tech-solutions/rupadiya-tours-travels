@@ -19,7 +19,8 @@ export default function AgentLoginPage() {
     try {
       const res = await api.login(email, password);
       const user = res.user || res.data?.user;
-      try { localStorage.removeItem('agent_token'); } catch {}
+      const token = res.accessToken || res.token || res.data?.accessToken || res.data?.token;
+      if (token) { localStorage.setItem('agent_token', token); }
       if (user) {
         localStorage.setItem('agent_user', JSON.stringify(user));
       }

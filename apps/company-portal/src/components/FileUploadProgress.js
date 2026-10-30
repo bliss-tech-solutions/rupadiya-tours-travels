@@ -24,8 +24,11 @@ export default function FileUploadProgress({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 10 * 1024 * 1024) {
-      setError('File size must be under 10MB');
+    // Strict 1MB max file size enforcement (1,048,576 bytes)
+    const MAX_1MB = 1 * 1024 * 1024;
+    if (file.size > MAX_1MB) {
+      setError(`File size exceeds 1MB limit (${(file.size / (1024 * 1024)).toFixed(2)} MB). Please select a file under 1MB.`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
@@ -84,7 +87,7 @@ export default function FileUploadProgress({
               <img
                 src={fileUrl}
                 alt="Uploaded document"
-                className="w-10 h-10 rounded-xl object-cover border border-blue-200 shrink-0"
+                className="w-10 h-10 rounded-xl object-cover border border-blue-200 shrink-0 bg-white"
               />
             )}
             <div className="min-w-0">
@@ -92,7 +95,7 @@ export default function FileUploadProgress({
                 {fileName || 'Uploaded Document'}
               </span>
               <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Uploaded to S3 Storage
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Uploaded (Max 1MB verified)
               </span>
             </div>
           </div>
@@ -101,69 +104,75 @@ export default function FileUploadProgress({
             <a
               href={fileUrl}
               target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-blue-600 transition"
-              title="Preview Document"
+              rel="noreferrer"
+              className="p-1.5 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 transition"
+              title="Preview document"
             >
-              <Eye className="w-4 h-4" />
+              <Eye className="w-3.5 h-3.5" />
             </a>
             <button
               type="button"
               onClick={handleRemove}
               className="p-1.5 rounded-lg bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-              title="Remove File"
+              title="Remove document"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
-          </div>
-        </div>
-      ) : uploading ? (
-        <div className="p-4 rounded-2xl bg-slate-50 border border-blue-200 space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-slate-700">Uploading {fileName}...</span>
-            <span className="font-mono font-bold text-blue-700">{progress}%</span>
-          </div>
-          <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-blue-600 to-sky-500 transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
           </div>
         </div>
       ) : (
         <div>
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 rounded-2xl p-4 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1.5 group"
+            className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition ${
+              uploading
+                ? 'border-blue-400 bg-blue-50/40'
+                : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/20'
+            }`}
           >
-            <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition">
-              <UploadCloud className="w-4 h-4" />
-            </div>
-            <span className="text-xs font-bold text-slate-700 group-hover:text-blue-700">
-              Click to select or drag document
-            </span>
-            <span className="text-[10px] text-slate-400">
-              {description || 'PNG, JPG, WEBP or PDF up to 10MB'}
-            </span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={accept}
+              onChange={handleFileChange}
+              disabled={uploading}
+              className="hidden"
+            />
+
+            {uploading ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-blue-700">
+                  <span>Uploading {fileName}...</span>
+                  <span>{progress}%</span>
+                </div>
+                <div className="w-full bg-blue-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-blue-600 h-full rounded-full transition-all duration-200"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <UploadCloud className="w-6 h-6 text-slate-400 mx-auto" />
+                <div className="text-xs font-bold text-slate-700">
+                  Click to browse or drag & drop file
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  {description || 'Supported formats: JPG, PNG, WEBP, PDF (Max 1MB)'}
+                </p>
+              </div>
+            )}
           </div>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={accept}
-            onChange={handleFileChange}
-            className="hidden"
-          />
-        </div>
-      )}
-
-      {error && (
-        <div className="flex items-center gap-1.5 text-rose-600 text-[11px] font-semibold pt-1">
-          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-          <span>{error}</span>
+          {error && (
+            <div className="mt-1.5 text-xs text-rose-600 font-bold flex items-center gap-1">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
-

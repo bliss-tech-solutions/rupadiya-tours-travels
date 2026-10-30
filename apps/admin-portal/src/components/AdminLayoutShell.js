@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import AdminSidebar from './Sidebar';
+import RealtimeNotificationListener from './RealtimeNotificationListener';
 import { ShieldAlert, LogOut, Clock, Menu, X, User } from 'lucide-react';
 import { api, isAdminSessionValid } from '../lib/api';
 
@@ -164,6 +165,7 @@ export default function AdminLayoutShell({ children }) {
           </div>
         </main>
       </div>
+      <RealtimeNotificationListener />
     </div>
   );
 }

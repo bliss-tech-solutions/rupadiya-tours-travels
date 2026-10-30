@@ -63,9 +63,9 @@ export default function Footer() {
             <div className="space-y-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Portals</span>
               <ul className="space-y-2 text-xs text-slate-400">
-                <li><a href="http://localhost:3002" target="_blank" rel="noreferrer" className="hover:text-sky-400 transition">Agent Terminal (Port 3002) →</a></li>
-                <li><a href="http://localhost:3003" target="_blank" rel="noreferrer" className="hover:text-sky-400 transition">Company Fleet (Port 3003) →</a></li>
-                <li><a href="http://localhost:3004" target="_blank" rel="noreferrer" className="hover:text-sky-400 transition">Super Admin (Port 3004) →</a></li>
+                <li><a href="http://localhost:3002" target="_blank" rel="noreferrer" className="hover:text-sky-400 transition">Agent Portal →</a></li>
+                <li><a href="https://rupadiya-tours-travels-ws19.vercel.app" target="_blank" rel="noreferrer" className="hover:text-sky-400 transition">Company Portal →</a></li>
+               
               </ul>
             </div>
           </div>

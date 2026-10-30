@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
@@ -345,6 +347,13 @@ export default function AdminGlobalAgentsPage() {
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/agents/${ag._id || ag.id}`}
+                          className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] border border-blue-200 flex items-center gap-1 transition"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          <span>View Profile</span>
+                        </Link>
                         <button
                           onClick={() => {
                             setSelectedAgent(ag);

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Menu, X, Wallet, PlusCircle, RefreshCw, Sparkles, ShieldCheck } from 'lucide-react';
 import AgentSidebar from './Sidebar';
+import RealtimeAgentListener from './RealtimeNotificationListener';
 import { useWallet } from '../context/WalletContext';
 import { isAgentSessionValid } from '../lib/api';
 
@@ -166,7 +167,7 @@ export default function AgentLayoutShell({ children }) {
           </div>
         </main>
       </div>
-
+      <RealtimeAgentListener />
     </div>
   );
 }

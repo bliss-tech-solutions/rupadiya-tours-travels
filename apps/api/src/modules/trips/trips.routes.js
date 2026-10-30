@@ -94,6 +94,15 @@ router.post('/', async (req, res, next) => {
     const bus = await Bus.findById(busId);
     if (!bus) return res.status(404).json({ error: 'Bus not found' });
 
+    if (typeof bus.checkCompliance === 'function') {
+      const compliance = bus.checkCompliance();
+      if (!compliance.isCompliant) {
+        return res.status(400).json({
+          error: 'Bus ' + bus.busNumber + ' cannot be scheduled due to expired documents: ' + compliance.expiredDocs.join(', ')
+        });
+      }
+    }
+
     const isSleeper = bus.layoutType === '2+1' || bus.busType.toLowerCase().includes('sleeper');
     const seats = isSleeper ? Trip.generateSleeper36Seats(baseFare) : Trip.generateSeater40Seats(baseFare);
 

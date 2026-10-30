@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
@@ -262,7 +264,14 @@ export default function AdminCompaniesPage() {
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button
+                          <Link
+                            href={`/companies/${c.companyCode}`}
+                            className="px-2.5 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-bold text-[11px] shadow-xs transition flex items-center gap-1"
+                          >
+                            <span>View Details</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </Link>
+<button
                             onClick={() => {
                               setSelectedComp(c);
                               setOwnerEmail(c.ownerId?.email || '');

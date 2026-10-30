@@ -200,9 +200,17 @@ export const api = {
   updateBus: (id, busData) => request(`/owner/fleet/${id}`, { method: 'PUT', body: JSON.stringify(busData) }),
   deleteBus: (id) => request(`/owner/fleet/${id}`, { method: 'DELETE' }),
 
-  // File Upload with Live Progress
+  // File Upload with Strict 1MB Limit & Live Progress
   uploadFile: (file, folder = 'documents', onProgress = null) => {
     return new Promise((resolve, reject) => {
+      if (!file) {
+        return reject(new Error('No file selected for upload.'));
+      }
+      // Strict 1MB limit check (1,048,576 bytes)
+      if (file.size > 1024 * 1024) {
+        return reject(new Error(`File "${file.name}" exceeds 1MB limit (${(file.size / (1024 * 1024)).toFixed(2)} MB). Please select a file under 1MB.`));
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         try {
@@ -227,11 +235,17 @@ export const api = {
               const data = JSON.parse(xhr.responseText);
               let url = data.url;
               if (url && url.startsWith('/uploads')) {
-                url = `http://localhost:4500${url}`;
+                const backendBase = API_BASE.replace(/\/api\/v1\/?$/, '');
+                url = `${backendBase}${url}`;
               }
               resolve({ success: true, url, key: data.key });
             } else {
-              reject(new Error(`Upload failed with status ${xhr.status}`));
+              let errMsg = `Upload failed with status ${xhr.status}`;
+              try {
+                const errData = JSON.parse(xhr.responseText);
+                if (errData?.error) errMsg = errData.error;
+              } catch {}
+              reject(new Error(errMsg));
             }
           };
 
@@ -263,6 +277,7 @@ export const api = {
 
   // Agents Management
   getAgents: () => request('/owner/agents'),
+  getAgentById: (id) => request(`/owner/agents/${id}`),
   getCompanyAgents: () => request('/owner/agents'),
   createAgent: (payload) => request('/owner/agents', { method: 'POST', body: JSON.stringify(payload) }),
   deleteAgent: (id) => request(`/owner/agents/${id}`, { method: 'DELETE' }),

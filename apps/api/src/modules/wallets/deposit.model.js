@@ -23,7 +23,7 @@ const depositSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['UPI_QR', 'BANK_TRANSFER', 'UPI', 'CARD', 'NETBANKING', 'RAZORPAY'],
+    enum: ['UPI_QR', 'BANK_TRANSFER', 'UPI', 'CARD', 'NETBANKING', 'RAZORPAY', 'WALLET'],
     default: 'UPI'
   },
   referenceId: {

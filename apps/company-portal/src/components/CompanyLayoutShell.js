@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Menu, X, Building2, Wallet, RefreshCw } from 'lucide-react';
 import { useCompanyWallet } from '../context/CompanyWalletContext';
 import CompanySidebar from './Sidebar';
+import RealtimeNotificationListener from './RealtimeNotificationListener';
 import { api, isOwnerSessionValid, clearOwnerSession } from '../lib/api';
 
 export default function CompanyLayoutShell({ children }) {
@@ -155,6 +156,7 @@ export default function CompanyLayoutShell({ children }) {
           </div>
         </main>
       </div>
+      <RealtimeNotificationListener companyCode={contextCode} />
     </div>
   );
 }

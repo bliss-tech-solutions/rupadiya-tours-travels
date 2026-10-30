@@ -29,7 +29,7 @@ class AuthService {
       expiresIn: env.AUTH_ACCESS_EXPIRES_IN || '15m'
     });
 
-    const refreshToken = jwt.sign(payload, env.AUTH_REFRESH_SECRET, {
+    const refreshToken = jwt.sign({ ...payload, jti: crypto.randomUUID() }, env.AUTH_REFRESH_SECRET, {
       expiresIn: env.AUTH_REFRESH_EXPIRES_IN || '24h'
     });
 
@@ -138,6 +138,13 @@ class AuthService {
       { $set: { passengerId: user._id } }
     );
 
+    // Unlock account if previously locked by password failures per PDF spec
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      user.failedLoginAttempts = 0;
+      user.lockedUntil = null;
+      await user.save();
+    }
+
     const tokens = await this.generateTokens(user, meta);
     const sanitized = user.toObject();
     delete sanitized.passwordHash;
@@ -164,16 +171,17 @@ class AuthService {
       referrer = await User.findOne({ referralCode: referralCode.toUpperCase(), role: ROLES.AGENT });
     }
 
-    const user = new User({
+    const userData = {
       name,
       email: email.toLowerCase(),
       phone,
       passwordHash,
       role,
       companyCode: (role === ROLES.COMPANY_OWNER || role === ROLES.AGENT) ? companyCode : null,
-      referralCode: userReferralCode,
       referredBy: referrer ? referrer._id : null
-    });
+    };
+    if (userReferralCode) userData.referralCode = userReferralCode;
+    const user = new User(userData);
 
     await user.save();
 
@@ -199,9 +207,30 @@ class AuthService {
       throw new Error('Invalid email or password');
     }
 
+    // Check account lockout per PDF page 2, Section 4.1
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const remainingMinutes = Math.ceil((user.lockedUntil - new Date()) / (60 * 1000));
+      throw new Error('Account locked after 5 failed attempts. Please retry in ' + remainingMinutes + ' minute(s) or verify via Mobile OTP to unlock.');
+    }
+
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      throw new Error('Invalid email or password');
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      if (user.failedLoginAttempts >= 5) {
+        user.lockedUntil = new Date(Date.now() + 30 * 60 * 1000);
+        await user.save();
+        throw new Error('Account locked after 5 failed attempts. Please retry in 30 minutes or unlock via Mobile OTP.');
+      }
+      await user.save();
+      const remainingAttempts = 5 - user.failedLoginAttempts;
+      throw new Error('Invalid email or password. ' + remainingAttempts + ' attempt(s) remaining before account lockout.');
+    }
+
+    // Reset failed attempts upon successful password login
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      user.failedLoginAttempts = 0;
+      user.lockedUntil = null;
+      await user.save();
     }
 
     if (!user.isActive) {

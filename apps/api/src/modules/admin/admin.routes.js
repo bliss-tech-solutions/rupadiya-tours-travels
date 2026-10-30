@@ -142,6 +142,59 @@ router.patch('/companies/:code/target', async (req, res, next) => {
   }
 });
 
+// Get Detailed Profile for a Company Code (Overview, Owner, Fleet, Agents, Stats)
+router.get('/companies/:code', async (req, res, next) => {
+  try {
+    const code = parseInt(req.params.code, 10);
+    let company = await Company.findOne({ companyCode: code }).populate('ownerId', 'name email phone role isActive createdAt');
+    if (!company) {
+      const def = COMPANY_CODES.find(c => c.code === code);
+      company = {
+        companyCode: code,
+        name: def ? def.defaultName : `Company #${String(code).padStart(2, '0')}`,
+        slug: def ? def.slug : `comp-${code}`,
+        ownerId: null,
+        status: 'UNASSIGNED',
+        annualTarget: { targetPassengers: 10000, currentPassengers: 0, financialYear: '2026-2027' }
+      };
+    }
+
+    const buses = await Bus.find({ companyCode: code }).sort({ createdAt: -1 });
+    const agents = await User.find({ companyCode: code, role: ROLES.AGENT }).select('-passwordHash').sort({ createdAt: -1 });
+    const agentIds = agents.map(a => a._id);
+    const wallets = await Wallet.find({ userId: { $in: agentIds } });
+    const walletMap = new Map(wallets.map(w => [String(w.userId), w]));
+
+    const enrichedAgents = agents.map(a => ({
+      ...a.toObject(),
+      wallet: walletMap.get(String(a._id)) || { balance: 0, availableBalance: 0 }
+    }));
+
+    const confirmedBookings = await Booking.find({ companyCode: code, status: 'CONFIRMED' });
+    const totalGMV = confirmedBookings.reduce((sum, b) => sum + (b.fareBreakdown?.totalPayable || 0), 0);
+    const totalPassengers = confirmedBookings.reduce((sum, b) => sum + (b.seatNumbers?.length || 0), 0);
+
+    res.json({
+      success: true,
+      company,
+      owner: company.ownerId || null,
+      buses,
+      agents: enrichedAgents,
+      stats: {
+        totalBuses: buses.length,
+        totalAgents: agents.length,
+        totalPassengers,
+        totalGMV,
+        targetPassengers: company.annualTarget?.targetPassengers || 10000,
+        progressPercent: Math.min(100, Math.round((totalPassengers / (company.annualTarget?.targetPassengers || 10000)) * 100))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
 // -------------------------------------------------------------
 // GLOBAL AGENTS MANAGEMENT (Across all 33 Companies)
 // -------------------------------------------------------------
@@ -295,6 +348,58 @@ router.post('/agents', async (req, res, next) => {
         reservedBalance: wallet.reservedBalance
       }
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Super Admin Get Single Agent Detailed Profile
+router.get('/agents/:id', async (req, res, next) => {
+  try {
+    const agent = await User.findOne({ _id: req.params.id, role: ROLES.AGENT }).select('-passwordHash').populate('referredBy', 'name email phone referralCode');
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const wallet = await Wallet.findOne({ userId: agent._id }) || { balance: 0, availableBalance: 0, reservedBalance: 0, isActive: true };
+    const ledger = await WalletLedger.find({ userId: agent._id }).sort({ createdAt: -1 }).limit(30);
+    const kycDocuments = await KycDocument.find({ userId: agent._id }).sort({ createdAt: -1 });
+    const bookings = await Booking.find({ referralAgentId: agent._id }).sort({ createdAt: -1 }).limit(30);
+
+    const company = await Company.findOne({ companyCode: agent.companyCode }) || { name: `Company #${String(agent.companyCode).padStart(2, '0')}`, companyCode: agent.companyCode };
+
+    const totalTickets = await Booking.countDocuments({ referralAgentId: agent._id, status: 'CONFIRMED' });
+    const totalGMV = bookings.reduce((sum, b) => sum + (b.fareBreakdown?.totalPayable || 0), 0);
+
+    res.json({
+      success: true,
+      agent,
+      wallet,
+      ledger,
+      kycDocuments,
+      bookings,
+      company,
+      stats: {
+        totalTickets,
+        totalGMV
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Super Admin Toggle Agent Status (Active / Suspended)
+router.patch('/agents/:id/status', async (req, res, next) => {
+  try {
+    const { isActive } = req.body;
+    const agent = await User.findOne({ _id: req.params.id, role: ROLES.AGENT });
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+    agent.isActive = Boolean(isActive);
+    await agent.save();
+
+    res.json({ success: true, message: `Agent status updated to ${agent.isActive ? 'ACTIVE' : 'SUSPENDED'}`, isActive: agent.isActive });
   } catch (err) {
     next(err);
   }

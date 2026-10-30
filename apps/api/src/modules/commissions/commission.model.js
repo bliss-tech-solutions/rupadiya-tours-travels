@@ -43,6 +43,9 @@ const commissionRecordSchema = new mongoose.Schema({
   },
   seatCount: { type: Number, required: true },
   ratePerSeat: { type: Number, required: true },
+  bonusPerSeat: { type: Number, default: 20 },
+  effectiveRatePerSeat: { type: Number, required: true },
+  companyCode: { type: Number, default: null },
   grossCommission: { type: Number, required: true },
   tcsRate: { type: Number, default: 0.01 }, // 1% TCS
   tcsDeducted: { type: Number, required: true },

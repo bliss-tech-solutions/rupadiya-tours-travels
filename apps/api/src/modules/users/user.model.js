@@ -22,7 +22,8 @@ const userSchema = new mongoose.Schema({
     unique: true,
     sparse: true,
     uppercase: true,
-    trim: true
+    trim: true,
+    default: undefined
   },
   referredBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -79,6 +80,14 @@ const userSchema = new mongoose.Schema({
     bookingChargeType: { type: String, enum: ['FIXED', 'PERCENT'], default: 'FIXED' },
     cancellationCharge: { type: Number, default: 100 },
     cancellationChargeType: { type: String, enum: ['FIXED', 'PERCENT'], default: 'FIXED' }
+  },
+  failedLoginAttempts: {
+    type: Number,
+    default: 0
+  },
+  lockedUntil: {
+    type: Date,
+    default: null
   },
   isActive: { type: Boolean, default: true }
 }, {

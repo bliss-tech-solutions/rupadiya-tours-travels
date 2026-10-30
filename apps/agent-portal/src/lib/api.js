@@ -165,6 +165,71 @@ export const api = {
   session: () => request('/auth/session'),
   me: () => request('/auth/me'),
 
+  // File Upload with Strict 1MB Limit
+  uploadFile: (file, folder = 'documents', onProgress = null) => {
+    return new Promise((resolve, reject) => {
+      if (!file) {
+        return reject(new Error('No file selected for upload.'));
+      }
+      // Strict 1MB validation (1,048,576 bytes)
+      if (file.size > 1024 * 1024) {
+        return reject(new Error(`File "${file.name}" exceeds 1MB limit (${(file.size / (1024 * 1024)).toFixed(2)} MB). Please select a file under 1MB.`));
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const base64Data = reader.result;
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `${API_BASE}/upload/direct`);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.setRequestHeader('x-rupadiya-client', 'agent-portal');
+          xhr.withCredentials = true;
+
+          if (xhr.upload && onProgress) {
+            xhr.upload.onprogress = (evt) => {
+              if (evt.lengthComputable) {
+                const percent = Math.round((evt.loaded / evt.total) * 100);
+                onProgress(percent);
+              }
+            };
+          }
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const data = JSON.parse(xhr.responseText);
+              let url = data.url;
+              if (url && url.startsWith('/uploads')) {
+                const backendBase = API_BASE.replace(/\/api\/v1\/?$/, '');
+                url = `${backendBase}${url}`;
+              }
+              resolve({ success: true, url, key: data.key });
+            } else {
+              let errMsg = `Upload failed with status ${xhr.status}`;
+              try {
+                const errData = JSON.parse(xhr.responseText);
+                if (errData?.error) errMsg = errData.error;
+              } catch {}
+              reject(new Error(errMsg));
+            }
+          };
+
+          xhr.onerror = () => reject(new Error('Network error during file upload'));
+          xhr.send(JSON.stringify({
+            folder,
+            fileName: file.name,
+            contentType: file.type || 'application/octet-stream',
+            base64Data
+          }));
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  },
+
   // Wallet
   getMyWallet: () => request('/wallet'),
   getWallet: () => request('/wallet'),
@@ -188,14 +253,26 @@ export const api = {
 
   // 3. Deposit History
   getDepositHistory: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return request(`/agent/deposits?${query}`);
+    const cleanParams = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '' && v !== 'undefined' && v !== 'ALL') {
+        cleanParams[k] = v;
+      }
+    }
+    const query = new URLSearchParams(cleanParams).toString();
+    return request(`/agent/deposits${query ? `?${query}` : ''}`);
   },
 
   // 4. Statement
   getStatement: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return request(`/agent/statement?${query}`);
+    const cleanParams = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '' && v !== 'undefined' && v !== 'ALL') {
+        cleanParams[k] = v;
+      }
+    }
+    const query = new URLSearchParams(cleanParams).toString();
+    return request(`/agent/statement${query ? `?${query}` : ''}`);
   },
 
   // 5. Print Ticket / Lookup
@@ -238,8 +315,9 @@ export const api = {
   updateSettings: (payload) => request('/agent/settings', { method: 'PUT', body: JSON.stringify(payload) }),
 
   // KYC
-  getKycStatus: () => request('/kyc/me'),
-  submitKyc: (kycData) => request('/kyc/submit', { method: 'POST', body: JSON.stringify(kycData) }),
+  getKycStatus: () => request('/kyc/status'),
+  uploadKyc: (payload) => request('/kyc/upload', { method: 'POST', body: JSON.stringify(payload) }),
+  submitKyc: (payload) => request('/kyc/upload', { method: 'POST', body: JSON.stringify(payload) }),
 
   // Legacy Withdrawals (if needed)
   requestWithdrawal: (amount, bankDetails) => request('/withdrawals/request', { method: 'POST', body: JSON.stringify({ amount, bankDetails }) }),

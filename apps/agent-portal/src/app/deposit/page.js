@@ -119,7 +119,8 @@ export default function MakeDepositPage() {
               orderId: rzpResponse.razorpay_order_id,
               paymentId: rzpResponse.razorpay_payment_id,
               signature: rzpResponse.razorpay_signature,
-              userId: uId
+              userId: uId,
+              paymentMethod: 'RAZORPAY'
             });
 
             if (verifyRes?.success) {
@@ -195,7 +196,6 @@ export default function MakeDepositPage() {
             <button
               onClick={() => {
                 setResult(null);
-                setShowPaymentOptions(false);
                 setAmount('2000');
               }}
               className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs transition cursor-pointer"
@@ -206,7 +206,13 @@ export default function MakeDepositPage() {
               href="/deposit-history"
               className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition text-center shadow-xs"
             >
-              View Deposit Ledger →
+              Deposit History →
+            </Link>
+            <Link
+              href="/statement"
+              className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition text-center shadow-xs"
+            >
+              View Statement →
             </Link>
           </div>
         </div>
@@ -306,9 +312,6 @@ export default function MakeDepositPage() {
                 256-Bit SSL Secured
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              Razorpay automatically manages all payment options — <strong>UPI (GPay, PhonePe, Paytm, BHIM), Credit & Debit Cards, NetBanking (50+ banks)</strong>, and <strong>Wallets</strong>. Funds are credited directly into your partner wallet upon confirmation.
-            </p>
           </div>
 
           <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-200/60 flex justify-between items-center text-xs">

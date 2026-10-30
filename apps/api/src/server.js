@@ -1,17 +1,25 @@
+const http = require('http');
 const app = require('./app');
 const env = require('./config/env');
 const { connectDB } = require('./config/db');
+const websocketService = require('./services/websocket.service');
 
 async function startServer() {
   try {
     // Attempt DB connection
     await connectDB();
 
+    const server = http.createServer(app);
+
+    // Initialize Real-time WebSocket Server on /ws
+    websocketService.init(server);
+
     let keepAliveTimer = null;
-    const server = app.listen(env.PORT, () => {
+    server.listen(env.PORT, () => {
       console.log(`====================================================`);
       console.log(`  Rupadiya Bus Booking Platform API v1.0.0          `);
-      console.log(`  Server running on http://localhost:${env.PORT}     `);
+      console.log(`  HTTP Server running on http://localhost:${env.PORT} `);
+      console.log(`  WebSocket Server active on ws://localhost:${env.PORT}/ws `);
       console.log(`  Environment: ${env.NODE_ENV}                       `);
       console.log(`====================================================`);
 
@@ -46,4 +54,3 @@ async function startServer() {
 }
 
 startServer();
-

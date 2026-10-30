@@ -7,6 +7,10 @@ const Booking = require('./booking.model');
 const Offer = require('../offers/offer.model');
 const holdStore = require('../../config/holdStore');
 const commissionService = require('../commissions/commission.service');
+const taxService = require('../tax/tax.service');
+const websocketService = require('../../services/websocket.service');
+const { Wallet, WalletLedger } = require('../wallets/wallet.model');
+const { TRANSACTION_TYPES } = require('../../config/constants');
 const dummyPayment = require('../../providers/payments/DummyPaymentProvider');
 const razorpayPayment = require('../../providers/payments/RazorpayProvider');
 const env = require('../../config/env');
@@ -136,6 +140,10 @@ class BookingService {
     // 3. Generate fare quote
     const quote = await this.calculateQuote({ tripId, seatNumbers });
 
+    try {
+      websocketService.broadcastSeatHeld(tripId.toString(), normalizedSeatNumbers, holdResult.expiresAt);
+    } catch (e) {}
+
     return {
       success: true,
       holdToken,
@@ -167,7 +175,9 @@ class BookingService {
     paymentDetails = {},
     referralCode,
     tripId,
-    seatNumbers
+    seatNumbers,
+    insuranceOpted = false,
+    insuranceAmount
   }) {
     // 1. Validate hold token or recover from database if memory was cleared
     let hold = holdToken ? holdStore.getHold(holdToken) : null;
@@ -259,7 +269,8 @@ class BookingService {
       const agentWallet = await Wallet.findOne({ userId: agentUser._id });
       const quoteCheck = await this.calculateQuote({
         tripId: trip._id,
-        seatNumbers: hold.seatNumbers
+        seatNumbers: hold.seatNumbers,
+        insuranceOpted
       });
 
       const currentBal = agentWallet ? (agentWallet.availableBalance ?? agentWallet.balance ?? 0) : 0;
@@ -332,7 +343,8 @@ class BookingService {
     // 4. Calculate final quote
     const quote = await this.calculateQuote({
       tripId: trip._id,
-      seatNumbers: hold.seatNumbers
+      seatNumbers: hold.seatNumbers,
+      insuranceOpted
     });
 
     const pnr = `RUP-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -397,9 +409,12 @@ class BookingService {
         seatCount: quote.seatCount,
         subtotal: quote.subtotal,
         gstAmount: quote.gstAmount,
+        insuranceAmount: quote.insuranceAmount,
         discountAmount: quote.discountAmount,
         totalPayable: quote.totalPayable
       },
+      insuranceOpted: quote.insuranceOpted,
+      insurancePremium: quote.insuranceAmount,
       status: BOOKING_STATUS.CONFIRMED,
       paymentStatus: PAYMENT_STATUS.SUCCESS,
       paymentProvider,
@@ -411,17 +426,46 @@ class BookingService {
     // 6. Release lock from holdStore
     holdStore.releaseHold(holdToken);
 
+    // Record 5% GST in tax_entries table per PDF specification
+    try {
+      await taxService.recordGstEntry({
+        booking,
+        subtotal: quote.subtotal,
+        gstAmount: quote.gstAmount
+      });
+    } catch (taxErr) {
+      console.error('[TaxEngine GST Error]', taxErr);
+    }
+
     // 7. Calculate and distribute 5-level commissions if booked via an agent
     if (referralAgentId) {
       try {
-        await commissionService.distributeCommissions({
+        const commRecords = await commissionService.distributeCommissions({
           booking,
           trip,
           seatCount: hold.seatNumbers.length
         });
+        if (Array.isArray(commRecords)) {
+          commRecords.forEach(cr => {
+            websocketService.broadcastCommissionEarned(cr.agentId, {
+              pnr: booking.pnr,
+              level: cr.level,
+              grossCommission: cr.grossCommission,
+              tcsDeducted: cr.tcsDeducted,
+              netCommission: cr.netCommission
+            });
+          });
+        }
       } catch (commErr) {
         console.error('[Commission Engine Error]', commErr);
       }
+    }
+
+    // Real-time booking confirmation broadcast via WebSocket hub
+    try {
+      websocketService.broadcastBookingConfirmed(booking, trip);
+    } catch (wsErr) {
+      console.error('[WebSocket Broadcast Error]', wsErr);
     }
 
     // Populate relations for complete ticket view
@@ -468,14 +512,18 @@ class BookingService {
     const now = new Date();
     const hoursToDep = (new Date(trip.departureTime) - now) / (1000 * 60 * 60);
 
-    let refundPercent = 0.50;
+    let refundPercent = 0.0;
     if (trip.chartPrepared) {
       // Post-chart manifest generation: 85% cancellation fee (15% refund only)
       refundPercent = 0.15;
+    } else if (hoursToDep > 48) {
+      refundPercent = 0.90; // PDF rule 7: > 48h 90%
     } else if (hoursToDep > 24) {
-      refundPercent = 0.90;
+      refundPercent = 0.75; // PDF rule 7: > 24h 75%
     } else if (hoursToDep > 12) {
-      refundPercent = 0.70;
+      refundPercent = 0.50; // PDF rule 7: > 12h 50%
+    } else {
+      refundPercent = 0.0;  // PDF rule 7: < 12h none
     }
 
     const paidTotal = booking.fareBreakdown.totalPayable;
@@ -495,6 +543,42 @@ class BookingService {
       await commissionService.reverseCommissions(booking._id);
     } catch (commErr) {
       console.error('[Commission Reversal Error]', commErr);
+    }
+
+    try {
+      await taxService.reverseBookingGstEntry(booking);
+    } catch (taxErr) {
+      console.error('[TaxEngine GST Reversal Error]', taxErr);
+    }
+
+    try {
+      websocketService.broadcastSeatReleased(booking.tripId.toString(), booking.seatNumbers);
+    } catch (e) {}
+
+    // Refund to agent wallet if booked via agent wallet
+    if (booking.paymentProvider === 'agent_wallet' && refundAmount > 0) {
+      try {
+        const wallet = await Wallet.findOne({ userId: booking.passengerId });
+        if (wallet) {
+          wallet.availableBalance += refundAmount;
+          await wallet.save();
+          await WalletLedger.create({
+            walletId: wallet._id,
+            userId: booking.passengerId,
+            companyCode: booking.companyCode,
+            entryType: 'CREDIT',
+            amount: refundAmount,
+            balanceAfter: wallet.availableBalance,
+            transactionType: TRANSACTION_TYPES.TICKET_CANCELLATION_REFUND,
+            referenceType: 'BOOKING',
+            referenceId: booking.bookingId,
+            description: 'Cancellation refund (' + Math.round(refundPercent * 100) + '%) for PNR ' + booking.pnr,
+            idempotencyKey: 'REF_' + booking.bookingId + '_' + Date.now()
+          });
+        }
+      } catch (walErr) {
+        console.error('[Wallet Refund Error]', walErr);
+      }
     }
 
     return {

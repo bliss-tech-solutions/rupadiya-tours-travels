@@ -28,6 +28,7 @@ export default function PaymentPage() {
   const [processing, setProcessing] = useState(false);
   const [allowedMethods, setAllowedMethods] = useState({ upi: true, card: true, netbanking: true, wallet: true });
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes timer
+  const [insuranceOpted, setInsuranceOpted] = useState(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('rupadiya_checkout');
@@ -37,6 +38,9 @@ export default function PaymentPage() {
     }
     const data = JSON.parse(raw);
     setCheckoutData(data);
+    if (data.insuranceOpted !== undefined) {
+      setInsuranceOpted(Boolean(data.insuranceOpted));
+    }
 
     // Calculate remaining seconds if expiresAt is set
     if (data.expiresAt) {
@@ -101,9 +105,8 @@ export default function PaymentPage() {
   const seatsCount = checkoutData.selectedSeats?.length || 1;
   const baseTotal = seatsCount * baseFare;
   const gstAmount = checkoutData.gstAmount || Math.round(baseTotal * 0.05);
-  const insuranceOpted = checkoutData.insuranceOpted ?? true;
-  const insuranceAmount = checkoutData.insuranceAmount !== undefined ? checkoutData.insuranceAmount : (insuranceOpted ? seatsCount * 5 : 0);
-  const subtotal = checkoutData.totalPrice || (baseTotal + gstAmount + insuranceAmount);
+  const insuranceAmount = insuranceOpted ? (seatsCount * 5) : 0;
+  const subtotal = baseTotal + gstAmount + insuranceAmount;
   const discount = appliedCoupon ? appliedCoupon.discount : 0;
   const finalTotal = Math.max(0, subtotal - discount);
 
@@ -499,13 +502,19 @@ export default function PaymentPage() {
                   <span>GST & Govt. Taxes (5%)</span>
                   <span className="text-emerald-700 font-bold">+₹{gstAmount}</span>
                 </div>
-                <div className="flex justify-between text-slate-600 font-medium">
-                  <div className="flex items-center gap-1.5">
+                <div className="flex justify-between items-center text-slate-600 font-medium">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={insuranceOpted}
+                      onChange={(e) => setInsuranceOpted(e.target.checked)}
+                      className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                    />
                     <span>Travel Insurance</span>
                     <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">₹5/pax</span>
-                  </div>
+                  </label>
                   <span className={`font-bold ${insuranceOpted ? 'text-emerald-700' : 'text-slate-400'}`}>
-                    {insuranceOpted ? `+₹${insuranceAmount}` : '₹0'}
+                    {insuranceOpted ? `+₹${insuranceAmount} (Yes)` : '₹0 (No)'}
                   </span>
                 </div>
                 {discount > 0 && (

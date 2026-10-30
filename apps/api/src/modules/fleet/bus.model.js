@@ -86,7 +86,13 @@ const busSchema = new mongoose.Schema({
     fitnessCert: { type: Date, default: () => new Date(Date.now() + 240 * 24 * 60 * 60 * 1000) },
     fitnessFileUrl: { type: String, default: '' },
     permitExpiry: { type: Date, default: () => new Date(Date.now() + 300 * 24 * 60 * 60 * 1000) },
-    permitFileUrl: { type: String, default: '' }
+    permitFileUrl: { type: String, default: '' },
+    pucExpiry: { type: Date, default: () => new Date(Date.now() + 180 * 24 * 60 * 60 * 1000) },
+    pucFileUrl: { type: String, default: '' },
+    roadTaxExpiry: { type: Date, default: () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+    roadTaxFileUrl: { type: String, default: '' },
+    driverLicenseExpiry: { type: Date, default: () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+    driverLicenseFileUrl: { type: String, default: '' }
   },
   status: {
     type: String,
@@ -129,5 +135,19 @@ busSchema.pre('save', function(next) {
 
 busSchema.index({ companyCode: 1 });
 busSchema.index({ status: 1 });
+
+busSchema.methods.checkCompliance = function() {
+  const now = new Date();
+  const docs = this.documents || {};
+  const expiredDocs = [];
+  if (docs.rcExpiry && new Date(docs.rcExpiry) < now) expiredDocs.push('RC');
+  if (docs.insuranceExpiry && new Date(docs.insuranceExpiry) < now) expiredDocs.push('Insurance');
+  if (docs.fitnessCert && new Date(docs.fitnessCert) < now) expiredDocs.push('Fitness Certificate');
+  if (docs.permitExpiry && new Date(docs.permitExpiry) < now) expiredDocs.push('Route Permit');
+  if (docs.pucExpiry && new Date(docs.pucExpiry) < now) expiredDocs.push('PUC');
+  if (docs.roadTaxExpiry && new Date(docs.roadTaxExpiry) < now) expiredDocs.push('Road Tax');
+  if (docs.driverLicenseExpiry && new Date(docs.driverLicenseExpiry) < now) expiredDocs.push('Driver License');
+  return { isCompliant: expiredDocs.length === 0, expiredDocs };
+};
 
 module.exports = mongoose.model('Bus', busSchema);

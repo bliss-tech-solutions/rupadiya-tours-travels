@@ -131,7 +131,9 @@ class BookingController {
         paymentDetails,
         referralCode,
         tripId: tripId || req.body.tripId,
-        seatNumbers: selectedSeats || seatNumbers || req.body.selectedSeats || req.body.seatNumbers
+        seatNumbers: selectedSeats || seatNumbers || req.body.selectedSeats || req.body.seatNumbers,
+        insuranceOpted: Boolean(req.body.insuranceOpted === true || req.body.insuranceOpted === 'true' || req.body.insuranceOpted === 1),
+        insuranceAmount: req.body.insuranceAmount
       });
 
       const cashbackCoupon = {

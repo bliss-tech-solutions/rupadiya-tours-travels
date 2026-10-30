@@ -107,7 +107,7 @@ export default function AgentWalletLedgerPage() {
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Current Balance</span>
           <div className="text-3xl font-black text-emerald-400">
-            ₹{wallet?.balance != null ? wallet.balance.toLocaleString() : '15,000'}
+            ₹{(wallet?.availableBalance ?? wallet?.balance ?? 0).toLocaleString('en-IN')}
           </div>
           <span className="text-[10px] text-slate-500 font-medium">Available for passenger booking deductions</span>
         </div>
@@ -115,7 +115,7 @@ export default function AgentWalletLedgerPage() {
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Commissions Earned</span>
           <div className="text-3xl font-black text-white">
-            ₹{wallet?.totalEarnings != null ? wallet.totalEarnings.toLocaleString() : '4,850'}
+            ₹{(wallet?.totalEarnings ?? 0).toLocaleString('en-IN')}
           </div>
           <span className="text-[10px] text-sky-400 font-medium">Credited automatically per confirmed ticket</span>
         </div>
@@ -123,7 +123,7 @@ export default function AgentWalletLedgerPage() {
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Withdrawable Profits</span>
           <div className="text-3xl font-black text-purple-400">
-            ₹{wallet?.balance != null ? Math.min(wallet.balance, wallet.totalEarnings || 4850).toLocaleString() : '4,850'}
+            ₹{Math.max(0, wallet?.withdrawableBalance ?? (wallet?.totalEarnings ?? 0)).toLocaleString('en-IN')}
           </div>
           <span className="text-[10px] text-slate-500 font-medium">Eligible for instant bank NEFT/IMPS transfer</span>
         </div>

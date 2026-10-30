@@ -69,15 +69,14 @@ const TRANSACTION_TYPES = {
   TICKET_CANCELLATION_REFUND: 'TICKET_CANCELLATION_REFUND'
 };
 
-const DEFAULT_COMMISSION_TIERS = [
-  { level: 1, name: 'Direct Agent (L1)', ratePerSeat: 100 },
-  { level: 2, name: 'Tier 2 Referral (L2)', ratePerSeat: 100 },
-  { level: 3, name: 'Regional Head (L3)', ratePerSeat: 100 },
-  { level: 4, name: 'Zonal Lead (L4)', ratePerSeat: 200 },
-  { level: 5, name: 'State Master (L5)', ratePerSeat: 300 }
-];
-
 const DEFAULT_BONUS_PER_SEAT = 20;
+const DEFAULT_COMMISSION_TIERS = [
+  { level: 1, name: 'Direct Agent (L1)', ratePerSeat: 100, bonusPerSeat: DEFAULT_BONUS_PER_SEAT },
+  { level: 2, name: 'Tier 2 Referral (L2)', ratePerSeat: 100, bonusPerSeat: DEFAULT_BONUS_PER_SEAT },
+  { level: 3, name: 'Regional Head (L3)', ratePerSeat: 100, bonusPerSeat: DEFAULT_BONUS_PER_SEAT },
+  { level: 4, name: 'Zonal Lead (L4)', ratePerSeat: 200, bonusPerSeat: DEFAULT_BONUS_PER_SEAT },
+  { level: 5, name: 'State Master (L5)', ratePerSeat: 300, bonusPerSeat: DEFAULT_BONUS_PER_SEAT }
+];
 const DEFAULT_TCS_RATE = 0.01; // 1% TCS
 const DEFAULT_GST_RATE = 0.05; // 5% GST for passenger transport
 

@@ -15,7 +15,7 @@ function LoginContent() {
   const { login } = useAuth();
   const redirectUrl = searchParams.get('redirect') || '/';
 
-  // Primary mode: 'otp' (Mobile OTP as 1st priority) vs 'password' (Email password)
+  // Primary mode: 'otp' (Mobile OTP as 1st priority) vs 'password' (Email & password)
   const [authMode, setAuthMode] = useState('otp');
 
   // Mobile OTP State
@@ -51,7 +51,7 @@ function LoginContent() {
     }
   };
 
-  // 2. Verify OTP & Log in (and link bookings)
+  // 2. Verify OTP & Log in (and link past bookings)
   const handleVerifyOtp = async (e) => {
     e?.preventDefault();
     const cleanPhone = phone.replace(/\D/g, '');
@@ -82,7 +82,7 @@ function LoginContent() {
     }
   };
 
-  // 3. Email & Password submit (fallback for admins)
+  // 3. Email & Password submit
   const handleEmailSubmit = async (e) => {
     e.preventDefault();
     setEmailLoading(true);

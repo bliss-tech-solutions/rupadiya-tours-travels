@@ -38,6 +38,14 @@ router.post('/direct', async (req, res, next) => {
     const cleanBase64 = base64Data.replace(/^data:([A-Za-z-+\/]+);base64,/, '');
     const buffer = Buffer.from(cleanBase64, 'base64');
 
+    // Strict 1MB size limit check (1,048,576 bytes)
+    const MAX_SIZE_BYTES = 1 * 1024 * 1024;
+    if (buffer.length > MAX_SIZE_BYTES) {
+      return res.status(400).json({ 
+        error: `File size exceeds 1MB limit (current: ${(buffer.length / (1024 * 1024)).toFixed(2)} MB). Please upload a file under 1MB.` 
+      });
+    }
+
     const result = await s3UploadService.uploadBuffer({
       folder,
       fileName,
