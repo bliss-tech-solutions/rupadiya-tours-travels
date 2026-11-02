@@ -3,15 +3,18 @@ const env = require('../config/env');
 const User = require('../modules/users/user.model');
 
 function extractToken(req) {
-  // 1. Try reading from httpOnly cookie first
-  if (req.cookies && req.cookies.rupadiya_access_token) {
-    return req.cookies.rupadiya_access_token;
-  }
-
-  // 2. Fall back to Authorization Bearer header
+  // 1. Prioritize explicit Authorization Bearer header sent by the client
   const authHeader = req.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    return authHeader.split(' ')[1];
+    const bearer = authHeader.split(' ')[1];
+    if (bearer && bearer !== 'null' && bearer !== 'undefined' && bearer.trim() !== '') {
+      return bearer.trim();
+    }
+  }
+
+  // 2. Fall back to httpOnly cookie
+  if (req.cookies && req.cookies.rupadiya_access_token) {
+    return req.cookies.rupadiya_access_token;
   }
 
   return null;
@@ -38,6 +41,31 @@ async function authenticateToken(req, res, next) {
         success: false, 
         error: 'User account not found or deactivated', 
         code: 'ACCOUNT_DEACTIVATED' 
+      });
+    }
+
+    // Strict Multi-Portal Role Isolation:
+    // If request specifies a client header, enforce that user's role matches that portal!
+    const clientHeader = req.headers['x-rupadiya-client'];
+    if (clientHeader === 'admin-portal' && user.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: `Access Denied: Only Super Admin can access admin-portal endpoints. (Authenticated as ${user.role})`,
+        code: 'PORTAL_ROLE_MISMATCH'
+      });
+    }
+    if (clientHeader === 'company-portal' && user.role !== 'COMPANY_OWNER' && user.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: `Access Denied: Only Company Owners can access company-portal endpoints. (Authenticated as ${user.role})`,
+        code: 'PORTAL_ROLE_MISMATCH'
+      });
+    }
+    if (clientHeader === 'agent-portal' && user.role !== 'AGENT') {
+      return res.status(403).json({
+        success: false,
+        error: `Access Denied: Only Booking Agents can access agent-portal endpoints. (Authenticated as ${user.role})`,
+        code: 'PORTAL_ROLE_MISMATCH'
       });
     }
 

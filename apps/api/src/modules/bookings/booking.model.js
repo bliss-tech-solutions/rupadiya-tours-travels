@@ -45,6 +45,12 @@ const bookingSchema = new mongoose.Schema({
     ref: 'Bus',
     required: true
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
+  },
   companyCode: {
     type: Number,
     required: true

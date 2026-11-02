@@ -36,6 +36,7 @@ export default function AdminGlobalAgentsPage() {
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(null);
+  const [companiesList, setCompaniesList] = useState([]);
 
   // Create form
   const [formData, setFormData] = useState({
@@ -45,7 +46,8 @@ export default function AdminGlobalAgentsPage() {
     phone: '',
     password: 'Password123!',
     agencyName: '',
-    initialWalletAmount: '10000',
+    initialWalletAmount: '0',
+sponsorReferralCode: '',
     aadharNumber: '',
     panNumber: '',
     bankAccountName: '',
@@ -96,6 +98,7 @@ export default function AdminGlobalAgentsPage() {
       const res = await api.createAgent({
         ...formData,
         companyCode: Number(formData.companyCode),
+sponsorReferralCode: formData.sponsorReferralCode?.trim() || '',
         initialWalletAmount: Number(formData.initialWalletAmount) || 0,
         aadharNumber: formData.aadharNumber?.trim() || '',
         panNumber: formData.panNumber?.trim()?.toUpperCase() || '',
@@ -116,7 +119,8 @@ export default function AdminGlobalAgentsPage() {
           phone: '',
           password: 'Password123!',
           agencyName: '',
-          initialWalletAmount: '10000',
+          initialWalletAmount: '0',
+sponsorReferralCode: '',
           aadharNumber: '',
           panNumber: '',
           bankAccountName: '',
@@ -463,9 +467,17 @@ export default function AdminGlobalAgentsPage() {
                   onChange={(e) => setFormData({ ...formData, companyCode: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200/90 text-slate-900 focus:outline-none focus:border-blue-600 font-bold"
                 >
-                  {Array.from({ length: 33 }).map((_, i) => (
-                    <option key={i + 1} value={i + 1}>Company Code #{String(i + 1).padStart(2, '0')}</option>
-                  ))}
+                  {companiesList.length > 0 ? (
+                    companiesList.map(c => (
+                      <option key={c.companyCode} value={c.companyCode}>
+                        Code #{String(c.companyCode).padStart(2, '0')} - {c.name}
+                      </option>
+                    ))
+                  ) : (
+                    Array.from({ length: 33 }).map((_, i) => (
+                      <option key={i + 1} value={i + 1}>Company Code #{String(i + 1).padStart(2, '0')}</option>
+                    ))
+                  )}
                 </select>
               </div>
 

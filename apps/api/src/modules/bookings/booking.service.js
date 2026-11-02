@@ -259,7 +259,12 @@ class BookingService {
         agentUser = await User.findById(passengerId);
       }
       if (!agentUser && referralCode) {
-        agentUser = await User.findOne({ referralCode: referralCode.toUpperCase() });
+        const codeUpper = String(referralCode).toUpperCase().trim();
+        const expiredOwner = await User.findOne({ previousReferralCodes: codeUpper });
+        if (expiredOwner) {
+          throw new Error('This referral code has been refreshed and is no longer valid.');
+        }
+        agentUser = await User.findOne({ referralCode: codeUpper });
       }
 
       if (!agentUser) {
@@ -301,19 +306,42 @@ class BookingService {
       paymentVerified = true;
       if (!referralAgentId) referralAgentId = agentUser._id;
     } else if (paymentProvider === 'razorpay') {
-      let verifyRes;
-      if (paymentDetails?.verified || paymentDetails?.alreadyVerified || (paymentDetails?.status === 'SUCCESS' && paymentDetails?.paymentId)) {
-        verifyRes = { verified: true, transactionId: paymentDetails.paymentId || paymentDetails.transactionId };
-      } else {
-        verifyRes = await razorpayPayment.verifyPayment(paymentDetails || {});
+      let verifyRes = null;
+      const Payment = require('../payments/payment.model');
+
+      // 1. Verify against database captured Payment record
+      if (paymentDetails?.paymentId && paymentDetails?.orderId) {
+        const paymentRecord = await Payment.findOne({
+          orderId: paymentDetails.orderId,
+          paymentId: paymentDetails.paymentId,
+          status: 'CAPTURED'
+        });
+        if (paymentRecord) {
+          verifyRes = { verified: true, transactionId: paymentRecord.paymentId };
+        }
       }
+
+      // 2. Cryptographic signature verification with gateway
+      if (!verifyRes && paymentDetails?.signature && paymentDetails?.orderId && paymentDetails?.paymentId) {
+        verifyRes = await razorpayPayment.verifyPayment(paymentDetails);
+      }
+
+      // 3. In development / test mode only, allow simulation if gateway not configured
+      const isDevSimulation = process.env.NODE_ENV !== 'production' && (paymentDetails?.verified || paymentDetails?.alreadyVerified);
+      if (!verifyRes && isDevSimulation) {
+        verifyRes = { verified: true, transactionId: paymentDetails?.paymentId || `SIM_${Date.now()}` };
+      }
+
       if (!verifyRes || !verifyRes.verified) {
-        throw new Error('Payment verification failed. Booking cannot be confirmed.');
+        throw new Error('Payment verification failed. Booking cannot be confirmed without valid payment verification.');
       }
       paymentVerified = true;
       paymentRef = verifyRes.transactionId || paymentDetails?.paymentId || `RZP_${Date.now()}`;
     } else {
-      // Dummy provider
+      // Production guard: Dummy provider strictly rejected in production
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('Simulated card payments are disabled in production environment.');
+      }
       const dummyRes = await dummyPayment.verifyPayment({
         paymentId: paymentDetails.paymentId,
         status: paymentDetails.status || 'SUCCESS'
@@ -354,7 +382,12 @@ class BookingService {
     let referralAgentId = null;
     if (referralCode) {
       const User = require('../users/user.model');
-      const agent = await User.findOne({ referralCode: referralCode.toUpperCase() });
+      const codeUpper = String(referralCode).toUpperCase().trim();
+      const expiredOwner = await User.findOne({ previousReferralCodes: codeUpper });
+      if (expiredOwner) {
+        throw new Error('This referral code has been refreshed and is no longer valid. Please obtain the new referral code from your sponsor.');
+      }
+      const agent = await User.findOne({ referralCode: codeUpper });
       if (agent) referralAgentId = agent._id;
     }
 
@@ -392,6 +425,7 @@ class BookingService {
       tripId: trip._id,
       routeId: trip.routeId._id,
       busId: trip.busId._id,
+      companyId: trip.companyId || null,
       companyCode: trip.companyCode,
       referralAgentId,
       seatNumbers: hold.seatNumbers,

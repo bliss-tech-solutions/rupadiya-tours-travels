@@ -37,7 +37,7 @@ export default function AdminSidebar() {
 
   const navItems = [
     { label: 'Command Center', href: '/', icon: LayoutDashboard },
-    { label: '33 Companies Registry', href: '/companies', icon: Building2 },
+    { label: '34 Companies Registry', href: '/companies', icon: Building2 },
     { label: 'Global Agents Directory', href: '/agents', icon: Users },
     { label: 'Fleet & Bus Management', href: '/fleet', icon: Bus },
     { label: 'Corridors & Fares', href: '/routes', icon: Route },
@@ -94,7 +94,7 @@ export default function AdminSidebar() {
           <span className="text-[11px] font-bold text-slate-800">Franchise Network</span>
         </div>
         <p className="text-[11px] text-slate-500 leading-tight">
-          33 Companies active
+          34 Companies active (Passenger Ranking)
         </p>
       </div>
     </aside>

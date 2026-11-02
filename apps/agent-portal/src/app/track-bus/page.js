@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
   Navigation, 
@@ -19,12 +20,46 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 
-export default function TrackBusPage() {
-  const [ticketNo, setTicketNo] = useState('');
+function TrackBusContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Support ?pnr=..., ?prn=..., ?ticketNo=..., or ?q=...
+  const urlPnr = (
+    searchParams?.get('pnr') || 
+    searchParams?.get('prn') || 
+    searchParams?.get('ticketNo') || 
+    searchParams?.get('q') || 
+    ''
+  ).trim();
+
+  const computeJourneyStatus = (ticket) => {
+    if (!ticket) return { text: 'CONFIRMED', badge: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
+    if (ticket.status === 'CANCELLED') return { text: 'CANCELLED', badge: 'bg-rose-50 text-rose-800 border-rose-200' };
+    
+    const trip = ticket.trip || ticket.tripId || {};
+    const depTime = trip.departureTime ? new Date(trip.departureTime).getTime() : null;
+    const arrTime = trip.arrivalTime ? new Date(trip.arrivalTime).getTime() : null;
+    const now = Date.now();
+
+    if (depTime && now < depTime) {
+      const diffMins = Math.round((depTime - now) / 60000);
+      if (diffMins <= 60 && diffMins > 0) {
+        return { text: `BOARDING NOW • DEPARTS IN ${diffMins} MINS`, badge: 'bg-amber-50 text-amber-800 border-amber-200' };
+      }
+      return { text: 'SCHEDULED • ON TIME', badge: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
+    } else if (depTime && arrTime && now >= depTime && now <= arrTime) {
+      return { text: 'IN TRANSIT • ON CORRIDOR', badge: 'bg-blue-50 text-blue-800 border-blue-200' };
+    } else if (arrTime && now > arrTime) {
+      return { text: 'JOURNEY COMPLETED', badge: 'bg-slate-100 text-slate-800 border-slate-200' };
+    }
+    return { text: 'CONFIRMED • ON SCHEDULE', badge: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
+  };
+
+  const [ticketNo, setTicketNo] = useState(urlPnr || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [trackedTicket, setTrackedTicket] = useState(null);
-  console.log('trackedTicket >>> ', trackedTicket);
 
   // Quick list of upcoming bookings issued by agent
   const [upcomingList, setUpcomingList] = useState([]);
@@ -38,7 +73,7 @@ export default function TrackBusPage() {
         setUpcomingList(res.data?.trips || res.trips || []);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Error fetching upcoming trips:', e);
     } finally {
       setLoadingList(false);
     }
@@ -48,30 +83,51 @@ export default function TrackBusPage() {
     fetchUpcomingList();
   }, []);
 
-  const handleTrackSubmit = async (e) => {
-    if (e) e.preventDefault();
-    if (!ticketNo.trim()) {
-      setError('Please enter a valid ticket number or PNR.');
-      return;
-    }
+  const performTrack = useCallback(async (queryValue) => {
+    const q = (queryValue || '').trim();
+    if (!q) return;
 
     setLoading(true);
     setError('');
     setTrackedTicket(null);
 
     try {
-      const res = await api.searchTicket(ticketNo.trim());
+      const res = await api.searchTicket(q);
       const b = res.booking || res.data || res;
-      if (res.success && b && b.pnr) {
+      if (res?.success && b && (b.pnr || b.ticketNumber || b.bookingId)) {
         setTrackedTicket(b);
       } else {
-        setError(res.error || 'No upcoming ticket found matching this PNR.');
+        setError(res?.error || `No upcoming journey found matching PNR "${q}".`);
       }
     } catch (err) {
       setError(err.message || 'Error tracking ticket status');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Auto-fetch details if URL contains PNR (e.g. /track-bus?pnr=RUP-A711C4)
+  useEffect(() => {
+    if (urlPnr) {
+      setTicketNo(urlPnr);
+      performTrack(urlPnr);
+    }
+  }, [urlPnr, performTrack]);
+
+  const handleTrackSubmit = async (e) => {
+    if (e) e.preventDefault();
+    const cleanQ = ticketNo.trim();
+    if (!cleanQ) {
+      setError('Please enter a valid ticket number or PNR.');
+      return;
+    }
+
+    // Keep URL parameter synchronized
+    try {
+      router.replace(`/track-bus?pnr=${encodeURIComponent(cleanQ)}`);
+    } catch {}
+
+    performTrack(cleanQ);
   };
 
   return (
@@ -97,7 +153,7 @@ export default function TrackBusPage() {
               required
               value={ticketNo}
               onChange={(e) => setTicketNo(e.target.value)}
-              placeholder="Enter Upcoming Ticket No. / PNR (e.g. BK_RUP_10001)"
+              placeholder="Enter Ticket No. / PNR (e.g. RUP-A711C4)"
               className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500 uppercase shadow-xs"
             />
           </div>
@@ -105,7 +161,7 @@ export default function TrackBusPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition active:scale-95 flex items-center justify-center gap-1.5 shadow-xs shrink-0"
+            className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition active:scale-95 flex items-center justify-center gap-1.5 shadow-xs shrink-0 cursor-pointer disabled:opacity-50"
           >
             {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Track Journey'}
           </button>
@@ -121,17 +177,22 @@ export default function TrackBusPage() {
 
       {/* Tracked Ticket Status Result Card */}
       {trackedTicket && (
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-5 shadow-xs">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-5 shadow-xs animate-in fade-in duration-300">
           {/* Status Bar */}
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
             <div>
               <span className="text-[10px] font-bold uppercase text-slate-400 block">Upcoming Ticket</span>
               <div className="text-base font-bold text-slate-900">PNR: #{trackedTicket.pnr}</div>
             </div>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-              CONFIRMED • ON SCHEDULE
-            </span>
+            {(() => {
+              const statusInfo = computeJourneyStatus(trackedTicket);
+              return (
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${statusInfo.badge}`}>
+                  <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
+                  {statusInfo.text}
+                </span>
+              );
+            })()}
           </div>
 
           {/* Route Card */}
@@ -142,7 +203,7 @@ export default function TrackBusPage() {
                 {trackedTicket.trip?.sourceCity || trackedTicket.tripId?.sourceCity || trackedTicket.tripId?.fromCity?.name || 'Rupadiya'}
               </div>
               <div className="text-emerald-700 font-medium">
-                {trackedTicket.boardingPoint?.location || trackedTicket.boardingPoint?.name || 'Main Stand'}
+                {trackedTicket.boardingPoint?.name || trackedTicket.boardingPoint?.location || trackedTicket.boardingLocation || 'Main Stand'}
               </div>
               <div className="text-slate-500 flex items-center gap-1 mt-1">
                 <Clock className="w-3.5 h-3.5 text-slate-400" /> Departure: {trackedTicket.trip?.departureTime || trackedTicket.tripId?.departureTime || '05:30 PM'}
@@ -159,7 +220,7 @@ export default function TrackBusPage() {
                   year: 'numeric'
                 }) : 'Today'}
               </div>
-              <span className="text-[10px] text-emerald-700 font-medium mt-1">Direct Non-Stop</span>
+              <span className="text-[10px] text-emerald-700 font-medium mt-1">Direct Corridor</span>
             </div>
 
             <div className="text-left md:text-right">
@@ -168,7 +229,7 @@ export default function TrackBusPage() {
                 {trackedTicket.trip?.destinationCity || trackedTicket.tripId?.destinationCity || trackedTicket.tripId?.toCity?.name  || 'Destination'}
               </div>
               <div className="text-slate-700 font-medium">
-                {trackedTicket.droppingPoint?.location || trackedTicket.droppingPoint?.name || 'Central Stand'}
+                {trackedTicket.droppingPoint?.name || trackedTicket.droppingPoint?.location || trackedTicket.droppingLocation || 'Central Stand'}
               </div>
               <div className="text-slate-500 flex items-center gap-1 mt-1 md:justify-end">
                 <Clock className="w-3.5 h-3.5 text-slate-400" /> Arrival: {trackedTicket.trip?.arrivalTime || trackedTicket.tripId?.arrivalTime || 'Morning'}
@@ -202,7 +263,7 @@ export default function TrackBusPage() {
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
               <span className="text-[10px] text-slate-500 uppercase block">Coach Model</span>
               <span className="text-slate-900 font-bold block mt-0.5 truncate">
-                {trackedTicket.bus?.name || 'Rupadiya Setra'}
+                {trackedTicket.bus?.name || trackedTicket.busId?.name || 'Rupadiya Super Express'}
               </span>
             </div>
           </div>
@@ -215,7 +276,7 @@ export default function TrackBusPage() {
             </div>
 
             <Link
-              href={`/print-ticket`}
+              href={`/print-ticket?pnr=${encodeURIComponent(trackedTicket.pnr || '')}`}
               className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition flex items-center gap-1.5"
             >
               <Printer className="w-3.5 h-3.5" />
@@ -234,7 +295,7 @@ export default function TrackBusPage() {
           </div>
           <button
             onClick={fetchUpcomingList}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
             title="Refresh list"
           >
             <RefreshCw className={`w-4 h-4 ${loadingList ? 'animate-spin' : ''}`} />
@@ -273,5 +334,18 @@ export default function TrackBusPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function TrackBusPage() {
+  return (
+    <Suspense fallback={
+      <div className="max-w-3xl mx-auto py-16 flex flex-col items-center justify-center space-y-3">
+        <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-bold text-slate-500">Loading bus tracker...</p>
+      </div>
+    }>
+      <TrackBusContent />
+    </Suspense>
   );
 }

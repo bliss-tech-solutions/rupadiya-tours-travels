@@ -25,10 +25,25 @@ function LoginForm() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.login(email, password);
+      const res = await api.login(email.trim(), password);
       const user = res.user || res.data?.user;
+      const token = res.accessToken || res.token || res.data?.token;
 
-      try { localStorage.removeItem('admin_token'); } catch {}
+      if (!token) throw new Error('No authentication token received.');
+
+      // Strict Role Check: Super Admin only!
+      if (user?.role !== 'SUPER_ADMIN') {
+        try {
+          localStorage.removeItem('admin_token');
+          localStorage.removeItem('admin_user');
+          localStorage.removeItem('admin_login_time');
+        } catch {}
+        throw new Error(`Access Denied: Your account role is ${user?.role || 'UNKNOWN'}. This portal is strictly restricted to Super Admin.`);
+      }
+
+      if (token) {
+        localStorage.setItem('admin_token', token);
+      }
       if (user) {
         localStorage.setItem('admin_user', JSON.stringify(user));
       }
@@ -47,7 +62,7 @@ function LoginForm() {
       {sessionExpired && (
         <div className="mb-5 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2.5">
           <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>Your 24-hour authenticated session has expired. Please sign in again.</span>
+          <span>Please sign in again.</span>
         </div>
       )}
 
@@ -108,17 +123,7 @@ function LoginForm() {
         </div>
       </form>
 
-      <div className="mt-6 pt-5 border-t border-slate-100 text-center space-y-2">
-        <span className="text-[11px] text-slate-400 block font-medium">Quick Credentials Autofill:</span>
-        <button
-          type="button"
-          onClick={() => { setEmail('admin@rupadiya.test'); setPassword('Password123!'); }}
-          className="px-3.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 font-mono font-bold text-xs border border-blue-200/60 hover:bg-blue-100 transition cursor-pointer"
-        >
-          admin@rupadiya.test · Password123!
-        </button>
       </div>
-    </div>
   );
 }
 

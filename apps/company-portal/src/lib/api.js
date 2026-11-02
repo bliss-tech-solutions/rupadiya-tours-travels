@@ -270,6 +270,8 @@ export const api = {
   scheduleTrip: (tripData) => request('/owner/trips', { method: 'POST', body: JSON.stringify(tripData) }),
   prepareSeatChart: (tripId) => request(`/owner/trips/${tripId}/prepare-chart`, { method: 'POST' }),
   getSeatChart: (tripId) => request(`/owner/trips/${tripId}/seat-chart`),
+  getRoutes: () => request('/routes'),
+  getCities: () => request('/routes/cities'),
 
   // Levels & Hierarchy
   getLevels: () => request('/owner/levels'),

@@ -201,8 +201,17 @@ class AuthController {
 
   async getMe(req, res, next) {
     try {
-      const user = req.user.toObject ? req.user.toObject() : req.user;
+      const user = req.user.toObject ? req.user.toObject() : { ...req.user };
       delete user.passwordHash;
+
+      if (user.companyCode) {
+        const Company = require('../companies/company.model');
+        const comp = await Company.findOne({ companyCode: user.companyCode }).lean();
+        if (comp) {
+          user.company = comp;
+        }
+      }
+
       res.json({ success: true, user, data: { user } });
     } catch (err) {
       next(err);

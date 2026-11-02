@@ -17,13 +17,27 @@ export default function AgentLoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.login(email, password);
+      const res = await api.login(email.trim(), password);
       const user = res.user || res.data?.user;
       const token = res.accessToken || res.token || res.data?.accessToken || res.data?.token;
+
+      if (!token) throw new Error('No authentication token received.');
+
+      // Strict Role Check: Agent only!
+      if (user?.role !== 'AGENT') {
+        try {
+          localStorage.removeItem('agent_token');
+          localStorage.removeItem('agent_user');
+          localStorage.removeItem('agent_login_time');
+        } catch {}
+        throw new Error(`Access Denied: Your account role is ${user?.role || 'UNKNOWN'}. This portal is strictly restricted to Booking Agents.`);
+      }
+
       if (token) { localStorage.setItem('agent_token', token); }
       if (user) {
         localStorage.setItem('agent_user', JSON.stringify(user));
       }
+      localStorage.setItem('agent_login_time', Date.now().toString());
       router.push('/');
     } catch (err) {
       setError(err.message || 'Login failed');
@@ -87,17 +101,6 @@ export default function AgentLoginPage() {
               {loading ? 'Authenticating...' : 'Sign In to Terminal →'}
             </button>
           </form>
-
-          <div className="pt-4 border-t border-slate-100 text-center">
-            <span className="text-[11px] text-slate-400 block mb-2">Prefilled Agent Credentials (₹15,000 Initial Wallet)</span>
-            <button
-              type="button"
-              onClick={() => { setEmail('agent@rupadiya.test'); setPassword('Password123!'); }}
-              className="px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-semibold text-xs border border-emerald-200"
-            >
-              agent@rupadiya.test
-            </button>
-          </div>
         </div>
       </div>
     </div>

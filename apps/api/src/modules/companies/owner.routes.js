@@ -11,8 +11,9 @@ const KycDocument = require('../kyc/kyc.model');
 const Booking = require('../bookings/booking.model');
 const WithdrawalRequest = require('../withdrawals/withdrawal.model');
 const { Wallet, WalletLedger } = require('../wallets/wallet.model');
-const { ROLES, WITHDRAWAL_STATUS, TRANSACTION_TYPES } = require('../../config/constants');
+const { ROLES, WITHDRAWAL_STATUS, TRANSACTION_TYPES, normalizeCityId, isValidCorridor } = require('../../config/constants');
 const Trip = require('../trips/trip.model');
+const Route = require('../routes/route.model');
 const websocketService = require('../../services/websocket.service');
 
 // Guard all owner routes: User must be COMPANY_OWNER and scoped to their own companyCode
@@ -149,6 +150,9 @@ router.get('/agents/:id', async (req, res, next) => {
 router.post('/agents', async (req, res, next) => {
   try {
     const code = req.user.companyCode;
+    const company = await Company.findOne({ companyCode: code });
+    const companyId = req.user.companyId || company?._id || null;
+
     const { 
       name, 
       email, 
@@ -158,6 +162,7 @@ router.post('/agents', async (req, res, next) => {
       address, 
       city, 
       state, 
+      sponsorReferralCode,
       initialWalletAmount, 
       nationality = 'INDIA',
       aadharNumber, 
@@ -181,6 +186,12 @@ router.post('/agents', async (req, res, next) => {
       return res.status(400).json({ error: 'User with this email or phone already exists' });
     }
 
+    // Resolve sponsor referral (5-tier referral tree)
+    let sponsor = null;
+    if (sponsorReferralCode) {
+      sponsor = await User.findOne({ referralCode: sponsorReferralCode.toUpperCase().trim() });
+    }
+
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
     const referralCode = `AGT-${String(code).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -191,7 +202,9 @@ router.post('/agents', async (req, res, next) => {
       phone: phone.trim(),
       passwordHash,
       role: ROLES.AGENT,
+      companyId,
       companyCode: code,
+      referredBy: sponsor ? sponsor._id : null,
       referralCode,
       agencyName: agencyName ? agencyName.trim() : `${name.trim()} Agency`,
       address: address ? address.trim() : '',
@@ -206,57 +219,62 @@ router.post('/agents', async (req, res, next) => {
         accountNumberMasked: bankDetails.accountNumber ? `XXXX-XXXX-${bankDetails.accountNumber.slice(-4)}` : (bankDetails.accountNumberMasked || ''),
         ifscCode: bankDetails.ifscCode ? bankDetails.ifscCode.toUpperCase().trim() : '',
         upiId: bankDetails.upiId ? bankDetails.upiId.trim() : '',
-        bankName: bankDetails.bankName || 'Partner Bank'
+        bankName: bankDetails.bankName || ''
       } : {
         accountName: name.trim(),
-        accountNumberMasked: 'XXXX-XXXX-1234',
-        ifscCode: 'SBIN0002145',
-        upiId: `${phone.trim()}@okaxis`,
-        bankName: 'State Bank of India'
+        accountNumberMasked: '',
+        ifscCode: '',
+        upiId: '',
+        bankName: ''
       },
       agentLevel: 'SILVER',
-      kycStatus: 'VERIFIED',
+      kycStatus: (aadharFileUrl || panFileUrl || nepalIdFileUrl) ? 'VERIFIED' : 'PENDING',
       isActive: true
     });
 
-    // Create KYC documents according to nationality
+    // Create KYC documents according to nationality (only if real file uploaded)
     if (nationality === 'NEPAL' || nepalIdNumber) {
-      try {
-        await KycDocument.create({
-          userId: agent._id,
-          companyCode: code,
-          documentType: 'NEPAL_CITIZENSHIP',
-          documentNumberMasked: nepalIdNumber ? `NPL-XXXX-${nepalIdNumber.slice(-4)}` : 'NPL-CITIZEN',
-          fileUrl: nepalIdFileUrl || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=600&q=80',
-          fileUrlBack: nepalIdFileUrlBack || '',
-          status: 'VERIFIED',
-          reviewedBy: req.user?.id || req.user?._id,
-          reviewedAt: new Date()
-        });
-      } catch (kErr) {}
-    } else {
-      if (aadharNumber) {
+      if (nepalIdFileUrl) {
         try {
           await KycDocument.create({
             userId: agent._id,
+            companyId,
             companyCode: code,
-            documentType: 'AADHAAR',
-            documentNumberMasked: `XXXX-XXXX-${aadharNumber.slice(-4)}`,
-            fileUrl: aadharFileUrl || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=600&q=80',
+            documentType: 'NEPAL_CITIZENSHIP',
+            documentNumberMasked: nepalIdNumber ? `NPL-XXXX-${nepalIdNumber.slice(-4)}` : 'NPL-CITIZEN',
+            fileUrl: nepalIdFileUrl,
+            fileUrlBack: nepalIdFileUrlBack || '',
             status: 'VERIFIED',
             reviewedBy: req.user?.id || req.user?._id,
             reviewedAt: new Date()
           });
         } catch (kErr) {}
       }
-      if (panNumber) {
+    } else {
+      if (aadharFileUrl) {
         try {
           await KycDocument.create({
             userId: agent._id,
+            companyId,
+            companyCode: code,
+            documentType: 'AADHAAR',
+            documentNumberMasked: aadharNumber ? `XXXX-XXXX-${aadharNumber.slice(-4)}` : 'AADHAAR-DOC',
+            fileUrl: aadharFileUrl,
+            status: 'VERIFIED',
+            reviewedBy: req.user?.id || req.user?._id,
+            reviewedAt: new Date()
+          });
+        } catch (kErr) {}
+      }
+      if (panFileUrl) {
+        try {
+          await KycDocument.create({
+            userId: agent._id,
+            companyId,
             companyCode: code,
             documentType: 'PAN',
-            documentNumberMasked: `XXXXX${panNumber.slice(-4)}`,
-            fileUrl: panFileUrl || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=600&q=80',
+            documentNumberMasked: panNumber ? `XXXXX${panNumber.slice(-4)}` : 'PAN-DOC',
+            fileUrl: panFileUrl,
             status: 'VERIFIED',
             reviewedBy: req.user?.id || req.user?._id,
             reviewedAt: new Date()
@@ -270,7 +288,9 @@ router.post('/agents', async (req, res, next) => {
     // Create Agent Wallet with initial allocation
     const wallet = await Wallet.create({
       userId: agent._id,
+      companyId,
       companyCode: code,
+      ownerType: 'AGENT',
       availableBalance: initAmount,
       reservedBalance: 0
     });
@@ -520,7 +540,8 @@ router.get('/network', async (req, res, next) => {
 router.get('/fleet', async (req, res, next) => {
   try {
     const code = req.user.companyCode;
-    const buses = await Bus.find({ companyCode: code }).sort({ busNumber: 1 });
+    const filter = req.companyFilter || { companyCode: code };
+    const buses = await Bus.find(filter).sort({ busNumber: 1 });
     res.json({ success: true, count: buses.length, buses });
   } catch (err) {
     next(err);
@@ -557,6 +578,7 @@ router.post('/fleet', async (req, res, next) => {
       busNumber: cleanNumber,
       name: name.trim(),
       operatorName: operatorName?.trim() || req.user.agencyName || `Rupadiya Carrier #${String(code).padStart(2, '0')}`,
+      companyId: req.companyId || req.user.companyId || null,
       companyCode: code,
       busType: busType || 'AC Sleeper (2+1)',
       amenities: amenities || ['Charging Point', 'Reading Light', 'Blanket', 'WiFi', 'GPS Tracking'],
@@ -759,13 +781,28 @@ router.get('/reports', async (req, res, next) => {
 router.get('/trips', async (req, res, next) => {
   try {
     const code = req.user.companyCode;
-    const query = { companyCode: code };
+    const query = { ...(req.companyFilter || { companyCode: code }) };
+
+    // Support optional date query
+    if (req.query.date) {
+      const startOfDay = new Date(`${req.query.date}T00:00:00.000Z`);
+      const endOfDay = new Date(`${req.query.date}T23:59:59.999Z`);
+      query.departureTime = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    const sortOption = req.query.sort === 'departure_asc' 
+      ? { departureTime: 1 }
+      : req.query.sort === 'departure_desc'
+      ? { departureTime: -1 }
+      : { createdAt: -1 }; // Default: Latest created first!
 
     const trips = await Trip.find(query)
       .populate('routeId')
       .populate('busId')
-      .sort({ departureTime: 1 })
-      .limit(100);
+      .sort(sortOption)
+      .limit(200);
+
+    const now = new Date();
 
     const formattedTrips = trips.map(t => {
       const seats = t.seats || [];
@@ -780,12 +817,21 @@ router.get('/trips', async (req, res, next) => {
       const busName = t.busId?.name || 'BharatBenz Luxury AC';
       const busType = t.busId?.busType || 'AC Sleeper (2+1)';
 
+      const isExpired = new Date(t.departureTime) < now;
+      let liveStatus = t.status || 'SCHEDULED';
+      if (isExpired && !t.chartPrepared) {
+        liveStatus = 'DEPARTED';
+      } else if (t.chartPrepared) {
+        liveStatus = 'BOARDING';
+      }
+
       return {
         _id: t._id,
         id: t._id,
         tripNumber: `TRP-${String(t._id).slice(-4).toUpperCase()}`,
         rawTripId: t._id,
         companyCode: t.companyCode,
+        companyId: t.companyId,
         fromCity,
         toCity,
         corridor: `${fromCity} → ${toCity}`,
@@ -797,8 +843,10 @@ router.get('/trips', async (req, res, next) => {
         driverPhone: t.busId?.driverDetails?.phone || '+91 9876543210',
         departureTime: t.departureTime,
         arrivalTime: t.arrivalTime,
+        createdAt: t.createdAt,
         baseFare: t.baseFare || 1650,
-        status: t.chartPrepared ? 'BOARDING' : (t.status || 'SCHEDULED'),
+        status: liveStatus,
+        isExpired,
         chartPrepared: Boolean(t.chartPrepared),
         chartPreparedAt: t.chartPreparedAt,
         totalSeats,
@@ -818,16 +866,157 @@ router.get('/trips', async (req, res, next) => {
   }
 });
 
+// Schedule & Dispatch New Trip for Date (Up to next 7 days)
+router.post('/trips', async (req, res, next) => {
+  try {
+    const code = req.user.companyCode;
+    const { 
+      routeId, 
+      busId, 
+      origin, 
+      destination, 
+      departureDate, 
+      departureTime, 
+      arrivalTime, 
+      baseFare 
+    } = req.body;
+
+    // 1. Bus lookup and ownership verification
+    if (!busId) {
+      return res.status(400).json({ success: false, error: 'Please select an assigned fleet coach.' });
+    }
+    const bus = await Bus.findOne({
+      _id: busId,
+      ...(req.companyFilter || { companyCode: code })
+    });
+    if (!bus) {
+      return res.status(404).json({ success: false, error: 'Assigned bus was not found in your company fleet.' });
+    }
+
+    // 2. Bus Compliance Verification (30-day legal paper expiry guard)
+    if (typeof bus.checkCompliance === 'function') {
+      const compliance = bus.checkCompliance();
+      if (!compliance.isCompliant) {
+        return res.status(400).json({
+          success: false,
+          error: `Bus ${bus.busNumber} cannot be dispatched due to expired legal documents: ${compliance.expiredDocs.join(', ')}`
+        });
+      }
+    }
+
+    // 3. Resolve Route (by routeId or by origin/destination)
+    let route = null;
+    if (routeId) {
+      route = await Route.findById(routeId);
+    }
+    if (!route && origin && destination) {
+      const normFrom = normalizeCityId(origin);
+      const normTo = normalizeCityId(destination);
+      route = await Route.findOne({
+        $or: [
+          { 'fromCity.id': normFrom, 'toCity.id': normTo },
+          { 'fromCity.name': new RegExp(`^${origin.replace(/[()]/g, '')}`, 'i'), 'toCity.name': new RegExp(`^${destination.replace(/[()]/g, '')}`, 'i') }
+        ]
+      });
+
+      // If route doesn't exist yet, auto-create it with standard hub points
+      if (!route) {
+        const fromName = origin.includes('Rupadiya') ? 'Rupadiya' : origin;
+        const toName = destination.includes('Rupadiya') ? 'Rupadiya' : destination;
+        route = await Route.create({
+          companyId: req.user.companyId || bus.companyId || null,
+          companyCode: code,
+          fromCity: { id: normFrom, name: fromName, state: fromName === 'Rupadiya' ? 'Uttar Pradesh' : 'India' },
+          toCity: { id: normTo, name: toName, state: toName === 'Rupadiya' ? 'Uttar Pradesh' : 'India' },
+          distanceKm: 850,
+          estimatedDurationHours: 18,
+          baseFare: Number(baseFare) || 1650,
+          boardingPoints: [{ id: `bp-${normFrom}-1`, name: `${fromName} Central Hub Terminal`, timeOffsetMinutes: 0 }],
+          droppingPoints: [{ id: `dp-${normTo}-1`, name: `${toName} Intercity Drop Point`, timeOffsetMinutes: 1080 }]
+        });
+      }
+    }
+
+    if (!route) {
+      return res.status(400).json({ success: false, error: 'Valid route corridor could not be resolved.' });
+    }
+
+    // 4. Resolve Departure Date & Time (Supporting today through next 7 days)
+    let depDateTime;
+    if (departureDate && departureTime) {
+      depDateTime = new Date(`${departureDate}T${departureTime}:00`);
+    } else if (departureTime && departureTime.includes('T')) {
+      depDateTime = new Date(departureTime);
+    } else if (departureDate) {
+      depDateTime = new Date(`${departureDate}T18:00:00`);
+    } else {
+      depDateTime = new Date();
+    }
+
+    if (isNaN(depDateTime.getTime())) {
+      return res.status(400).json({ success: false, error: 'Invalid departure date or time provided.' });
+    }
+
+    // Calculate arrival time based on route duration
+    const durationHours = route.estimatedDurationHours || 20;
+    const arrDateTime = arrivalTime 
+      ? new Date(arrivalTime) 
+      : new Date(depDateTime.getTime() + durationHours * 3600 * 1000);
+
+    const fare = Number(baseFare) || route.baseFare || 1650;
+    const isSleeper = bus.layoutType === '2+1' || bus.busType?.toLowerCase().includes('sleeper');
+    const seats = isSleeper ? Trip.generateSleeper36Seats(fare) : Trip.generateSeater40Seats(fare);
+
+    const trip = new Trip({
+      routeId: route._id,
+      busId: bus._id,
+      companyId: bus.companyId || req.user.companyId || null,
+      companyCode: bus.companyCode || code,
+      departureTime: depDateTime,
+      arrivalTime: arrDateTime,
+      baseFare: fare,
+      seats,
+      status: 'SCHEDULED'
+    });
+
+    await trip.save();
+    await trip.populate('routeId');
+    await trip.populate('busId');
+
+    const formattedDepartureStr = depDateTime.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    res.status(201).json({
+      success: true,
+      message: `Trip successfully dispatched for ${route.fromCity?.name} → ${route.toCity?.name} on ${formattedDepartureStr} at ${departureTime || depDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+      trip
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Prepare Seat Chart for a Trip
 router.post('/trips/:id/prepare-chart', async (req, res, next) => {
   try {
     const code = req.user.companyCode;
-    const trip = await Trip.findOne({ _id: req.params.id, companyCode: code })
+    const filter = {
+      _id: req.params.id,
+      ...(req.companyFilter || { companyCode: code })
+    };
+    const trip = await Trip.findOne(filter)
       .populate('routeId')
       .populate('busId');
 
     if (!trip) {
       return res.status(404).json({ error: 'Trip not found under your company' });
+    }
+
+    // Guard: Expired/past departures cannot prepare chart
+    if (new Date(trip.departureTime) < new Date()) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Cannot prepare chart for an expired trip. The scheduled departure time has already passed.' 
+      });
     }
 
     trip.chartPrepared = true;
@@ -843,6 +1032,8 @@ router.post('/trips/:id/prepare-chart', async (req, res, next) => {
       message: `Seat sheet chart successfully prepared for ${trip.busId?.busNumber || 'trip'}. High cancellation penalty (85%) is now active.`,
       trip: {
         _id: trip._id,
+        rawTripId: trip._id,
+        tripNumber: `TRP-${String(trip._id).slice(-4).toUpperCase()}`,
         chartPrepared: true,
         chartPreparedAt: trip.chartPreparedAt,
         status: trip.status
@@ -857,7 +1048,11 @@ router.post('/trips/:id/prepare-chart', async (req, res, next) => {
 router.get('/trips/:id/seat-chart', async (req, res, next) => {
   try {
     const code = req.user.companyCode;
-    const trip = await Trip.findOne({ _id: req.params.id, companyCode: code })
+    const filter = {
+      _id: req.params.id,
+      ...(req.companyFilter || { companyCode: code })
+    };
+    const trip = await Trip.findOne(filter)
       .populate('routeId')
       .populate('busId');
 
@@ -878,10 +1073,10 @@ router.get('/trips/:id/seat-chart', async (req, res, next) => {
           if (p.seatNumber) {
             seatPassengerMap[p.seatNumber] = {
               passengerName: p.name || b.passengerId?.name || 'Passenger',
-              age: p.age || 28,
-              gender: p.gender || 'male',
-              contactPhone: b.passengerPhone || b.passengerId?.phone || '+91 9876543210',
-              pnr: b.bookingId || `RUP-${String(b._id).slice(-6).toUpperCase()}`,
+              age: p.age || '—',
+              gender: p.gender || '—',
+              contactPhone: b.passengerPhone || b.contactDetails?.phone || b.passengerId?.phone || '—',
+              pnr: b.pnr || b.bookingId || `RUP-${String(b._id).slice(-6).toUpperCase()}`,
               bookingId: b.bookingId || String(b._id),
               boardingPoint: b.boardingPoint?.name || b.boardingPoint || 'Rupadiya Main Stand',
               droppingPoint: b.droppingPoint?.name || b.droppingPoint || 'Central Drop Point',
@@ -894,19 +1089,24 @@ router.get('/trips/:id/seat-chart', async (req, res, next) => {
       }
     });
 
+    const isSleeper = trip.busId?.layoutType === '2+1' || trip.busId?.busType?.toLowerCase().includes('sleeper');
+    const allSeats = (trip.seats && trip.seats.length > 0)
+      ? trip.seats
+      : (isSleeper ? Trip.generateSleeper36Seats(trip.baseFare || 1650) : Trip.generateSeater40Seats(trip.baseFare || 1650));
+
     // Populate manifest rows for all seats in trip
-    const manifest = (trip.seats || []).map(seat => {
-      const bookedData = seatPassengerMap[seat.seatNumber] || (seat.status === 'BOOKED' && seat.passenger ? {
-        passengerName: seat.passenger.name || 'Confirmed Passenger',
-        age: seat.passenger.age || 30,
-        gender: seat.passenger.gender || 'male',
-        contactPhone: '+91 9876500000',
-        pnr: `RUP-${seat.seatNumber}`,
-        bookingId: `BK-${seat.seatNumber}`,
-        boardingPoint: 'Main Stand',
-        droppingPoint: 'Destination Station',
+    const manifest = allSeats.map(seat => {
+      const bookedData = seatPassengerMap[seat.seatNumber] || (seat.status === 'BOOKED' && seat.passenger?.name ? {
+        passengerName: seat.passenger.name,
+        age: seat.passenger.age || '—',
+        gender: seat.passenger.gender || '—',
+        contactPhone: seat.passenger.phone || '—',
+        pnr: seat.passenger.pnr || `RUP-${seat.seatNumber}`,
+        bookingId: seat.passenger.bookingId || `BK-${seat.seatNumber}`,
+        boardingPoint: seat.passenger.boardingPoint || 'Main Stand',
+        droppingPoint: seat.passenger.droppingPoint || 'Destination Station',
         fare: seat.fare || trip.baseFare || 1650,
-        insuranceEnrolled: true,
+        insuranceEnrolled: Boolean(seat.passenger.insuranceEnrolled),
         status: 'CONFIRMED'
       } : null);
 
@@ -914,8 +1114,8 @@ router.get('/trips/:id/seat-chart', async (req, res, next) => {
         seatNumber: seat.seatNumber,
         row: seat.row,
         column: seat.column,
-        deck: seat.deck,
-        category: seat.category,
+        deck: seat.deck || 'LOWER',
+        category: seat.category || 'STANDARD',
         fare: seat.fare || trip.baseFare || 1650,
         status: bookedData ? 'CONFIRMED' : 'VACANT',
         passengerName: bookedData ? bookedData.passengerName : '— VACANT —',

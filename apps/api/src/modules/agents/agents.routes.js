@@ -14,6 +14,7 @@ const Booking = require('../bookings/booking.model');
 const Trip = require('../trips/trip.model');
 const User = require('../users/user.model');
 const { ROLES, TRANSACTION_TYPES, SEAT_STATUS } = require('../../config/constants');
+const { generateUniqueReferralCode } = require('../../utils/referralCode');
 
 // Middleware to ensure user is an Agent
 const agentOnly = [authenticateToken, authorizeRoles(ROLES.AGENT)];
@@ -27,11 +28,111 @@ async function getOrCreateAgentWallet(agentId, companyCode) {
     wallet = await Wallet.create({
       userId: agentId,
       companyCode: companyCode || 1,
-      availableBalance: 15000,
+      availableBalance: 0,
       reservedBalance: 0
     });
   }
   return wallet;
+}
+
+/**
+ * Project a lean, optimized Ticket DTO for agent ticket search and booking history
+ * Excludes trip.seats array (40+ objects) and full bus documents/RC/insurance images
+ */
+function buildLeanTicketDTO(bookingDoc) {
+  const b = bookingDoc.toObject ? bookingDoc.toObject() : bookingDoc;
+  const trip = b.tripId || {};
+  const route = b.routeId || trip.routeId || {};
+  const bus = b.busId || trip.busId || {};
+
+  const depDate = trip.departureTime ? new Date(trip.departureTime).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  }) : 'Scheduled';
+
+  const depTime = trip.departureTime ? new Date(trip.departureTime).toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  }) : '05:30 PM';
+
+  const arrTime = trip.arrivalTime ? new Date(trip.arrivalTime).toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  }) : 'Scheduled';
+
+  const fromCity = route.fromCity?.name || 'Rupadiya';
+  const toCity = route.toCity?.name || 'Destination';
+
+  return {
+    _id: b._id,
+    bookingId: b.bookingId,
+    pnr: b.pnr,
+    status: b.status,
+    paymentStatus: b.paymentStatus || 'COMPLETED',
+    paymentProvider: b.paymentProvider || 'agent_wallet',
+    travelDate: trip.departureTime || b.createdAt,
+    departureDate: depDate,
+    departureTime: depTime,
+    arrivalTime: arrTime,
+    fromCity,
+    toCity,
+    boardingPoint: {
+      name: b.boardingPoint?.name || fromCity,
+      time: b.boardingPoint?.time || depTime,
+      landmark: b.boardingPoint?.landmark || ''
+    },
+    droppingPoint: {
+      name: b.droppingPoint?.name || toCity,
+      time: b.droppingPoint?.time || arrTime,
+      landmark: b.droppingPoint?.landmark || ''
+    },
+    boardingLocation: b.boardingPoint?.name || fromCity,
+    droppingLocation: b.droppingPoint?.name || toCity,
+    bus: {
+      name: bus.name || bus.operatorName || 'Rupadiya Intercity Bus',
+      busNumber: bus.busNumber || 'UP-40-BT-1001',
+      busType: bus.busType || 'AC Sleeper'
+    },
+    trip: {
+      _id: trip._id,
+      sourceCity: fromCity,
+      destinationCity: toCity,
+      departureDate: depDate,
+      departureTime: depTime,
+      arrivalTime: arrTime,
+      status: trip.status || 'SCHEDULED'
+    },
+    route: {
+      _id: route._id,
+      fromCity,
+      toCity
+    },
+    seatNumbers: b.seatNumbers || [],
+    seats: (b.seatNumbers || []).map(num => ({ seatNumber: num })),
+    seatCount: (b.seatNumbers || []).length,
+    passengers: (b.passengers || []).map(p => ({
+      name: p.name,
+      age: p.age,
+      gender: p.gender,
+      seatNumber: p.seatNumber
+    })),
+    fareBreakdown: {
+      baseFare: b.fareBreakdown?.baseFare || 0,
+      tax: b.fareBreakdown?.gst || b.fareBreakdown?.tax || 0,
+      totalPayable: b.fareBreakdown?.totalPayable ?? b.totalAmount ?? 0,
+      insurance: b.fareBreakdown?.insurance || 0
+    },
+    totalAmount: b.fareBreakdown?.totalPayable ?? b.totalAmount ?? 0,
+    contactDetails: {
+      name: b.contactDetails?.name || '',
+      email: b.contactDetails?.email || '',
+      phone: b.contactDetails?.phone || ''
+    },
+    createdAt: b.createdAt
+  };
 }
 
 // -------------------------------------------------------------
@@ -143,7 +244,7 @@ router.post('/deposits', agentOnly, async (req, res, next) => {
     const wallet = await getOrCreateAgentWallet(agentId, req.user.companyCode);
 
     // If instant verification or UPI simulation
-    const isCompleted = simulateInstant || paymentMethod === 'UPI_QR';
+    const isCompleted = false; // Manual UPI/Bank deposits remain PENDING until approved by Owner/Admin
 
     const depositRecord = await DepositRequest.create({
       depositId,
@@ -407,7 +508,8 @@ router.get('/tickets/search', agentOnly, async (req, res, next) => {
       query.$or = [
         { bookingId: cleanQ },
         { pnr: cleanQ.toUpperCase() },
-        { bookingId: { $regex: cleanQ, $options: 'i' } }
+        { bookingId: { $regex: cleanQ, $options: 'i' } },
+        { pnr: { $regex: cleanQ, $options: 'i' } }
       ];
     }
 
@@ -421,6 +523,11 @@ router.get('/tickets/search', agentOnly, async (req, res, next) => {
         d.setHours(23, 59, 59, 999);
         query.createdAt.$lte = d;
       }
+    }
+
+    // Scope ticket search to agent's company
+    if (req.user.companyCode) {
+      query.companyCode = req.user.companyCode;
     }
 
     const bookingDoc = await Booking.findOne(query)
@@ -444,17 +551,101 @@ router.get('/tickets/search', agentOnly, async (req, res, next) => {
       }
     }
 
-    const b = bookingDoc.toObject();
-    b.trip = b.tripId;
-    b.bus = b.busId || b.tripId?.busId;
-    b.route = b.routeId || b.tripId?.routeId;
-    b.totalAmount = b.fareBreakdown?.totalPayable ?? b.totalAmount ?? 0;
-    b.seats = b.seatNumbers?.map(num => ({ seatNumber: num })) || [];
+    const ticketDTO = buildLeanTicketDTO(bookingDoc);
 
     res.json({
       success: true,
-      booking: b,
-      data: b
+      booking: ticketDTO,
+      data: ticketDTO
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 5B. AGENT BOOKING HISTORY & DETAILS
+// -------------------------------------------------------------
+router.get('/bookings', agentOnly, async (req, res, next) => {
+  try {
+    const agentId = req.user._id;
+    const { status, search, startDate, endDate, page = 1, limit = 20 } = req.query;
+
+    const query = { referralAgentId: agentId };
+
+    if (status && status !== 'ALL') {
+      query.status = String(status).toUpperCase().trim();
+    }
+
+    if (search && String(search).trim()) {
+      const s = String(search).trim();
+      const sDigits = s.replace(/\D/g, '');
+      const searchConditions = [
+        { bookingId: { $regex: s, $options: 'i' } },
+        { pnr: { $regex: s, $options: 'i' } },
+        { 'passengers.name': { $regex: s, $options: 'i' } }
+      ];
+      if (sDigits.length >= 4) {
+        searchConditions.push({ 'contactDetails.phone': { $regex: sDigits, $options: 'i' } });
+      }
+      query.$or = searchConditions;
+    }
+
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) {
+        const d = new Date(endDate);
+        d.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = d;
+      }
+    }
+
+    const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
+    const pageLimit = Math.min(100, Math.max(1, parseInt(limit, 10)));
+
+    const [totalBookings, confirmedCount, cancelledCount, volumeAgg, docs] = await Promise.all([
+      Booking.countDocuments(query),
+      Booking.countDocuments({ referralAgentId: agentId, status: 'CONFIRMED' }),
+      Booking.countDocuments({ referralAgentId: agentId, status: 'CANCELLED' }),
+      Booking.aggregate([
+        { $match: { referralAgentId: agentId, status: 'CONFIRMED' } },
+        { $group: { _id: null, total: { $sum: '$fareBreakdown.totalPayable' } } }
+      ]),
+      Booking.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(pageLimit)
+        .populate({
+          path: 'tripId',
+          select: 'departureTime arrivalTime status routeId busId',
+          populate: [
+            { path: 'routeId', select: 'fromCity toCity' },
+            { path: 'busId', select: 'name operatorName busNumber busType' }
+          ]
+        })
+        .populate('routeId', 'fromCity toCity')
+        .populate('busId', 'name operatorName busNumber busType')
+    ]);
+
+    const bookings = docs.map(doc => buildLeanTicketDTO(doc));
+    const totalGrossSales = volumeAgg[0]?.total || 0;
+
+    res.json({
+      success: true,
+      bookings,
+      pagination: {
+        page: Math.max(1, parseInt(page, 10)),
+        limit: pageLimit,
+        total: totalBookings,
+        totalPages: Math.ceil(totalBookings / pageLimit)
+      },
+      stats: {
+        totalBookings,
+        confirmedCount,
+        cancelledCount,
+        totalGrossSales
+      }
     });
   } catch (err) {
     next(err);
@@ -869,54 +1060,50 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
 // -------------------------------------------------------------
 router.get('/trips/upcoming', agentOnly, async (req, res, next) => {
   try {
-    const agentId = req.user._id;
     const now = new Date();
+    const query = {
+      departureTime: { $gte: now },
+      status: 'SCHEDULED'
+    };
+    if (req.user.companyCode) {
+      query.companyCode = req.user.companyCode;
+    }
 
-    const bookings = await Booking.find({
-      referralAgentId: agentId,
-      status: 'CONFIRMED'
-    })
-      .populate({
-        path: 'tripId',
-        match: { departureTime: { $gte: now } },
-        populate: [{ path: 'routeId' }, { path: 'busId' }]
-      })
+    const trips = await Trip.find(query)
       .populate('routeId')
       .populate('busId')
-      .sort({ createdAt: -1 });
+      .sort({ departureTime: 1 })
+      .limit(10);
 
-    // Filter to those with future departure time
-    const upcomingTrips = bookings
-      .filter(b => b.tripId != null)
-      .map(b => {
-        const trip = b.tripId;
-        const bus = trip?.busId || b.busId || {};
-        const route = trip?.routeId || b.routeId || {};
+    const formattedTrips = trips.map(t => {
+      const from = t.routeId?.fromCity?.name || 'Rupadiya';
+      const to = t.routeId?.toCity?.name || 'Lucknow';
+      const depTime = t.departureTime ? new Date(t.departureTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '05:30 PM';
+      const depDate = t.departureTime ? new Date(t.departureTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today';
 
-        return {
-          bookingId: b.bookingId,
-          pnr: b.pnr,
-          busOperator: bus.name || 'Rupadiya Intercity Bus',
-          busNumber: bus.busNumber || 'UP-40-BT-1001',
-          busType: bus.busType || 'AC Sleeper 2+1',
-          route: `${route?.fromCity?.name || 'Rupadiya'} → ${route?.toCity?.name || 'Ahmedabad'}`,
-          departureTime: trip?.departureTime || b.createdAt,
-          boardingPoint: b.boardingPoint?.name || 'Rupadiya Border Main Stand',
-          droppingPoint: b.droppingPoint?.name || 'Ahmedabad Central Station',
-          seats: b.seatNumbers,
-          passengersCount: b.passengers?.length || b.seatNumbers?.length || 1,
-          bookingStatus: b.status,
-          trackingStatus: {
-            liveAvailable: false,
-            message: 'Scheduled on time · Live GPS connects 1 hour prior to boarding'
-          }
-        };
-      });
+      return {
+        _id: t._id,
+        tripId: t._id,
+        sourceCity: from,
+        destinationCity: to,
+        departureTime: depTime,
+        departureDate: depDate,
+        busId: {
+          name: t.busId?.name || t.busId?.operatorName || 'Rupadiya Express',
+          busNumber: t.busId?.busNumber || 'UP-40-BT-1001',
+          busType: t.busId?.busType || 'AC Seater'
+        },
+        baseFare: t.baseFare,
+        availableSeats: t.seats ? t.seats.filter(s => s.status === 'AVAILABLE').length : 40
+      };
+    });
 
     res.json({
       success: true,
-      count: upcomingTrips.length,
-      upcomingTrips
+      count: formattedTrips.length,
+      trips: formattedTrips,
+      upcomingTrips: formattedTrips,
+      data: { trips: formattedTrips }
     });
   } catch (err) {
     next(err);
@@ -967,18 +1154,18 @@ router.get('/profile', agentOnly, async (req, res, next) => {
 
 router.put('/profile', agentOnly, async (req, res, next) => {
   try {
-    const { agencyName, address, name, city, state, panNumber, aadharNumber, phone } = req.body;
+    const { name } = req.body;
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
     const agent = await User.findById(req.user._id);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
 
-    if (agencyName !== undefined) agent.agencyName = String(agencyName).trim();
-    if (address !== undefined) agent.address = String(address).trim();
-    if (name !== undefined) agent.name = String(name).trim();
-    if (city !== undefined) agent.city = String(city).trim();
-    if (state !== undefined) agent.state = String(state).trim();
-    if (panNumber !== undefined) agent.panNumber = String(panNumber).trim().toUpperCase();
-    if (aadharNumber !== undefined) agent.aadharNumber = String(aadharNumber).trim();
-    if (phone !== undefined) agent.phone = String(phone).trim();
-
+    // Agent can ONLY change their name as the account was created by company owner
+    agent.name = String(name).trim();
     await agent.save();
 
     const updatedData = {
@@ -990,12 +1177,13 @@ router.put('/profile', agentOnly, async (req, res, next) => {
       panNumber: agent.panNumber,
       aadharNumber: agent.aadharNumber,
       phone: agent.phone,
-      email: agent.email
+      email: agent.email,
+      agentCode: agent.referralCode
     };
 
     res.json({
       success: true,
-      message: 'Agent profile updated successfully.',
+      message: 'Agent name updated successfully.',
       profile: updatedData,
       data: updatedData
     });
@@ -1059,7 +1247,7 @@ router.put('/settings', agentOnly, async (req, res, next) => {
 });
 
 // -------------------------------------------------------------
-// 12. REFERRAL NETWORK & REFERRALS LIST
+// 12. REFERRAL NETWORK & REFERRALS LIST (REAL DB DATA)
 // -------------------------------------------------------------
 router.get('/referrals', agentOnly, async (req, res, next) => {
   try {
@@ -1070,13 +1258,13 @@ router.get('/referrals', agentOnly, async (req, res, next) => {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    if (!agent.referralCode) {
-      const code = agent.companyCode || 1;
-      agent.referralCode = `AGT-${String(code).padStart(2, '0')}-${String(agent._id).slice(-4).toUpperCase()}`;
+    // Ensure agent has a compliant 12-character unique referral code
+    if (!agent.referralCode || agent.referralCode.length !== 12) {
+      agent.referralCode = await generateUniqueReferralCode('AGT');
       await agent.save();
     }
 
-    // Direct referred users / sub-agents
+    // Direct referred users / sub-agents (real database query)
     const directReferred = await User.find({ referredBy: agentId })
       .select('name agencyName email phone city state role agentLevel createdAt')
       .sort({ createdAt: -1 });
@@ -1086,31 +1274,23 @@ router.get('/referrals', agentOnly, async (req, res, next) => {
       .select('bookingId fareBreakdown seatNumbers createdAt status passengerPhone')
       .sort({ createdAt: -1 });
 
-    const totalVolume = linkedBookings.reduce((sum, b) => sum + (b.fareBreakdown?.totalPayable || 0), 0);
+    // Real commission earnings
+    const commissions = await CommissionRecord.find({ agentId, status: 'CREDITED' });
+    const totalCommissionEarned = commissions.reduce((sum, c) => sum + (c.netCommission || 0), 0);
+    const totalVolume = linkedBookings.reduce((sum, b) => sum + (b.fareBreakdown?.totalPayable || b.totalAmount || 0), 0);
     const commissionPercent = agent.customCashbackPercent || 5.0;
-    const totalCommissionEarned = Math.round(totalVolume * (commissionPercent / 100));
 
-    // Compile downline list (direct referred + mock simulation if starter)
-    const referralList = directReferred.length > 0 
-      ? directReferred.map(u => ({
-          id: u._id,
-          name: u.name,
-          agencyName: u.agencyName || u.name,
-          city: u.city || 'Rupadiya Corridor',
-          phone: u.phone,
-          tier: 1,
-          bookings: Math.floor(5 + Math.random() * 25),
-          totalEarned: `₹${(Math.floor(10 + Math.random() * 50) * 100).toLocaleString('en-IN')}`,
-          status: 'Active',
-          joinedDate: u.createdAt
-        }))
-      : [
-          { id: 'REF-1', name: 'Vijay Verma', agencyName: 'Verma Travels Counter', city: 'Nanpara / Rupadiya', tier: 1, bookings: 32, totalEarned: '₹3,400', status: 'Active', joinedDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 35).toISOString() },
-          { id: 'REF-2', name: 'Pooja Tiwari', agencyName: 'Maa Vaishno Bookings', city: 'Bahraich', tier: 1, bookings: 21, totalEarned: '₹2,100', status: 'Active', joinedDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 22).toISOString() },
-          { id: 'REF-3', name: 'Kishan Patel', agencyName: 'Patel Express Spoke', city: 'Ahmedabad (Spoke)', tier: 1, bookings: 18, totalEarned: '₹1,800', status: 'Active', joinedDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString() },
-          { id: 'REF-4', name: 'Anil Gupta', agencyName: 'Gupta Counter Agency', city: 'Barabanki', tier: 2, bookings: 14, totalEarned: '₹1,120', status: 'Active', joinedDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 8).toISOString() },
-          { id: 'REF-5', name: 'Farhan Ali', agencyName: 'Awadh Travels Station', city: 'Lucknow Junction', tier: 2, bookings: 12, totalEarned: '₹960', status: 'Active', joinedDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString() }
-        ];
+    // Real downline list with actual metrics
+    const referralList = directReferred.map(u => ({
+      id: u._id,
+      name: u.name,
+      agencyName: u.agencyName || u.name,
+      city: u.city || 'Counter Station',
+      phone: u.phone,
+      tier: 1,
+      status: 'Active',
+      joinedDate: u.createdAt
+    }));
 
     res.json({
       success: true,
@@ -1119,19 +1299,57 @@ router.get('/referrals', agentOnly, async (req, res, next) => {
       agentLevel: agent.agentLevel || 'SILVER',
       commissionPercent,
       stats: {
-        totalReferredCount: directReferred.length || 5,
-        totalBookings: linkedBookings.length || 97,
-        totalVolume: totalVolume || 158400,
-        totalCommissionEarned: totalCommissionEarned || 9380
+        totalReferredCount: directReferred.length,
+        totalBookings: linkedBookings.length,
+        totalVolume,
+        totalCommissionEarned
       },
       tiers: [
-        { tier: 1, label: 'Tier 1 (Direct Sub-agents)', rate: '5.0%', count: directReferred.length || 3, volume: '₹1,24,000', earnings: '₹6,200', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
-        { tier: 2, label: 'Tier 2 (Level 2 Sub-agents)', rate: '3.0%', count: 2, volume: '₹82,000', earnings: '₹2,460', color: 'text-sky-700 bg-sky-50 border-sky-200' },
-        { tier: 3, label: 'Tier 3 (Level 3 Sub-agents)', rate: '2.0%', count: 1, volume: '₹34,000', earnings: '₹680', color: 'text-purple-700 bg-purple-50 border-purple-200' },
-        { tier: 4, label: 'Tier 4 (Level 4 Sub-agents)', rate: '1.0%', count: 1, volume: '₹12,000', earnings: '₹120', color: 'text-amber-700 bg-amber-50 border-amber-200' },
+        { tier: 1, label: 'Tier 1 (Direct Sub-agents)', rate: '5.0%', count: directReferred.length, volume: `₹${totalVolume.toLocaleString('en-IN')}`, earnings: `₹${totalCommissionEarned.toLocaleString('en-IN')}`, color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+        { tier: 2, label: 'Tier 2 (Level 2 Sub-agents)', rate: '3.0%', count: 0, volume: '₹0', earnings: '₹0', color: 'text-sky-700 bg-sky-50 border-sky-200' },
+        { tier: 3, label: 'Tier 3 (Level 3 Sub-agents)', rate: '2.0%', count: 0, volume: '₹0', earnings: '₹0', color: 'text-purple-700 bg-purple-50 border-purple-200' },
+        { tier: 4, label: 'Tier 4 (Level 4 Sub-agents)', rate: '1.0%', count: 0, volume: '₹0', earnings: '₹0', color: 'text-amber-700 bg-amber-50 border-amber-200' },
         { tier: 5, label: 'Tier 5 (Level 5 Sub-agents)', rate: '0.5%', count: 0, volume: '₹0', earnings: '₹0', color: 'text-slate-600 bg-slate-50 border-slate-200' }
       ],
       referrals: referralList
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 13. REFERRAL CODE REFRESH (INVALIDATES PREVIOUS CODE)
+// -------------------------------------------------------------
+router.post(['/referral-code/refresh', '/referrals/refresh-code'], agentOnly, async (req, res, next) => {
+  try {
+    const agentId = req.user._id;
+    const agent = await User.findById(agentId);
+
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const oldCode = agent.referralCode;
+    if (oldCode) {
+      if (!Array.isArray(agent.previousReferralCodes)) {
+        agent.previousReferralCodes = [];
+      }
+      if (!agent.previousReferralCodes.includes(oldCode)) {
+        agent.previousReferralCodes.push(oldCode);
+      }
+    }
+
+    const newCode = await generateUniqueReferralCode('AGT');
+    agent.referralCode = newCode;
+    agent.referralCodeUpdatedAt = new Date();
+    await agent.save();
+
+    res.json({
+      success: true,
+      referralCode: newCode,
+      referralUrl: `https://rupadiya.com/?ref=${newCode}`,
+      message: 'New 12-character referral code generated successfully. Your previous code is now permanently invalid.'
     });
   } catch (err) {
     next(err);

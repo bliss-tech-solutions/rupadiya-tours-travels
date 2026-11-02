@@ -26,6 +26,14 @@ export default function CompanyLayoutShell({ children }) {
         return;
       }
 
+      // Verify token role against backend
+      api.me().then(res => {
+        if (res?.user && res.user.role !== 'COMPANY_OWNER' && res.user.role !== 'SUPER_ADMIN') {
+          clearOwnerSession();
+          router.push('/login?reason=unauthorized_role');
+        }
+      }).catch(() => {});
+
       const interval = setInterval(() => {
         if (!isOwnerSessionValid()) {
           clearOwnerSession();

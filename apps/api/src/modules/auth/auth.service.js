@@ -6,6 +6,7 @@ const RefreshToken = require('./refreshToken.model');
 const { Wallet } = require('../wallets/wallet.model');
 const env = require('../../config/env');
 const { ROLES } = require('../../config/constants');
+const { generateUniqueReferralCode } = require('../../utils/referralCode');
 
 class AuthService {
   constructor() {
@@ -64,7 +65,8 @@ class AuthService {
       throw new Error('Please enter a valid 10-digit mobile number');
     }
 
-    const demoOtp = '1234';
+    const isDemo = process.env.NODE_ENV !== 'production' && (process.env.ALLOW_DEMO_OTP === 'true' || !process.env.ALLOW_DEMO_OTP);
+    const demoOtp = isDemo ? '1234' : String(Math.floor(1000 + Math.random() * 9000));
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
     this.otpStore.set(cleanPhone, { otp: demoOtp, expiresAt });
 
@@ -89,10 +91,11 @@ class AuthService {
     const cleanOtp = otp.toString().trim();
 
     const stored = this.otpStore.get(cleanPhone);
-    const isValid = cleanOtp === '1234' || (stored && stored.otp === cleanOtp && stored.expiresAt > Date.now());
+    const isDemoAllowed = process.env.NODE_ENV !== 'production' && (process.env.ALLOW_DEMO_OTP === 'true' || !process.env.ALLOW_DEMO_OTP);
+    const isValid = (isDemoAllowed && cleanOtp === '1234') || (stored && stored.otp === cleanOtp && stored.expiresAt > Date.now());
 
     if (!isValid) {
-      throw new Error('Invalid or expired OTP. Use demo code 1234.');
+      throw new Error(isDemoAllowed ? 'Invalid or expired OTP. Use demo code 1234.' : 'Invalid or expired OTP.');
     }
 
     this.otpStore.delete(cleanPhone);
@@ -153,6 +156,9 @@ class AuthService {
   }
 
   async register({ name, email, phone, password, role = ROLES.PASSENGER, companyCode, referralCode }, meta = {}) {
+    if (role && role !== ROLES.PASSENGER) {
+      throw new Error('Privileged accounts (Company Owner, Agent, Admin) must be registered by an administrator.');
+    }
     const existing = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone }] });
     if (existing) {
       throw new Error('User with this email or phone already exists.');
@@ -163,12 +169,20 @@ class AuthService {
 
     let userReferralCode = null;
     if (role === ROLES.AGENT) {
-      userReferralCode = `RUP-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+      userReferralCode = await generateUniqueReferralCode('AGT');
     }
 
     let referrer = null;
     if (referralCode) {
-      referrer = await User.findOne({ referralCode: referralCode.toUpperCase(), role: ROLES.AGENT });
+      const codeUpper = String(referralCode).toUpperCase().trim();
+      const expiredOwner = await User.findOne({ previousReferralCodes: codeUpper });
+      if (expiredOwner) {
+        throw new Error('This referral code has been refreshed and is no longer valid. Please obtain the new referral code from your sponsor.');
+      }
+      referrer = await User.findOne({ referralCode: codeUpper, role: ROLES.AGENT });
+      if (!referrer) {
+        throw new Error('Invalid referral code. Please verify the code or continue without one.');
+      }
     }
 
     const userData = {

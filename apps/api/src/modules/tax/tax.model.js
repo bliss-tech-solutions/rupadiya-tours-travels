@@ -30,6 +30,12 @@ const taxEntrySchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
+  },
   companyCode: {
     type: Number,
     default: null
@@ -69,10 +75,10 @@ const taxEntrySchema = new mongoose.Schema({
 
 taxEntrySchema.index({ taxType: 1, period: 1 });
 taxEntrySchema.index({ companyCode: 1, period: 1 });
+taxEntrySchema.index({ companyId: 1, period: 1 });
 taxEntrySchema.index({ refId: 1, taxType: 1 });
 taxEntrySchema.index({ agentId: 1, taxType: 1 });
 
 const TaxEntry = mongoose.model('TaxEntry', taxEntrySchema);
 
 module.exports = TaxEntry;
-

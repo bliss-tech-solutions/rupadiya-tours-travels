@@ -7,7 +7,7 @@ import { Menu, X, Wallet, PlusCircle, RefreshCw, Sparkles, ShieldCheck } from 'l
 import AgentSidebar from './Sidebar';
 import RealtimeAgentListener from './RealtimeNotificationListener';
 import { useWallet } from '../context/WalletContext';
-import { isAgentSessionValid } from '../lib/api';
+import { isAgentSessionValid, api } from '../lib/api';
 
 export default function AgentLayoutShell({ children }) {
   const pathname = usePathname();
@@ -16,10 +16,21 @@ export default function AgentLayoutShell({ children }) {
 
   const { balance, loading, refreshWallet, agent } = useWallet();
 
-  // Close mobile drawer when route changes
+  // Close mobile drawer when route changes and verify agent session
   useEffect(() => {
     setMobileMenuOpen(false);
-  }, [pathname]);
+    if (!isLoginPage && typeof window !== 'undefined') {
+      api.me().then(res => {
+        if (res?.user && res.user.role !== 'AGENT') {
+          try {
+            localStorage.removeItem('agent_token');
+            localStorage.removeItem('agent_user');
+          } catch {}
+          window.location.href = '/login?reason=unauthorized_role';
+        }
+      }).catch(() => {});
+    }
+  }, [pathname, isLoginPage]);
 
   if (isLoginPage) {
     return <main className="min-h-screen bg-slate-50 text-slate-900">{children}</main>;
@@ -34,8 +45,8 @@ export default function AgentLayoutShell({ children }) {
     );
   }
 
-  const agentCode = agent?.agentCode || agent?.referralCode || 'RUP-AGT';
-  const agencyName = agent?.agencyName || agent?.name || 'Rupadiya Partner';
+  const agentCode = agent?.referralCode || agent?.agentCode || 'RUP-AGT';
+  const displayName = agent?.name || agent?.agencyName || 'Rupadiya Partner';
 
   return (
     <div className="h-screen w-full bg-slate-50 text-slate-900 flex flex-col md:flex-row overflow-hidden">
@@ -58,8 +69,8 @@ export default function AgentLayoutShell({ children }) {
               <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block leading-none">
                 Agent Terminal
               </span>
-              <span className="text-xs font-bold text-slate-900 truncate max-w-[120px] block">
-                {agencyName}
+              <span className="text-xs font-bold text-slate-900 truncate max-w-[120px] block" suppressHydrationWarning>
+                {displayName}
               </span>
             </div>
           </div>
@@ -72,7 +83,7 @@ export default function AgentLayoutShell({ children }) {
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800"
           >
             <Wallet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{balance !== null ? `₹${Number(balance).toLocaleString('en-IN')}` : '₹...'}</span>
+            <span suppressHydrationWarning>{balance !== null ? `₹${Number(balance).toLocaleString('en-IN')}` : '₹...'}</span>
           </Link>
           <Link
             href="/deposit"
@@ -105,11 +116,11 @@ export default function AgentLayoutShell({ children }) {
         <header className="hidden md:flex shrink-0 bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-6 lg:px-8 py-3.5 items-center justify-between gap-4 z-30 shadow-2xs">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono" suppressHydrationWarning>
                 {agentCode}
               </span>
-              <span className="text-sm font-bold text-slate-900">
-                {agencyName}
+              <span className="text-sm font-bold text-slate-900" suppressHydrationWarning>
+                {displayName}
               </span>
             </div>
             <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-bold text-slate-500">
@@ -132,7 +143,7 @@ export default function AgentLayoutShell({ children }) {
                 <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider leading-none">
                   Wallet Balance
                 </div>
-                <div className="text-sm font-black text-slate-900 leading-tight">
+                <div className="text-sm font-black text-slate-900 leading-tight" suppressHydrationWarning>
                   {balance !== null ? `₹${Number(balance).toLocaleString('en-IN')}` : '₹...'}
                 </div>
               </div>

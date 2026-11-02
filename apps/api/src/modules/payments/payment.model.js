@@ -45,6 +45,12 @@ const paymentSchema = new mongoose.Schema({
     default: null,
     index: true
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
+  },
   companyCode: {
     type: Number,
     default: null
@@ -87,6 +93,6 @@ const paymentSchema = new mongoose.Schema({
 
 paymentSchema.index({ userId: 1, createdAt: -1 });
 paymentSchema.index({ purpose: 1, status: 1 });
+paymentSchema.index({ companyId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);
-

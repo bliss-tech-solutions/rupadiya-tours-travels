@@ -50,15 +50,31 @@ test('Concurrency Hold Engine - Prevents Double Booking', async (t) => {
 test('Company Isolation Guard - Blocks Cross-Tenant Leaks', async (t) => {
   const { requireCompanyScope } = require('../middleware/companyScope.middleware');
 
-  // Mock Request from Owner of Company 1
+  // Mock Request from Owner of Company 1 (legacy code only)
   const reqOwner1 = {
     user: { role: 'COMPANY_OWNER', companyCode: 1 }
   };
   let nextCalled = false;
-  requireCompanyScope(reqOwner1, {}, () => { nextCalled = true; });
+  await requireCompanyScope(reqOwner1, {}, () => { nextCalled = true; });
 
   assert.strictEqual(nextCalled, true);
   assert.deepStrictEqual(reqOwner1.companyFilter, { companyCode: 1 }, 'Company filter must be strictly { companyCode: 1 }');
   assert.strictEqual(reqOwner1.effectiveCompanyCode, 1);
+
+  // Mock Request with relational companyId
+  const fakeCompanyId = '663999999999999999999999';
+  const reqOwnerRelational = {
+    user: { role: 'COMPANY_OWNER', companyCode: 1, companyId: fakeCompanyId }
+  };
+  let nextCalledRelational = false;
+  await requireCompanyScope(reqOwnerRelational, {}, () => { nextCalledRelational = true; });
+
+  assert.strictEqual(nextCalledRelational, true);
+  assert.deepStrictEqual(
+    reqOwnerRelational.companyFilter,
+    { $or: [{ companyId: fakeCompanyId }, { companyCode: 1 }] },
+    'Company filter must enforce relational companyId or legacy companyCode'
+  );
+  assert.strictEqual(reqOwnerRelational.companyId, fakeCompanyId);
 });
 

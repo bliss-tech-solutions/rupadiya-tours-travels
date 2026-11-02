@@ -5,16 +5,25 @@ const walletLedgerSchema = new mongoose.Schema({
   walletId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Wallet',
-    required: true
+    required: true,
+    index: true
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    index: true
+  },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
   },
   companyCode: {
     type: Number,
-    default: null
+    default: null,
+    index: true
   },
   entryType: {
     type: String,
@@ -59,6 +68,7 @@ const walletLedgerSchema = new mongoose.Schema({
 
 walletLedgerSchema.index({ userId: 1, createdAt: -1 });
 walletLedgerSchema.index({ referenceId: 1, transactionType: 1 });
+walletLedgerSchema.index({ companyId: 1, createdAt: -1 });
 
 const walletSchema = new mongoose.Schema({
   userId: {
@@ -67,9 +77,21 @@ const walletSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
+  },
   companyCode: {
     type: Number,
-    default: null
+    default: null,
+    index: true
+  },
+  ownerType: {
+    type: String,
+    enum: ['AGENT', 'COMPANY'],
+    default: 'AGENT'
   },
   availableBalance: {
     type: Number,
@@ -82,15 +104,16 @@ const walletSchema = new mongoose.Schema({
   currency: {
     type: String,
     default: 'INR'
+  },
+  isLocked: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true
 });
 
-walletSchema.index({ companyCode: 1 });
-
 const Wallet = mongoose.model('Wallet', walletSchema);
 const WalletLedger = mongoose.model('WalletLedger', walletLedgerSchema);
 
 module.exports = { Wallet, WalletLedger };
-

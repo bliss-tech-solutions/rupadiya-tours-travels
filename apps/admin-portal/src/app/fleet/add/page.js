@@ -578,7 +578,7 @@ export default function AddFleetCoachPage() {
                 </div>
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">Bus Documents & Compliance Certificates</h2>
-                  <p className="text-xs text-slate-400">Upload RC, Commercial Insurance, Fitness & Permit (AWS S3)</p>
+                  <p className="text-xs text-slate-400">Upload RC, Commercial Insurance, Fitness & Permit</p>
                 </div>
               </div>
 

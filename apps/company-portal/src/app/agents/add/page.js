@@ -336,13 +336,13 @@ export default function AddFranchiseAgentPage() {
                 />
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 mb-1.5">
-                    Aadhaar Card Front / PDF Upload (AWS S3)
+                    Aadhaar Card Front / PDF Upload
                   </label>
                   <FileUploadProgress
                     folder="agent-kyc/aadhaar"
                     accept="image/*,application/pdf"
-                    currentUrl={aadharFileUrl}
-                    onUploadSuccess={(url) => setAadharFileUrl(url)}
+                    fileUrl={aadharFileUrl}
+                    onUploadComplete={(url) => setAadharFileUrl(url)}
                     onRemove={() => setAadharFileUrl('')}
                   />
                 </div>
@@ -366,13 +366,13 @@ export default function AddFranchiseAgentPage() {
                 />
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 mb-1.5">
-                    PAN Card Image Upload (AWS S3)
+                    PAN Card Image Upload 
                   </label>
                   <FileUploadProgress
                     folder="agent-kyc/pan"
                     accept="image/*,application/pdf"
-                    currentUrl={panFileUrl}
-                    onUploadSuccess={(url) => setPanFileUrl(url)}
+                    fileUrl={panFileUrl}
+                    onUploadComplete={(url) => setPanFileUrl(url)}
                     onRemove={() => setPanFileUrl('')}
                   />
                 </div>
@@ -402,26 +402,26 @@ export default function AddFranchiseAgentPage() {
 
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                 <label className="block text-xs font-bold text-slate-800">
-                  National ID Front Document (AWS S3)
+                  National ID Front Document 
                 </label>
                 <FileUploadProgress
                   folder="agent-kyc/nepal-id-front"
                   accept="image/*,application/pdf"
-                  currentUrl={nepalIdFileUrl}
-                  onUploadSuccess={(url) => setNepalIdFileUrl(url)}
+                  fileUrl={nepalIdFileUrl}
+                  onUploadComplete={(url) => setNepalIdFileUrl(url)}
                   onRemove={() => setNepalIdFileUrl('')}
                 />
               </div>
 
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                 <label className="block text-xs font-bold text-slate-800">
-                  National ID Back Document (AWS S3)
+                  National ID Back Document 
                 </label>
                 <FileUploadProgress
                   folder="agent-kyc/nepal-id-back"
                   accept="image/*,application/pdf"
-                  currentUrl={nepalIdFileUrlBack}
-                  onUploadSuccess={(url) => setNepalIdFileUrlBack(url)}
+                  fileUrl={nepalIdFileUrlBack}
+                  onUploadComplete={(url) => setNepalIdFileUrlBack(url)}
                   onRemove={() => setNepalIdFileUrlBack('')}
                 />
               </div>

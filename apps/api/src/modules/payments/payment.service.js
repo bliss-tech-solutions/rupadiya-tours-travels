@@ -127,6 +127,15 @@ class PaymentService {
       };
     }
 
+    // Simulation security guard
+    const allowSimulation = process.env.NODE_ENV !== 'production' && process.env.ALLOW_PAYMENT_SIMULATION === 'true';
+    if ((paymentId?.startsWith('pay_sim_') || signature?.startsWith('sig_sim_')) && !allowSimulation) {
+      payment.status = 'FAILED';
+      payment.failureReason = 'Payment simulation is disabled. Real gateway verification required.';
+      await payment.save();
+      throw new Error('Payment simulation rejected. Please use a live payment method.');
+    }
+
     // Cryptographic signature check
     if (this.isConfigured() && !paymentId?.startsWith('pay_sim_') && !signature?.startsWith('sig_sim_')) {
       if (!signature) {

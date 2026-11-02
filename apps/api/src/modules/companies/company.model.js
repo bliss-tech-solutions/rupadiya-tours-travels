@@ -5,18 +5,31 @@ const companySchema = new mongoose.Schema({
     type: Number,
     required: true,
     unique: true,
+    min: 1
+  },
+  rank: {
+    type: Number,
     min: 1,
-    max: 33
+    max: 34,
+    index: true
+  },
+  shortCode: {
+    type: String,
+    trim: true,
+    index: true
   },
   name: { type: String, required: true, trim: true },
   slug: { type: String, required: true, unique: true },
   ownerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    default: null
+    default: null,
+    index: true
   },
   contactPhone: { type: String, default: '+91 9876543210' },
   contactEmail: { type: String, default: '' },
+  city: { type: String, default: 'Rupadiya' },
+  state: { type: String, default: 'Uttar Pradesh' },
   address: { type: String, default: 'Transport Nagar, Rupadiya, Uttar Pradesh' },
   status: {
     type: String,
@@ -30,7 +43,7 @@ const companySchema = new mongoose.Schema({
     }
   ],
   annualTarget: {
-    targetPassengers: { type: Number, default: 10000 },
+    targetPassengers: { type: Number, default: 12000 },
     currentPassengers: { type: Number, default: 0 },
     financialYear: { type: String, default: '2026-2027' }
   }
@@ -38,7 +51,4 @@ const companySchema = new mongoose.Schema({
   timestamps: true
 });
 
-companySchema.index({ ownerId: 1 });
-
 module.exports = mongoose.model('Company', companySchema);
-

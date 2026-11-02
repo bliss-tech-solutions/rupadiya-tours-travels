@@ -123,15 +123,51 @@ function isValidCorridor(fromId, toId) {
   return false;
 }
 
-// Pre-defined 33 Company Codes
-const COMPANY_CODES = Array.from({ length: 33 }, (_, idx) => {
-  const code = idx + 1;
-  return {
-    code,
-    defaultName: `Rupadiya Transporters Co. #${code.toString().padStart(2, '0')}`,
-    slug: `comp-${code}`
-  };
-});
+// Pre-defined 34 Fixed Passenger Ranking Franchise Companies (Ranks 1 to 34)
+const FIXED_COMPANY_SPECS = [
+  { rank: 1, code: 1, shortCode: 'Ntt', defaultName: 'Ntt Travels & Logistics', slug: 'ntt' },
+  { rank: 2, code: 2, shortCode: 'Stt', defaultName: 'Stt Express', slug: 'stt' },
+  { rank: 3, code: 3, shortCode: 'Mtt', defaultName: 'Mtt Transporters', slug: 'mtt' },
+  { rank: 4, code: 4, shortCode: 'Bdtt', defaultName: 'Bdtt Roadlines', slug: 'bdtt' },
+  { rank: 5, code: 5, shortCode: 'Jbltt', defaultName: 'Jbltt Travels', slug: 'jbltt' },
+  { rank: 6, code: 6, shortCode: 'Dtt', defaultName: 'Dtt Express', slug: 'dtt' },
+  { rank: 7, code: 7, shortCode: 'Ptt', defaultName: 'Ptt Transporters', slug: 'ptt' },
+  { rank: 8, code: 8, shortCode: 'Skt', defaultName: 'Skt Travels', slug: 'skt' },
+  { rank: 9, code: 9, shortCode: 'Mhtt', defaultName: 'Mhtt Roadlines', slug: 'mhtt' },
+  { rank: 10, code: 10, shortCode: 'Blt', defaultName: 'Blt Express', slug: 'blt' },
+  { rank: 11, code: 11, shortCode: 'Mkltt', defaultName: 'Mkltt Travels', slug: 'mkltt' },
+  { rank: 12, code: 12, shortCode: 'Srm', defaultName: 'Srm Transporters', slug: 'srm' },
+  { rank: 13, code: 13, shortCode: 'Slntt', defaultName: 'Slntt Roadlines', slug: 'slntt' },
+  { rank: 14, code: 14, shortCode: 'Up', defaultName: 'Up Express', slug: 'up' },
+  { rank: 15, code: 15, shortCode: 'Ram', defaultName: 'Ram Travels', slug: 'ram' },
+  { rank: 16, code: 16, shortCode: 'Sbltt', defaultName: 'Sbltt Roadlines', slug: 'sbltt' },
+  { rank: 17, code: 17, shortCode: 'Att', defaultName: 'Att Express', slug: 'att' },
+  { rank: 18, code: 18, shortCode: 'Manv', defaultName: 'Manv Travels', slug: 'manv' },
+  { rank: 19, code: 19, shortCode: 'Rstt', defaultName: 'Rstt Transporters', slug: 'rstt' },
+  { rank: 20, code: 20, shortCode: 'Vapi', defaultName: 'Vapi Express', slug: 'vapi' },
+  { rank: 21, code: 21, shortCode: 'Btt', defaultName: 'Btt Roadlines', slug: 'btt' },
+  { rank: 22, code: 22, shortCode: 'Rntt', defaultName: 'Rntt Travels', slug: 'rntt' },
+  { rank: 23, code: 23, shortCode: 'KKt', defaultName: 'KKt Express', slug: 'kkt' },
+  { rank: 24, code: 24, shortCode: 'Kgtt', defaultName: 'Kgtt Roadlines', slug: 'kgtt' },
+  { rank: 25, code: 25, shortCode: 'ASST', defaultName: 'ASST Travels', slug: 'asst' },
+  { rank: 26, code: 26, shortCode: 'Lord', defaultName: 'Lord Express', slug: 'lord' },
+  { rank: 27, code: 27, shortCode: 'BSST', defaultName: 'BSST Transporters', slug: 'bsst' },
+  { rank: 28, code: 28, shortCode: 'Jktt', defaultName: 'Jktt Roadlines', slug: 'jktt' },
+  { rank: 29, code: 29, shortCode: 'RRt', defaultName: 'RRt Travels', slug: 'rrt' },
+  { rank: 30, code: 30, shortCode: 'Msn', defaultName: 'Msn Express', slug: 'msn' },
+  { rank: 31, code: 31, shortCode: 'Hktt', defaultName: 'Hktt Roadlines', slug: 'hktt' },
+  { rank: 32, code: 32, shortCode: 'Jsrm', defaultName: 'Jsrm Travels', slug: 'jsrm' },
+  { rank: 33, code: 33, shortCode: 'Kltt', defaultName: 'Kltt Express', slug: 'kltt' },
+  { rank: 34, code: 34, shortCode: 'Ott', defaultName: 'Ott Roadlines', slug: 'ott' }
+];
+
+const COMPANY_CODES = FIXED_COMPANY_SPECS.map(spec => ({
+  rank: spec.rank,
+  code: spec.code,
+  shortCode: spec.shortCode,
+  defaultName: spec.defaultName,
+  slug: spec.slug
+}));
 
 module.exports = {
   ROLES,
@@ -157,6 +193,7 @@ module.exports = {
   CITIES,
   normalizeCityId,
   isValidCorridor,
-  COMPANY_CODES
+  COMPANY_CODES,
+  FIXED_COMPANY_SPECS
 };
 

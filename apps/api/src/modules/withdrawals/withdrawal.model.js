@@ -5,11 +5,19 @@ const withdrawalSchema = new mongoose.Schema({
   agentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    index: true
+  },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
   },
   companyCode: {
     type: Number,
-    required: true
+    required: true,
+    index: true
   },
   amount: {
     type: Number,
@@ -45,7 +53,7 @@ const withdrawalSchema = new mongoose.Schema({
   timestamps: true
 });
 
-withdrawalSchema.index({ agentId: 1 });
 withdrawalSchema.index({ companyCode: 1, status: 1 });
+withdrawalSchema.index({ companyId: 1, status: 1 });
 
 module.exports = mongoose.model('WithdrawalRequest', withdrawalSchema);

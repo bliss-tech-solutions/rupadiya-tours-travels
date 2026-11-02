@@ -9,8 +9,10 @@ const WalletContext = createContext({
   loading: true,
   error: null,
   agent: null,
+  user: null,
   refreshWallet: () => {},
-  setLocalBalance: () => {}
+  setLocalBalance: () => {},
+  updateUser: () => {}
 });
 
 export function WalletProvider({ children }) {
@@ -45,7 +47,13 @@ export function WalletProvider({ children }) {
         if (dRes?.success) {
           const d = dRes.data || dRes;
           fetchedBal = d.walletBalance ?? d.wallet?.availableBalance;
-          if (d.agent) setAgent(d.agent);
+          if (d.agent) {
+            setAgent(prev => {
+              const merged = { ...(prev || {}), ...d.agent };
+              try { localStorage.setItem('agent_user', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
         }
       }
 
@@ -53,10 +61,14 @@ export function WalletProvider({ children }) {
         setBalance(Number(fetchedBal));
       }
 
-      // Also ensure profile info is fresh
-      if (!agent) {
-        const meRes = await api.me().catch(() => null);
-        if (meRes?.user) setAgent(meRes.user);
+      // Always ensure profile info is synchronized
+      const meRes = await api.me().catch(() => null);
+      if (meRes?.user) {
+        setAgent(prev => {
+          const merged = { ...(prev || {}), ...meRes.user };
+          try { localStorage.setItem('agent_user', JSON.stringify(merged)); } catch (e) {}
+          return merged;
+        });
       }
 
       setError(null);
@@ -66,21 +78,45 @@ export function WalletProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [agent]);
+  }, []);
+
+  const updateUser = useCallback((partialUser) => {
+    setAgent(prev => {
+      const updated = { ...(prev || {}), ...partialUser };
+      try {
+        localStorage.setItem('agent_user', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    window.dispatchEvent(new Event('agent-user-updated'));
+  }, []);
 
   useEffect(() => {
+    // Synchronize client-side cached agent profile after mounting to prevent SSR hydration mismatch
+    try {
+      const raw = localStorage.getItem('agent_user');
+      if (raw) setAgent(JSON.parse(raw));
+    } catch (e) {}
+
     refreshWallet();
 
-    // Event listeners for immediate reactive synchronization
     const handleUpdate = () => refreshWallet();
+    const handleUserUpdate = () => {
+      try {
+        const raw = localStorage.getItem('agent_user');
+        if (raw) setAgent(JSON.parse(raw));
+      } catch (e) {}
+    };
+
     window.addEventListener('wallet-updated', handleUpdate);
+    window.addEventListener('agent-user-updated', handleUserUpdate);
     window.addEventListener('focus', handleUpdate);
 
-    // Automatic 30-second background polling
     const interval = setInterval(refreshWallet, 30000);
 
     return () => {
       window.removeEventListener('wallet-updated', handleUpdate);
+      window.removeEventListener('agent-user-updated', handleUserUpdate);
       window.removeEventListener('focus', handleUpdate);
       clearInterval(interval);
     };
@@ -92,16 +128,21 @@ export function WalletProvider({ children }) {
   }, []);
 
   return (
-    <WalletContext.Provider value={{ balance, reserved, loading, error, agent, refreshWallet, setLocalBalance }}>
+    <WalletContext.Provider value={{
+      balance,
+      reserved,
+      loading,
+      error,
+      agent,
+      user: agent,
+      refreshWallet,
+      setLocalBalance,
+      updateUser
+    }}>
       {children}
     </WalletContext.Provider>
   );
 }
 
-export function useWallet() {
-  const context = useContext(WalletContext);
-  if (!context) {
-    throw new Error('useWallet must be used within a WalletProvider');
-  }
-  return context;
-}
+export const useWallet = () => useContext(WalletContext);
+export const useAgent = () => useContext(WalletContext);

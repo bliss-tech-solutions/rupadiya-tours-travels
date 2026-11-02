@@ -31,11 +31,22 @@ async function seed() {
   console.log('[Seed] Connecting to database...');
   await connectDB();
 
-  console.log('[Seed] Dropping old database collections and indexes cleanly...');
-  try {
-    await mongoose.connection.dropDatabase();
-  } catch (dropErr) {
-    console.warn('[Seed Warning] dropDatabase:', dropErr.message);
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isForceReset = process.argv.includes('--force-reset');
+
+  if (isProduction) {
+    throw new Error('[Safety Guard] Database drop is strictly forbidden in PRODUCTION.');
+  }
+
+  if (isForceReset) {
+    console.log('[Seed] Dropping old database collections and indexes cleanly (--force-reset specified)...');
+    try {
+      await mongoose.connection.dropDatabase();
+    } catch (dropErr) {
+      console.warn('[Seed Warning] dropDatabase:', dropErr.message);
+    }
+  } else {
+    console.log('[Seed] Safe mode: preserving database (pass --force-reset to clear).');
   }
 
   const defaultPassword = 'Password123!';

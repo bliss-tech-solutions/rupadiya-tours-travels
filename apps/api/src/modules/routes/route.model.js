@@ -15,6 +15,18 @@ const droppingPointSchema = new mongoose.Schema({
 }, { _id: false });
 
 const routeSchema = new mongoose.Schema({
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
+  },
+  companyCode: {
+    type: Number,
+    min: 1,
+    default: null,
+    index: true
+  },
   fromCity: {
     id: { type: String, required: true },
     name: { type: String, required: true },

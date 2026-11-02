@@ -8,12 +8,19 @@ export default function FileUploadProgress({
   label,
   description,
   fileUrl,
+  currentUrl,
+  value,
   onUploadComplete,
+  onUploadSuccess,
+  onChange,
   onRemove,
   folder = 'documents',
   accept = 'image/*,application/pdf',
   required = false
 }) {
+  const effectiveUrl = fileUrl || currentUrl || value || '';
+  const handleUploadDone = onUploadComplete || onUploadSuccess || onChange;
+
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
@@ -43,7 +50,14 @@ export default function FileUploadProgress({
         setProgress(100);
         setTimeout(() => {
           setUploading(false);
-          onUploadComplete(res.url, res.key);
+          try {
+            if (typeof handleUploadDone === 'function') {
+              handleUploadDone(res.url, res.key);
+            }
+          } catch (callbackErr) {
+            console.error('[FileUploadProgress] Error in onUploadComplete:', callbackErr);
+            setError(callbackErr?.message || 'Error processing uploaded file');
+          }
         }, 300);
       } else {
         throw new Error('Upload returned no URL');
@@ -60,10 +74,16 @@ export default function FileUploadProgress({
     setFileName('');
     setProgress(0);
     setError('');
-    onRemove();
+    try {
+      if (typeof onRemove === 'function') {
+        onRemove();
+      }
+    } catch (err) {
+      console.error('[FileUploadProgress] Error in onRemove:', err);
+    }
   };
 
-  const isPdf = fileUrl?.toLowerCase().endsWith('.pdf') || fileName.toLowerCase().endsWith('.pdf');
+  const isPdf = effectiveUrl?.toLowerCase().endsWith('.pdf') || fileName.toLowerCase().endsWith('.pdf');
 
   return (
     <div className="space-y-1.5">
@@ -73,7 +93,7 @@ export default function FileUploadProgress({
         </label>
       )}
 
-      {fileUrl ? (
+      {effectiveUrl ? (
         <div className="flex items-center justify-between p-3 rounded-2xl bg-blue-50/60 border border-blue-200">
           <div className="flex items-center gap-3 min-w-0">
             {isPdf ? (
@@ -82,7 +102,7 @@ export default function FileUploadProgress({
               </div>
             ) : (
               <img
-                src={fileUrl}
+                src={effectiveUrl}
                 alt="Uploaded document"
                 className="w-10 h-10 rounded-xl object-cover border border-blue-200 shrink-0"
               />
@@ -99,7 +119,7 @@ export default function FileUploadProgress({
 
           <div className="flex items-center gap-2 shrink-0">
             <a
-              href={fileUrl}
+              href={effectiveUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-blue-600 transition"
@@ -166,4 +186,3 @@ export default function FileUploadProgress({
     </div>
   );
 }
-

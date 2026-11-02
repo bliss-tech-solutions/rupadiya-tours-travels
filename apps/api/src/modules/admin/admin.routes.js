@@ -52,25 +52,158 @@ router.get('/dashboard', async (req, res, next) => {
   }
 });
 
-// Companies List (1-33) & Owner Assignment
+// Companies List (1-34 Fixed Passenger Ranking) & Owner Assignment
 router.get('/companies', async (req, res, next) => {
   try {
-    const dbCompanies = await Company.find().populate('ownerId', 'name email phone');
+    const dbCompanies = await Company.find().populate('ownerId', 'name email phone role isActive');
 
-    // Merge with master 33 company codes to ensure all 1..33 exist
+    // Merge with master 34 company codes to ensure all 1..34 exist with fixed ranks and codes
     const fullList = COMPANY_CODES.map(c => {
-      const match = dbCompanies.find(dc => dc.companyCode === c.code);
-      return match ? match.toObject() : {
+      const match = dbCompanies.find(dc => dc.companyCode === c.code || (dc.shortCode && dc.shortCode.toLowerCase() === c.shortCode.toLowerCase()));
+      if (match) {
+        const obj = match.toObject();
+        obj.rank = c.rank;
+        obj.shortCode = c.shortCode;
+        return obj;
+      }
+      return {
         companyCode: c.code,
+        rank: c.rank,
+        shortCode: c.shortCode,
         name: c.defaultName,
         slug: c.slug,
         ownerId: null,
         status: 'UNASSIGNED',
-        annualTarget: { targetPassengers: 10000, currentPassengers: 0 }
+        annualTarget: { targetPassengers: 12000, currentPassengers: 0, financialYear: '2026-2027' }
       };
     });
 
+    // Ensure sorted by fixed rank 1 to 34
+    fullList.sort((a, b) => (a.rank || a.companyCode) - (b.rank || b.companyCode));
+
     res.json({ success: true, count: fullList.length, companies: fullList });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Dynamic Create Company & Owner Workflow (Super Admin)
+router.post('/companies/create-with-owner', async (req, res, next) => {
+  try {
+    const { 
+      companyCode, 
+      name, 
+      address, 
+      city, 
+      contactPhone, 
+      contactEmail,
+      ownerName, 
+      ownerEmail, 
+      ownerPhone, 
+      ownerPassword, 
+      targetPassengers 
+    } = req.body;
+
+    if (!companyCode || !name || !ownerName || !ownerEmail || !ownerPhone || !ownerPassword) {
+      return res.status(400).json({ 
+        error: 'Company code, company name, owner name, owner email, owner phone, and owner password are required.' 
+      });
+    }
+
+    let code = companyCode ? parseInt(companyCode, 10) : null;
+    if (!code || isNaN(code) || code < 1) {
+      const highestComp = await Company.findOne().sort({ companyCode: -1 });
+      code = (highestComp?.companyCode || 0) + 1;
+    }
+
+    // Check if owner email or phone is already taken
+    const existingUser = await User.findOne({
+      $or: [{ email: ownerEmail.toLowerCase().trim() }, { phone: ownerPhone.trim() }]
+    });
+    if (existingUser) {
+      return res.status(400).json({ error: 'A user with this owner email or phone number already exists.' });
+    }
+
+    // Hash owner password
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(ownerPassword, salt);
+
+    // Create Company Owner User
+    const owner = await User.create({
+      name: ownerName.trim(),
+      email: ownerEmail.toLowerCase().trim(),
+      phone: ownerPhone.trim(),
+      passwordHash,
+      role: ROLES.COMPANY_OWNER,
+      companyCode: code,
+      isActive: true
+    });
+
+    // Create or update Company document
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') || `comp-${code}`;
+    let company = await Company.findOne({ companyCode: code });
+    if (!company) {
+      company = new Company({
+        companyCode: code,
+        name: name.trim(),
+        slug,
+        address: address ? address.trim() : (city ? `${city.trim()}, Uttar Pradesh` : 'Transport Nagar, Rupadiya'),
+        contactPhone: contactPhone ? contactPhone.trim() : ownerPhone.trim(),
+        contactEmail: contactEmail ? contactEmail.toLowerCase().trim() : ownerEmail.toLowerCase().trim(),
+        ownerId: owner._id,
+        status: 'ACTIVE',
+        annualTarget: {
+          targetPassengers: Number(targetPassengers) || 12000,
+          currentPassengers: 0,
+          financialYear: '2026-2027'
+        }
+      });
+    } else {
+      company.name = name.trim();
+      company.slug = slug;
+      if (address) company.address = address.trim();
+      company.contactPhone = contactPhone ? contactPhone.trim() : ownerPhone.trim();
+      company.contactEmail = contactEmail ? contactEmail.toLowerCase().trim() : ownerEmail.toLowerCase().trim();
+      company.ownerId = owner._id;
+      company.status = 'ACTIVE';
+      if (targetPassengers) {
+        if (!company.annualTarget) company.annualTarget = {};
+        company.annualTarget.targetPassengers = Number(targetPassengers);
+      }
+    }
+    await company.save();
+
+    // Link companyId back on owner
+    owner.companyId = company._id;
+    await owner.save();
+
+    // Initialize Company Wallet with ₹0 balance
+    let companyWallet = await Wallet.findOne({ userId: owner._id });
+    if (!companyWallet) {
+      companyWallet = await Wallet.create({
+        userId: owner._id,
+        companyId: company._id,
+        companyCode: code,
+        ownerType: 'COMPANY',
+        availableBalance: 0,
+        reservedBalance: 0
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `Company "${company.name}" (#${code}) and Owner "${owner.name}" created successfully.`,
+      company: {
+        ...company.toObject(),
+        owner: {
+          id: owner._id,
+          name: owner.name,
+          email: owner.email,
+          phone: owner.phone,
+          role: owner.role
+        }
+      }
+    });
   } catch (err) {
     next(err);
   }
@@ -107,6 +240,9 @@ router.post('/companies/:code/assign-owner', async (req, res, next) => {
     }
     await company.save();
 
+    owner.companyId = company._id;
+    await owner.save();
+
     res.json({ success: true, message: `Company Code ${code} assigned to ${owner.name}`, company });
   } catch (err) {
     next(err);
@@ -142,21 +278,52 @@ router.patch('/companies/:code/target', async (req, res, next) => {
   }
 });
 
-// Get Detailed Profile for a Company Code (Overview, Owner, Fleet, Agents, Stats)
+// Helper to resolve company code & spec by either numeric code (1..34) or shortCode ('Ntt', 'Stt', etc.)
+function resolveCompanySpec(rawParam) {
+  if (!rawParam) return { code: 1, spec: COMPANY_CODES[0] };
+  const str = String(rawParam).trim();
+  const num = parseInt(str, 10);
+  if (!isNaN(num) && num >= 1 && num <= 34) {
+    const spec = COMPANY_CODES.find(c => c.code === num);
+    return { code: num, spec };
+  }
+  const spec = COMPANY_CODES.find(c => c.shortCode.toLowerCase() === str.toLowerCase() || c.slug.toLowerCase() === str.toLowerCase());
+  if (spec) {
+    return { code: spec.code, spec };
+  }
+  return { code: isNaN(num) ? 1 : num, spec: null };
+}
+
+// Get Detailed Profile for a Company Code or ShortCode (Overview, Owner, Fleet, Agents, Stats)
 router.get('/companies/:code', async (req, res, next) => {
   try {
-    const code = parseInt(req.params.code, 10);
-    let company = await Company.findOne({ companyCode: code }).populate('ownerId', 'name email phone role isActive createdAt');
+    const rawCode = req.params.code;
+    const { code, spec } = resolveCompanySpec(rawCode);
+
+    let company = await Company.findOne({
+      $or: [
+        { companyCode: code },
+        { shortCode: new RegExp(`^${rawCode}$`, 'i') }
+      ]
+    }).populate('ownerId', 'name email phone role isActive createdAt');
+
     if (!company) {
-      const def = COMPANY_CODES.find(c => c.code === code);
       company = {
         companyCode: code,
-        name: def ? def.defaultName : `Company #${String(code).padStart(2, '0')}`,
-        slug: def ? def.slug : `comp-${code}`,
+        rank: spec ? spec.rank : code,
+        shortCode: spec ? spec.shortCode : `C${code}`,
+        name: spec ? spec.defaultName : `Company #${String(code).padStart(2, '0')}`,
+        slug: spec ? spec.slug : `comp-${code}`,
         ownerId: null,
         status: 'UNASSIGNED',
-        annualTarget: { targetPassengers: 10000, currentPassengers: 0, financialYear: '2026-2027' }
+        annualTarget: { targetPassengers: 12000, currentPassengers: 0, financialYear: '2026-2027' }
       };
+    } else {
+      // Ensure fixed rank and shortCode are always synchronized
+      if (spec) {
+        company.rank = spec.rank;
+        company.shortCode = spec.shortCode;
+      }
     }
 
     const buses = await Bus.find({ companyCode: code }).sort({ createdAt: -1 });
@@ -185,13 +352,96 @@ router.get('/companies/:code', async (req, res, next) => {
         totalAgents: agents.length,
         totalPassengers,
         totalGMV,
-        targetPassengers: company.annualTarget?.targetPassengers || 10000,
-        progressPercent: Math.min(100, Math.round((totalPassengers / (company.annualTarget?.targetPassengers || 10000)) * 100))
+        targetPassengers: company.annualTarget?.targetPassengers || 12000,
+        progressPercent: Math.min(100, Math.round((totalPassengers / (company.annualTarget?.targetPassengers || 12000)) * 100))
       }
     });
   } catch (err) {
     next(err);
   }
+});
+
+// Update Company Details (Super Admin) - Code, Rank, and ShortCode remain fixed as per Master Ranking!
+router.put('/companies/:code', async (req, res, next) => {
+  try {
+    const rawCode = req.params.code;
+    const { code, spec } = resolveCompanySpec(rawCode);
+
+    const {
+      name,
+      contactPhone,
+      contactEmail,
+      address,
+      city,
+      state,
+      status,
+      targetPassengers,
+      financialYear
+    } = req.body;
+
+    let company = await Company.findOne({
+      $or: [
+        { companyCode: code },
+        { shortCode: new RegExp(`^${rawCode}$`, 'i') }
+      ]
+    });
+
+    if (!company) {
+      company = new Company({
+        companyCode: code,
+        rank: spec ? spec.rank : code,
+        shortCode: spec ? spec.shortCode : `C${code}`,
+        name: name ? name.trim() : (spec ? spec.defaultName : `Company #${code}`),
+        slug: spec ? spec.slug : `comp-${code}`,
+        status: status || 'ACTIVE',
+        annualTarget: {
+          targetPassengers: Number(targetPassengers) || 12000,
+          currentPassengers: 0,
+          financialYear: financialYear || '2026-2027'
+        }
+      });
+    }
+
+    // Fixed & immutable hierarchy from Passenger Ranking
+    if (spec) {
+      company.rank = spec.rank;
+      company.shortCode = spec.shortCode;
+      company.companyCode = spec.code;
+    }
+
+    // Editable fields
+    if (name && name.trim()) company.name = name.trim();
+    if (contactPhone !== undefined) company.contactPhone = contactPhone.trim();
+    if (contactEmail !== undefined) company.contactEmail = contactEmail.trim().toLowerCase();
+    if (address !== undefined) company.address = address.trim();
+    if (city !== undefined) company.city = city.trim();
+    if (state !== undefined) company.state = state.trim();
+    if (status && ['ACTIVE', 'SUSPENDED'].includes(status)) company.status = status;
+
+    if (targetPassengers !== undefined) {
+      if (!company.annualTarget) company.annualTarget = {};
+      company.annualTarget.targetPassengers = Number(targetPassengers);
+    }
+    if (financialYear) {
+      if (!company.annualTarget) company.annualTarget = {};
+      company.annualTarget.financialYear = financialYear;
+    }
+
+    await company.save();
+
+    res.json({
+      success: true,
+      message: `Franchise company "${company.name}" (Rank #${company.rank} · Code: ${company.shortCode}) updated successfully.`,
+      company
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Alias PATCH to PUT for flexible frontend support
+router.patch('/companies/:code', async (req, res, next) => {
+  return router.handle({ ...req, method: 'PUT' }, res, next);
 });
 
 // -------------------------------------------------------------
@@ -250,21 +500,44 @@ router.get('/agents', async (req, res, next) => {
   }
 });
 
-// Super Admin Create Agent
+// Super Admin Create Agent (with companyId resolution & referral hierarchy)
 router.post('/agents', async (req, res, next) => {
   try {
-    const { companyCode, name, email, phone, password, agencyName, initialWalletAmount, aadharNumber, panNumber, bankDetails } = req.body;
+    const { 
+      companyCode, 
+      name, 
+      email, 
+      phone, 
+      password, 
+      agencyName, 
+      sponsorReferralCode, 
+      initialWalletAmount, 
+      aadharNumber, 
+      panNumber, 
+      bankDetails 
+    } = req.body;
 
     if (!companyCode || !name || !email || !phone || !password) {
       return res.status(400).json({ error: 'Company code, name, email, phone, and password are required' });
     }
 
     const code = parseInt(companyCode, 10);
+    const company = await Company.findOne({ companyCode: code });
+    if (!company) {
+      return res.status(404).json({ error: `Company Code #${code} not found.` });
+    }
+
     const existing = await User.findOne({
       $or: [{ email: email.toLowerCase().trim() }, { phone: phone.trim() }]
     });
     if (existing) {
       return res.status(400).json({ error: 'User with this email or phone already exists' });
+    }
+
+    // Resolve sponsor referral hierarchy (5-level tree)
+    let sponsor = null;
+    if (sponsorReferralCode) {
+      sponsor = await User.findOne({ referralCode: sponsorReferralCode.toUpperCase().trim() });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -277,7 +550,9 @@ router.post('/agents', async (req, res, next) => {
       phone: phone.trim(),
       passwordHash,
       role: ROLES.AGENT,
+      companyId: company._id,
       companyCode: code,
+      referredBy: sponsor ? sponsor._id : null,
       referralCode,
       agencyName: agencyName ? agencyName.trim() : `${name.trim()} Agency`,
       aadharNumber: aadharNumber ? aadharNumber.trim() : '',
@@ -287,38 +562,25 @@ router.post('/agents', async (req, res, next) => {
         accountNumberMasked: bankDetails.accountNumber ? `XXXX-XXXX-${bankDetails.accountNumber.slice(-4)}` : (bankDetails.accountNumberMasked || ''),
         ifscCode: bankDetails.ifscCode ? bankDetails.ifscCode.toUpperCase().trim() : '',
         upiId: bankDetails.upiId ? bankDetails.upiId.trim() : '',
-        bankName: bankDetails.bankName || 'State Bank of India'
+        bankName: bankDetails.bankName || ''
       } : {
         accountName: name.trim(),
-        accountNumberMasked: 'XXXX-XXXX-1234',
-        ifscCode: 'SBIN0002145',
-        upiId: `${phone.trim()}@okaxis`,
-        bankName: 'State Bank of India'
+        accountNumberMasked: '',
+        ifscCode: '',
+        upiId: '',
+        bankName: ''
       },
       agentLevel: 'SILVER',
-      kycStatus: 'VERIFIED',
+      kycStatus: (aadharNumber || panNumber) ? 'VERIFIED' : 'PENDING',
       isActive: true
     });
-
-    if (aadharNumber || panNumber) {
-      try {
-        await KycDocument.create({
-          userId: agent._id,
-          companyCode: code,
-          documentType: aadharNumber ? 'AADHAAR' : 'PAN',
-          documentNumberMasked: aadharNumber ? `XXXX-XXXX-${aadharNumber.slice(-4)}` : `XXXXX${(panNumber || '').slice(-4)}`,
-          fileUrl: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=600&q=80',
-          status: 'VERIFIED',
-          reviewedBy: req.user?.id || req.user?._id,
-          reviewedAt: new Date()
-        });
-      } catch (kErr) {}
-    }
 
     const initAmount = Math.max(0, Number(initialWalletAmount) || 0);
     const wallet = await Wallet.create({
       userId: agent._id,
+      companyId: company._id,
       companyCode: code,
+      ownerType: 'AGENT',
       availableBalance: initAmount,
       reservedBalance: 0
     });
@@ -327,6 +589,7 @@ router.post('/agents', async (req, res, next) => {
       await WalletLedger.create({
         walletId: wallet._id,
         userId: agent._id,
+        companyId: company._id,
         companyCode: code,
         entryType: 'CREDIT',
         amount: initAmount,
@@ -341,7 +604,7 @@ router.post('/agents', async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: `Agent ${agent.name} created under Company Code #${code} with ₹${initAmount.toLocaleString('en-IN')}.`,
+      message: `Agent ${agent.name} created under Company Code #${code} (${company.name}) with ₹${initAmount.toLocaleString('en-IN')}.`,
       agent: {
         ...agent.toObject(),
         availableBalance: wallet.availableBalance,

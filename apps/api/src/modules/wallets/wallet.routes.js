@@ -13,7 +13,7 @@ router.get(['/', '/me'], authenticateToken, async (req, res, next) => {
       wallet = await Wallet.create({
         userId: req.user._id,
         companyCode: req.user.companyCode || 1,
-        availableBalance: req.user.role === 'AGENT' ? 15000 : 0,
+        availableBalance: 0,
         reservedBalance: 0
       });
     }

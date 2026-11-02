@@ -168,9 +168,11 @@ export const api = {
   // Command Center Overview
   getDashboard: () => request('/admin/dashboard'),
 
-  // 33 Companies Management
+  // 34 Companies Management (Master Passenger Ranking)
   getCompanies: () => request('/admin/companies'),
   getCompanyByCode: (code) => request(`/admin/companies/${code}`),
+  updateCompany: (code, payload) => request(`/admin/companies/${code}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  createCompanyWithOwner: (payload) => request('/admin/companies/create-with-owner', { method: 'POST', body: JSON.stringify(payload) }),
   assignCompanyOwner: (code, payload) => request(`/admin/companies/${code}/assign-owner`, { method: 'POST', body: JSON.stringify(payload) }),
   updateCompanyTarget: (code, targetPassengers) => request(`/admin/companies/${code}/target`, { method: 'PATCH', body: JSON.stringify({ targetPassengers }) }),
 

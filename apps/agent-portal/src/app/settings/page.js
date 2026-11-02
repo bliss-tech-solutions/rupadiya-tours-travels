@@ -132,7 +132,7 @@ export default function AgentSettingsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         {/* Fee Form */}
-        <div className="md:col-span-7 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
+        <div className="md:col-span-7 h-fit bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
           <form onSubmit={handleSave} className="space-y-6">
             {/* Agent Booking Service Charge */}
             <div className="space-y-2">

@@ -634,7 +634,7 @@ function FleetAddContent() {
             </div>
           </div>
 
-          {/* 4. Coach Photo Gallery (AWS S3) */}
+          {/* 4. Coach Photo Gallery  */}
           <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
             <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
               <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
@@ -682,7 +682,7 @@ function FleetAddContent() {
             )}
           </div>
 
-          {/* 5. Bus Documents Compliance (AWS S3) */}
+          {/* 5. Bus Documents Compliance  */}
           <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
             <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
               <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">

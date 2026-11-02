@@ -3,37 +3,38 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  LayoutDashboard, 
-  PlusCircle, 
-  History, 
-  ReceiptText, 
-  Printer, 
-  XCircle, 
-  Gift, 
-  Ticket, 
-  Navigation, 
-  User, 
-  Sliders, 
+import {
+  LayoutDashboard,
+  PlusCircle,
+  History,
+  ReceiptText,
+  Printer,
+  XCircle,
+  Gift,
+  Ticket,
+  Navigation,
+  User,
+  Sliders,
   LogOut,
   Wallet,
   ShieldCheck,
   X,
-  Network
+  Network,
+  ClipboardList
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useWallet } from '../context/WalletContext';
 
-export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
+export default function AgentSidebar({ isOpen, onClose }) {
   const pathname = usePathname();
   const { balance: walletBalance, agent: contextAgent } = useWallet();
   const [localAgent, setLocalAgent] = useState(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem('agent_user');
-    if (raw) {
-      try { setLocalAgent(JSON.parse(raw)); } catch (e) {}
-    }
+    try {
+      const raw = localStorage.getItem('agent_user');
+      if (raw) setLocalAgent(JSON.parse(raw));
+    } catch (e) {}
   }, []);
 
   const agent = contextAgent || localAgent;
@@ -57,14 +58,15 @@ export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
     { label: 'My Rewards', href: '/rewards', icon: Gift },
     { label: 'Referral Network', href: '/network', icon: Network },
     { label: 'Booking', href: '/booking', icon: Ticket },
+    { label: 'Booking History', href: '/bookings', icon: ClipboardList },
     { label: 'Track a Bus', href: '/track-bus', icon: Navigation },
     { label: 'Profile', href: '/profile', icon: User },
     { label: 'Settings', href: '/settings', icon: Sliders },
     { label: 'Logout', isAction: true, onClick: handleLogout, icon: LogOut },
   ];
 
-  const agentCode = agent?.agentCode || agent?.referralCode || 'RUP-MASTER';
-  const agencyName = agent?.agencyName || agent?.name || 'Rupadiya Partner';
+  const agentCode = agent?.referralCode || agent?.agentCode || 'AGT01L1T0001';
+  const displayName = agent?.name || agent?.agencyName || 'Rupadiya Partner';
 
   return (
     <aside
@@ -84,7 +86,7 @@ export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block leading-none">
                   Agent Terminal
                 </span>
-                <h2 className="text-sm font-bold text-slate-900 truncate mt-0.5">{agencyName}</h2>
+                <h2 className="text-sm font-bold text-slate-900 truncate mt-0.5" suppressHydrationWarning>{displayName}</h2>
               </div>
             </div>
 
@@ -104,11 +106,11 @@ export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
               <span className="font-medium flex items-center gap-1">
                 <Wallet className="w-3.5 h-3.5 text-emerald-600" /> Wallet Balance
               </span>
-              <span className="bg-emerald-100/80 text-emerald-800 font-bold px-1.5 py-0.5 rounded text-[10px]">
+              <span className="bg-emerald-100/80 text-emerald-800 font-bold px-1.5 py-0.5 rounded text-[10px]" suppressHydrationWarning>
                 {agentCode}
               </span>
             </div>
-            <div className="text-xl font-bold text-slate-900 tracking-tight">
+            <div className="text-xl font-bold text-slate-900 tracking-tight" suppressHydrationWarning>
               {walletBalance !== null ? `₹${Number(walletBalance).toLocaleString('en-IN')}` : '₹...'}
             </div>
           </div>
@@ -125,7 +127,7 @@ export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
                     onClose();
                     item.onClick();
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition text-rose-600 hover:bg-rose-50 text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition text-rose-600 hover:bg-rose-50 text-left cursor-pointer"
                 >
                   <item.icon className="w-4 h-4 shrink-0" />
                   <span className="truncate">{item.label}</span>
@@ -156,12 +158,12 @@ export default function AgentSidebar({ isOpen = false, onClose = () => {} }) {
       {/* Footer Profile Mini-Bar */}
       <div className="p-3 border-t border-slate-100 bg-slate-50/60">
         <div className="flex items-center gap-2.5 px-1 py-1">
-          <div className="w-7 h-7 rounded-lg bg-emerald-100 border border-emerald-200 text-emerald-800 flex items-center justify-center text-xs font-bold shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-emerald-100 border border-emerald-200 text-emerald-800 flex items-center justify-center text-xs font-bold shrink-0" suppressHydrationWarning>
             {agent?.name ? agent.name[0].toUpperCase() : 'A'}
           </div>
           <div className="truncate text-left flex-1">
-            <div className="text-xs font-semibold text-slate-900 truncate">{agent?.name || 'Authorized Agent'}</div>
-            <div className="text-[10px] text-emerald-700 font-medium flex items-center gap-1">
+            <div className="text-xs font-semibold text-slate-900 truncate" suppressHydrationWarning>{agent?.name || 'Authorized Agent'}</div>
+            <div className="text-[10px] text-emerald-700 font-medium flex items-center gap-1" suppressHydrationWarning>
               <ShieldCheck className="w-3 h-3 text-emerald-600" /> {agent?.agentLevel || 'Verified Partner'}
             </div>
           </div>

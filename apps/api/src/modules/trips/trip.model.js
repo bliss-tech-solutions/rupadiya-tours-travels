@@ -35,11 +35,16 @@ const tripSchema = new mongoose.Schema({
     ref: 'Bus',
     required: true
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
+  },
   companyCode: {
     type: Number,
     required: true,
     min: 1,
-    max: 33
   },
   departureTime: { type: Date, required: true },
   arrivalTime: { type: Date, required: true },

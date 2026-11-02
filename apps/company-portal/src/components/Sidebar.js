@@ -48,6 +48,7 @@ export default function CompanySidebar({ onNavigate }) {
   };
 
   const code = companyData?.companyCode || owner?.companyCode || 1;
+  const shortCode = companyData?.company?.shortCode || '';
   const companyName = companyData?.company?.name || `Rupadiya Franchise Carrier #${String(code).padStart(2, '0')}`;
   const pendingWdCount = companyData?.stats?.pendingWithdrawalsCount || 0;
 
@@ -75,9 +76,16 @@ export default function CompanySidebar({ onNavigate }) {
               <span className="text-[10px] font-medium uppercase tracking-wider text-blue-600 block">
                 Company Portal
               </span>
-              <h2 className="text-sm font-bold text-slate-900 truncate">
-                Company #{String(code).padStart(2, '0')}
-              </h2>
+              <div className="flex items-center gap-1.5 truncate">
+                <h2 className="text-sm font-bold text-slate-900 truncate">
+                  Company #{String(code).padStart(2, '0')}
+                </h2>
+                {shortCode && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-blue-50 text-blue-700 border border-blue-200">
+                    {shortCode}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

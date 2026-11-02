@@ -15,11 +15,16 @@ const busSchema = new mongoose.Schema({
   },
   name: { type: String, required: true, trim: true },
   operatorName: { type: String, default: 'Rupadiya Intercity Travels', trim: true },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
+  },
   companyCode: {
     type: Number,
     required: true,
     min: 1,
-    max: 33
   },
   busType: {
     type: String,

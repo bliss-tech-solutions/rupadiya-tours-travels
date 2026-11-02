@@ -7,16 +7,19 @@ const CompanyWalletContext = createContext({
   balance: null,
   companyInfo: null,
   companyCode: 1,
+  user: null,
   loading: true,
   error: null,
   refreshWallet: () => {},
-  setLocalBalance: () => {}
+  setLocalBalance: () => {},
+  updateUser: () => {}
 });
 
 export function CompanyWalletProvider({ children }) {
   const [balance, setBalance] = useState(null);
   const [companyInfo, setCompanyInfo] = useState(null);
   const [companyCode, setCompanyCode] = useState(1);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -35,6 +38,18 @@ export function CompanyWalletProvider({ children }) {
         const bal = res.wallet?.availableBalance ?? res.stats?.walletBalance ?? 0;
         setBalance(Number(bal));
       }
+
+      // Always ensure user profile is fresh
+      const meRes = await api.me().catch(() => null);
+      if (meRes?.user) {
+        setUser(prev => {
+          const merged = { ...(prev || {}), ...meRes.user };
+          try { localStorage.setItem('owner_user', JSON.stringify(merged)); } catch (e) {}
+          return merged;
+        });
+        if (meRes.user.companyCode) setCompanyCode(meRes.user.companyCode);
+      }
+
       setError(null);
     } catch (err) {
       console.warn('Company wallet refresh error:', err);
@@ -44,17 +59,42 @@ export function CompanyWalletProvider({ children }) {
     }
   }, []);
 
+  const updateUser = useCallback((partialUser) => {
+    setUser(prev => {
+      const updated = { ...(prev || {}), ...partialUser };
+      try {
+        localStorage.setItem('owner_user', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    window.dispatchEvent(new Event('company-user-updated'));
+  }, []);
+
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem('owner_user');
+      if (raw) setUser(JSON.parse(raw));
+    } catch (e) {}
+
     refreshWallet();
 
     const handleUpdate = () => refreshWallet();
+    const handleUserUpdate = () => {
+      try {
+        const raw = localStorage.getItem('owner_user');
+        if (raw) setUser(JSON.parse(raw));
+      } catch (e) {}
+    };
+
     window.addEventListener('company-wallet-updated', handleUpdate);
+    window.addEventListener('company-user-updated', handleUserUpdate);
     window.addEventListener('focus', handleUpdate);
 
     const interval = setInterval(refreshWallet, 30000);
 
     return () => {
       window.removeEventListener('company-wallet-updated', handleUpdate);
+      window.removeEventListener('company-user-updated', handleUserUpdate);
       window.removeEventListener('focus', handleUpdate);
       clearInterval(interval);
     };
@@ -66,16 +106,20 @@ export function CompanyWalletProvider({ children }) {
   }, []);
 
   return (
-    <CompanyWalletContext.Provider value={{ balance, companyInfo, companyCode, loading, error, refreshWallet, setLocalBalance }}>
+    <CompanyWalletContext.Provider value={{
+      balance,
+      companyInfo,
+      companyCode,
+      user,
+      loading,
+      error,
+      refreshWallet,
+      setLocalBalance,
+      updateUser
+    }}>
       {children}
     </CompanyWalletContext.Provider>
   );
 }
 
-export function useCompanyWallet() {
-  const context = useContext(CompanyWalletContext);
-  if (!context) {
-    throw new Error('useCompanyWallet must be used within a CompanyWalletProvider');
-  }
-  return context;
-}
+export const useCompanyWallet = () => useContext(CompanyWalletContext);

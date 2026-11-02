@@ -3,7 +3,7 @@ import AdminLayoutShell from '../components/AdminLayoutShell';
 
 export const metadata = {
   title: 'Super Admin Portal — Rupadiya Platform HQ',
-  description: 'Control all 33 franchise companies, Hub-and-Spoke corridors, tour packages, master bookings, and compliance.',
+  description: 'Control all 34 franchise companies (Passenger Ranking), Hub-and-Spoke corridors, tour packages, master bookings, and compliance.',
 };
 
 export default function RootLayout({ children }) {

@@ -965,7 +965,7 @@ export default function AgentBookingPage() {
             </div>
 
             {/* Fare & Proceed Summary */}
-            <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs flex flex-col justify-between">
+            <div className="lg:col-span-4 h-fit bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs flex flex-col justify-between">
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-900">Journey Summary</h3>
 

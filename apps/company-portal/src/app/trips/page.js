@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   CalendarClock, 
   Plus, 
@@ -8,6 +8,7 @@ import {
   Clock, 
   Users, 
   ArrowRight, 
+  ArrowLeftRight,
   RefreshCw, 
   Search, 
   CheckCircle2, 
@@ -18,179 +19,91 @@ import {
   Printer,
   FileText,
   Lock,
-  X
+  X,
+  Calendar,
+  ShieldCheck,
+  Info,
+  Filter,
+  ArrowUpDown
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { formatDeparture, formatDateTime, formatDate } from '../../lib/dateUtils';
 
 const ITEMS_PER_PAGE = 10;
 
-const DEFAULT_SCHEDULED = [
-  {
-    id: 'TRP-101',
-    corridor: 'Rupadiya (Hub) → Ahmedabad',
-    bus: 'UP-40-BT-1001 (BharatBenz Luxury AC)',
-    departure: '17:30 Daily',
-    duration: '21h',
-    baseFare: 1650,
-    bookedSeats: 34,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-102',
-    corridor: 'Rupadiya (Hub) → Surat',
-    bus: 'UP-40-BT-1002 (BharatBenz Luxury AC)',
-    departure: '16:00 Daily',
-    duration: '22h 30m',
-    baseFare: 1750,
-    bookedSeats: 37,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-103',
-    corridor: 'Rupadiya (Hub) → Vadodara',
-    bus: 'UP-40-BT-1003 (Volvo 9600 Multi-Axle)',
-    departure: '18:15 Daily',
-    duration: '20h',
-    baseFare: 1550,
-    bookedSeats: 29,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-104',
-    corridor: 'Rupadiya (Hub) → Bengaluru',
-    bus: 'UP-40-BT-1004 (Setra s517 HD Luxury)',
-    departure: '14:00 Alternate',
-    duration: '32h',
-    baseFare: 2400,
-    bookedSeats: 36,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-105',
-    corridor: 'Ahmedabad → Rupadiya (Hub)',
-    bus: 'UP-40-BT-1001 (BharatBenz Luxury AC)',
-    departure: '15:30 Daily',
-    duration: '21h',
-    baseFare: 1650,
-    bookedSeats: 32,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-106',
-    corridor: 'Surat → Rupadiya (Hub)',
-    bus: 'UP-40-BT-1002 (BharatBenz Luxury AC)',
-    departure: '14:45 Daily',
-    duration: '22h 30m',
-    baseFare: 1750,
-    bookedSeats: 35,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-107',
-    corridor: 'Rupadiya (Hub) → Hyderabad',
-    bus: 'UP-40-BT-1003 (Volvo 9600 Multi-Axle)',
-    departure: '13:30 Daily',
-    duration: '28h',
-    baseFare: 2150,
-    bookedSeats: 38,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-108',
-    corridor: 'Rupadiya (Hub) → Mumbai (Borivali)',
-    bus: 'UP-40-BT-1004 (Setra s517 HD Luxury)',
-    departure: '15:00 Daily',
-    duration: '24h',
-    baseFare: 1950,
-    bookedSeats: 31,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-109',
-    corridor: 'Vadodara → Rupadiya (Hub)',
-    bus: 'UP-40-BT-1003 (Volvo 9600 Multi-Axle)',
-    departure: '16:30 Daily',
-    duration: '20h',
-    baseFare: 1550,
-    bookedSeats: 27,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-110',
-    corridor: 'Bengaluru → Rupadiya (Hub)',
-    bus: 'UP-40-BT-1004 (Setra s517 HD Luxury)',
-    departure: '12:00 Alternate',
-    duration: '32h',
-    baseFare: 2400,
-    bookedSeats: 39,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-111',
-    corridor: 'Hyderabad → Rupadiya (Hub)',
-    bus: 'UP-40-BT-1003 (Volvo 9600 Multi-Axle)',
-    departure: '11:15 Daily',
-    duration: '28h',
-    baseFare: 2150,
-    bookedSeats: 33,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  },
-  {
-    id: 'TRP-112',
-    corridor: 'Mumbai → Rupadiya (Hub)',
-    bus: 'UP-40-BT-1004 (Setra s517 HD Luxury)',
-    departure: '13:45 Daily',
-    duration: '24h',
-    baseFare: 1950,
-    bookedSeats: 35,
-    totalSeats: 40,
-    status: 'SCHEDULED',
-    chartPrepared: false
-  }
+const SPOKE_OPTIONS = [
+  { id: 'ahmedabad', name: 'Ahmedabad', state: 'Gujarat', defaultFare: 1650 },
+  { id: 'surat', name: 'Surat', state: 'Gujarat', defaultFare: 1750 },
+  { id: 'vadodara', name: 'Vadodara', state: 'Gujarat', defaultFare: 1550 },
+  { id: 'bangalore', name: 'Bengaluru', state: 'Karnataka', defaultFare: 2400 },
+  { id: 'hyderabad', name: 'Hyderabad', state: 'Telangana', defaultFare: 2150 },
+  { id: 'mumbai', name: 'Mumbai', state: 'Maharashtra', defaultFare: 1950 },
+  { id: 'lucknow', name: 'Lucknow', state: 'Uttar Pradesh', defaultFare: 450 },
+  { id: 'delhi', name: 'Delhi', state: 'Delhi NCR', defaultFare: 1100 },
+  { id: 'kanpur', name: 'Kanpur', state: 'Uttar Pradesh', defaultFare: 600 },
+  { id: 'varanasi', name: 'Varanasi', state: 'Uttar Pradesh', defaultFare: 750 }
 ];
 
+function getNext7Days() {
+  const days = [];
+  const now = new Date();
+  for (let i = 0; i <= 7; i++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().split('T')[0];
+    let label = '';
+    if (i === 0) label = 'Today';
+    else if (i === 1) label = 'Tomorrow';
+    else label = `+${i} Days`;
+    
+    const formattedShort = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    days.push({
+      dateStr,
+      label,
+      formattedShort,
+      fullDate: d
+    });
+  }
+  return days;
+}
+
 export default function CompanyTripsPage() {
-  const [trips, setTrips] = useState(DEFAULT_SCHEDULED);
-  const [loading, setLoading] = useState(false);
+  const [trips, setTrips] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [dispatching, setDispatching] = useState(false);
+
+  // Filters State
+  const [dateFilter, setDateFilter] = useState('ALL'); // 'ALL' | 'TODAY' | 'TOMORROW' | 'UPCOMING_7' | 'EXPIRED' | 'CUSTOM'
+  const [customDate, setCustomDate] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'SCHEDULED' | 'BOARDING' | 'DEPARTED'
+  const [sortBy, setSortBy] = useState('CREATED_DESC'); // 'CREATED_DESC' (Latest Created First) | 'DEP_ASC' | 'DEP_DESC'
 
   // Seat Sheet Manifest Modal State
   const [manifestModalOpen, setManifestModalOpen] = useState(false);
   const [manifestData, setManifestData] = useState(null);
   const [manifestLoading, setManifestLoading] = useState(false);
-  const [chartPreparing, setChartPreparing] = useState(false);
+  const [chartPreparingId, setChartPreparingId] = useState(null);
 
+  // Fleet buses for dispatch selection
+  const [fleetBuses, setFleetBuses] = useState([]);
+  const [loadingBuses, setLoadingBuses] = useState(false);
+
+  const next7Days = getNext7Days();
+  const minDateStr = next7Days[0].dateStr;
+  const maxDateStr = next7Days[next7Days.length - 1].dateStr;
+
+  // Dispatch Form State
+  const [direction, setDirection] = useState('OUTBOUND'); // 'OUTBOUND': Rupadiya -> Spoke, 'INBOUND': Spoke -> Rupadiya
+  const [selectedSpoke, setSelectedSpoke] = useState('Ahmedabad');
   const [form, setForm] = useState({
-    origin: 'Rupadiya (Hub)',
-    destination: 'Ahmedabad',
+    departureDate: minDateStr,
     departureTime: '18:00',
-    bus: 'UP-40-BT-1001',
+    busId: '',
     fare: '1650'
   });
 
@@ -198,11 +111,14 @@ export default function CompanyTripsPage() {
     setLoading(true);
     try {
       const res = await api.getTrips();
-      if (res?.trips && res.trips.length > 0) {
+      if (res?.trips && Array.isArray(res.trips)) {
+        const now = new Date();
         const formatted = res.trips.map(t => {
           const totSeats = t.totalSeats ?? 36;
           const bkSeats = t.bookedSeats ?? 0;
           const occ = t.occupancyRate ?? (totSeats > 0 ? Math.round((bkSeats / totSeats) * 100) : 0);
+          const depTime = new Date(t.departureTime);
+          const isExpired = !isNaN(depTime.getTime()) && depTime < now;
 
           return {
             id: t.tripNumber || `TRP-${String(t._id || t.id).slice(-4).toUpperCase()}`,
@@ -213,145 +129,251 @@ export default function CompanyTripsPage() {
             bus: t.bus || (t.busNumber ? `${t.busNumber} (${t.busName || 'Fleet Coach'})` : 'Assigned Fleet Bus'),
             departureTime: t.departureTime,
             departure: formatDeparture(t.departureTime),
+            createdAt: t.createdAt,
             duration: t.duration || '20h',
             baseFare: t.baseFare || t.fare || 1650,
             bookedSeats: bkSeats,
             totalSeats: totSeats,
             occupancyRate: occ,
-            status: t.chartPrepared ? 'BOARDING' : (t.status || 'SCHEDULED')
+            isExpired,
+            status: isExpired && !t.chartPrepared ? 'DEPARTED' : (t.chartPrepared ? 'BOARDING' : (t.status || 'SCHEDULED'))
           };
         });
         setTrips(formatted);
       } else {
-        setTrips(DEFAULT_SCHEDULED.map(d => ({
-          ...d,
-          departure: formatDeparture(d.departure)
-        })));
+        setTrips([]);
       }
-    } catch {
-      setTrips(DEFAULT_SCHEDULED.map(d => ({
-        ...d,
-        departure: formatDeparture(d.departure)
-      })));
+    } catch (err) {
+      console.warn('Failed to fetch trips:', err);
+      setTrips([]);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchFleet = async () => {
+    setLoadingBuses(true);
+    try {
+      const res = await api.getFleet();
+      if (res?.buses && Array.isArray(res.buses)) {
+        setFleetBuses(res.buses);
+        if (res.buses.length > 0 && !form.busId) {
+          setForm(prev => ({ ...prev, busId: res.buses[0]._id }));
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load fleet buses:', err);
+    } finally {
+      setLoadingBuses(false);
+    }
+  };
+
   useEffect(() => {
     fetchTrips();
+    fetchFleet();
   }, []);
 
+  // Update default fare when selected spoke city changes
+  useEffect(() => {
+    const matched = SPOKE_OPTIONS.find(s => s.name.toLowerCase() === selectedSpoke.toLowerCase());
+    if (matched) {
+      setForm(prev => ({ ...prev, fare: String(matched.defaultFare) }));
+    }
+  }, [selectedSpoke]);
+
+  const handleSwapDirection = () => {
+    setDirection(prev => (prev === 'OUTBOUND' ? 'INBOUND' : 'OUTBOUND'));
+  };
+
+  const handleOriginChange = (val) => {
+    if (val === 'Rupadiya' || val === 'Rupadiya (Hub)') {
+      setDirection('OUTBOUND');
+    } else {
+      setSelectedSpoke(val);
+      setDirection('INBOUND');
+    }
+  };
+
+  const handleDestinationChange = (val) => {
+    if (val === 'Rupadiya' || val === 'Rupadiya (Hub)') {
+      setDirection('INBOUND');
+    } else {
+      setSelectedSpoke(val);
+      setDirection('OUTBOUND');
+    }
+  };
+
   const handlePrepareChart = async (trip) => {
-    if (!trip.rawTripId) {
-      setTrips(prev => prev.map(t => t.id === trip.id ? { ...t, chartPrepared: true, status: 'BOARDING' } : t));
-      setActionSuccess(`Seat chart locked for ${trip.corridor}. Higher cancellation fee (85%) is now active.`);
+    if (!trip.rawTripId) return;
+
+    // Frontend validation: do not allow preparing chart if trip departure has passed
+    if (trip.isExpired || new Date(trip.departureTime) < new Date()) {
+      setActionError('Cannot prepare chart for an expired departure.');
       return;
     }
-    setChartPreparing(true);
+
+    setChartPreparingId(trip.rawTripId);
+    setActionError('');
     try {
       const res = await api.prepareSeatChart(trip.rawTripId);
       if (res?.success) {
         setActionSuccess(`Seat chart manifest generated! Trip status changed to BOARDING.`);
-        fetchTrips();
+        await fetchTrips();
+      } else {
+        setActionError(res?.error || 'Failed to prepare seat chart.');
       }
     } catch (err) {
-      console.error(err);
+      setActionError(err.message || 'Error preparing chart.');
     } finally {
-      setChartPreparing(false);
+      setChartPreparingId(null);
     }
   };
 
   const handleOpenManifest = async (trip) => {
+    if (!trip.rawTripId) return;
     setManifestLoading(true);
     setManifestModalOpen(true);
+    setManifestData(null);
     try {
-      if (trip.rawTripId) {
-        const res = await api.getSeatChart(trip.rawTripId);
-        if (res?.success) {
-          setManifestData(res);
-          return;
-        }
+      const res = await api.getSeatChart(trip.rawTripId);
+      if (res?.success) {
+        setManifestData(res);
+      } else {
+        setActionError(res?.error || 'Could not fetch live seat chart manifest.');
       }
-      // Demo fallback manifest for simulated data
-      setManifestData({
-        trip: {
-          _id: trip.id,
-          departureTime: new Date().toISOString(),
-          status: trip.status || 'SCHEDULED',
-          chartPrepared: trip.chartPrepared || false,
-          chartPreparedAt: new Date().toISOString(),
-          route: { 
-            fromCity: { name: trip.corridor.split('→')[0]?.trim() || 'Rupadiya' }, 
-            toCity: { name: trip.corridor.split('→')[1]?.trim() || 'Ahmedabad' } 
-          },
-          bus: { busNumber: trip.bus, busType: 'Setra Coach (2+2 Seater)' },
-          companyCode: 1
-        },
-        summary: {
-          totalSeats: trip.totalSeats || 40,
-          bookedSeats: trip.bookedSeats || 32,
-          vacantSeats: (trip.totalSeats || 40) - (trip.bookedSeats || 32),
-          occupancyRate: Math.round(((trip.bookedSeats || 32) / (trip.totalSeats || 40)) * 100)
-        },
-        manifest: Array.from({ length: trip.totalSeats || 40 }, (_, idx) => {
-          const seatNum = String(idx + 1);
-          const isBooked = idx < (trip.bookedSeats || 32);
-          return {
-            seatNumber: seatNum,
-            passengerName: isBooked ? `Passenger ${idx + 1}` : '— VACANT —',
-            age: isBooked ? 25 + (idx % 20) : null,
-            gender: isBooked ? (idx % 2 === 0 ? 'male' : 'female') : null,
-            fare: trip.baseFare || 1650,
-            pnr: isBooked ? `RUP${1000 + idx}` : '—',
-            bookingId: isBooked ? `BK-${7000 + idx}` : '—',
-            contactPhone: isBooked ? '+91 9876500000' : '—',
-            boardingPoint: 'Main Stand',
-            droppingPoint: 'Central Drop',
-            status: isBooked ? 'CONFIRMED' : 'VACANT',
-            deck: 'LOWER'
-          };
-        })
-      });
     } catch (err) {
-      console.error(err);
+      console.error('Seat chart fetch error:', err);
+      setActionError(err.message || 'Error fetching seat chart.');
     } finally {
       setManifestLoading(false);
     }
   };
 
-  const handleDispatch = (e) => {
+  const handleDispatch = async (e) => {
     e.preventDefault();
-    setActionSuccess(`Daily dispatch scheduled for ${form.origin} → ${form.destination} at ${form.departureTime}.`);
-    const newTrip = {
-      id: `TRP-${Math.floor(100 + Math.random() * 900)}`,
-      corridor: `${form.origin} → ${form.destination}`,
-      bus: form.bus,
-      departure: `${form.departureTime} Daily`,
-      duration: '21h',
-      baseFare: Number(form.fare) || 1650,
-      bookedSeats: 0,
-      totalSeats: 40,
-      status: 'SCHEDULED',
-      chartPrepared: false
-    };
-    setTrips(prev => [newTrip, ...prev]);
-    setTimeout(() => {
-      setDispatchModalOpen(false);
-      setActionSuccess('');
-    }, 1200);
+    if (!form.busId) {
+      setActionError('Please select an assigned fleet coach.');
+      return;
+    }
+
+    setDispatching(true);
+    setActionError('');
+    setActionSuccess('');
+
+    const originCity = direction === 'OUTBOUND' ? 'Rupadiya' : selectedSpoke;
+    const destCity = direction === 'OUTBOUND' ? selectedSpoke : 'Rupadiya';
+
+    try {
+      const payload = {
+        origin: originCity,
+        destination: destCity,
+        departureDate: form.departureDate,
+        departureTime: form.departureTime,
+        busId: form.busId,
+        baseFare: Number(form.fare) || 1650
+      };
+
+      const res = await api.scheduleTrip(payload);
+      if (res?.success) {
+        setActionSuccess(res.message || `Trip successfully dispatched for ${originCity} → ${destCity} on ${form.departureDate}.`);
+        setDispatchModalOpen(false);
+        await fetchTrips();
+      } else {
+        setActionError(res?.error || 'Failed to dispatch trip.');
+      }
+    } catch (err) {
+      setActionError(err.message || 'Server error while scheduling trip.');
+    } finally {
+      setDispatching(false);
+    }
   };
 
-  const filtered = trips.filter(t => 
-    t.corridor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.bus.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter & Sort Calculation
+  const { filteredTrips, stats } = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const tom = new Date(now);
+    tom.setDate(tom.getDate() + 1);
+    const tomStr = tom.toISOString().split('T')[0];
+    const in7Days = new Date(now);
+    in7Days.setDate(in7Days.getDate() + 7);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+    let todayCount = 0;
+    let upcomingCount = 0;
+    let expiredCount = 0;
+
+    trips.forEach(t => {
+      const dep = new Date(t.departureTime);
+      const depDateStr = !isNaN(dep.getTime()) ? dep.toISOString().split('T')[0] : '';
+      if (!isNaN(dep.getTime())) {
+        if (dep < now) expiredCount++;
+        else upcomingCount++;
+        if (depDateStr === todayStr) todayCount++;
+      }
+    });
+
+    const filtered = trips.filter(t => {
+      // 1. Text Search
+      const matchesSearch = 
+        t.corridor.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.bus.toLowerCase().includes(searchTerm.toLowerCase());
+      if (!matchesSearch) return false;
+
+      const dep = new Date(t.departureTime);
+      const depDateStr = !isNaN(dep.getTime()) ? dep.toISOString().split('T')[0] : '';
+      const isPast = !isNaN(dep.getTime()) && dep < now;
+
+      // 2. Status Filter
+      if (statusFilter === 'SCHEDULED' && (t.status !== 'SCHEDULED' || isPast)) return false;
+      if (statusFilter === 'BOARDING' && t.status !== 'BOARDING') return false;
+      if (statusFilter === 'DEPARTED' && !isPast && t.status !== 'DEPARTED') return false;
+
+      // 3. Date Filter
+      if (dateFilter === 'TODAY' && depDateStr !== todayStr) return false;
+      if (dateFilter === 'TOMORROW' && depDateStr !== tomStr) return false;
+      if (dateFilter === 'UPCOMING_7' && (dep < now || dep > in7Days)) return false;
+      if (dateFilter === 'EXPIRED' && !isPast) return false;
+      if (dateFilter === 'CUSTOM' && customDate && depDateStr !== customDate) return false;
+
+      return true;
+    });
+
+    // 4. Sorting (Default: Latest Created First)
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortBy === 'CREATED_DESC') {
+        const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bCreated - aCreated;
+      }
+      if (sortBy === 'DEP_ASC') {
+        const aDep = a.departureTime ? new Date(a.departureTime).getTime() : 0;
+        const bDep = b.departureTime ? new Date(b.departureTime).getTime() : 0;
+        return aDep - bDep;
+      }
+      if (sortBy === 'DEP_DESC') {
+        const aDep = a.departureTime ? new Date(a.departureTime).getTime() : 0;
+        const bDep = b.departureTime ? new Date(b.departureTime).getTime() : 0;
+        return bDep - aDep;
+      }
+      return 0;
+    });
+
+    return {
+      filteredTrips: sorted,
+      stats: {
+        total: trips.length,
+        today: todayCount,
+        upcoming: upcomingCount,
+        expired: expiredCount
+      }
+    };
+  }, [trips, searchTerm, dateFilter, customDate, statusFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTrips.length / ITEMS_PER_PAGE));
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filtered.length);
-  const paginated = filtered.slice(startIndex, endIndex);
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filteredTrips.length);
+  const paginated = filteredTrips.slice(startIndex, endIndex);
 
   return (
     <div className="w-full space-y-6">
@@ -360,25 +382,29 @@ export default function CompanyTripsPage() {
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold uppercase tracking-wider mb-2 border border-blue-100">
             <CalendarClock className="w-3.5 h-3.5" />
-            <span>Trip Dispatcher</span>
+            <span>Company Trips & Departures</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Scheduled Corridor Departures</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Assign company fleet buses and drivers to authorized Hub-and-Spoke intercity routes.
+            Manage your company's own fleet runs. Dispatched trips display latest created first with date filters.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
           <button
             onClick={fetchTrips}
+            disabled={loading}
             className="p-3 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs transition cursor-pointer"
             title="Refresh Trips"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
           </button>
 
           <button
-            onClick={() => setDispatchModalOpen(true)}
+            onClick={() => {
+              setActionError('');
+              setDispatchModalOpen(true);
+            }}
             className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition flex items-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -387,127 +413,375 @@ export default function CompanyTripsPage() {
         </div>
       </div>
 
+      {/* KPI Counters Ribbon */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div 
+          onClick={() => { setDateFilter('ALL'); setStatusFilter('ALL'); }}
+          className={`p-4 rounded-2xl border transition cursor-pointer ${
+            dateFilter === 'ALL' && statusFilter === 'ALL' 
+              ? 'bg-blue-50/80 border-blue-200 shadow-xs' 
+              : 'bg-white border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-bold uppercase text-slate-500">Total Own Trips</div>
+          <div className="text-2xl font-black text-slate-900 mt-1">{stats.total}</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">All company records</div>
+        </div>
+
+        <div 
+          onClick={() => { setDateFilter('TODAY'); setStatusFilter('ALL'); }}
+          className={`p-4 rounded-2xl border transition cursor-pointer ${
+            dateFilter === 'TODAY' 
+              ? 'bg-emerald-50/80 border-emerald-200 shadow-xs' 
+              : 'bg-white border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-bold uppercase text-emerald-700">Departing Today</div>
+          <div className="text-2xl font-black text-emerald-800 mt-1">{stats.today}</div>
+          <div className="text-[10px] text-emerald-600 mt-0.5">Today's departures</div>
+        </div>
+
+        <div 
+          onClick={() => { setDateFilter('UPCOMING_7'); setStatusFilter('ALL'); }}
+          className={`p-4 rounded-2xl border transition cursor-pointer ${
+            dateFilter === 'UPCOMING_7' 
+              ? 'bg-sky-50/80 border-sky-200 shadow-xs' 
+              : 'bg-white border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-bold uppercase text-sky-700">Next 7 Days</div>
+          <div className="text-2xl font-black text-sky-800 mt-1">{stats.upcoming}</div>
+          <div className="text-[10px] text-sky-600 mt-0.5">Active upcoming runs</div>
+        </div>
+
+        <div 
+          onClick={() => { setDateFilter('EXPIRED'); setStatusFilter('ALL'); }}
+          className={`p-4 rounded-2xl border transition cursor-pointer ${
+            dateFilter === 'EXPIRED' 
+              ? 'bg-slate-100 border-slate-300 shadow-xs' 
+              : 'bg-white border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-bold uppercase text-slate-500">Departed / Expired</div>
+          <div className="text-2xl font-black text-slate-700 mt-1">{stats.expired}</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Chart locking closed</div>
+        </div>
+      </div>
+
       {actionSuccess && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-          <span>{actionSuccess}</span>
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span>{actionSuccess}</span>
+          </div>
+          <button onClick={() => setActionSuccess('')} className="text-emerald-600 hover:text-emerald-800">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* Trips Table Card */}
+      {actionError && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+            <span>{actionError}</span>
+          </div>
+          <button onClick={() => setActionError('')} className="text-rose-600 hover:text-rose-800">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Trips Table Card with Date & Status Filter Bar */}
       <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900">
-              Active Fleet Corridor Departures ({filtered.length})
-            </h2>
-            <p className="text-xs text-slate-500">Live operational timetable with seat chart manifests</p>
+        
+        {/* Interactive Filter Toolbar */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+          
+          {/* Date Filter Pills */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-bold text-slate-500 uppercase mr-1 flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5 text-blue-600" />
+              <span>Date:</span>
+            </span>
+
+            {[
+              { id: 'ALL', label: 'All Dates' },
+              { id: 'TODAY', label: 'Today' },
+              { id: 'TOMORROW', label: 'Tomorrow' },
+              { id: 'UPCOMING_7', label: 'Next 7 Days' },
+              { id: 'EXPIRED', label: 'Expired / Past' }
+            ].map(tab => {
+              const active = dateFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setDateFilter(tab.id);
+                    setCustomDate('');
+                    setCurrentPage(1);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    active 
+                      ? 'bg-blue-600 text-white shadow-xs' 
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+
+            {/* Custom Single Date Input Filter */}
+            <div className="flex items-center gap-1.5 ml-1">
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => {
+                  setCustomDate(e.target.value);
+                  setDateFilter(e.target.value ? 'CUSTOM' : 'ALL');
+                  setCurrentPage(1);
+                }}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold border transition ${
+                  dateFilter === 'CUSTOM'
+                    ? 'border-blue-600 bg-blue-50 text-blue-900 ring-2 ring-blue-100'
+                    : 'border-slate-200 bg-slate-50 text-slate-700'
+                }`}
+                title="Filter by specific departure date"
+              />
+              {customDate && (
+                <button
+                  onClick={() => {
+                    setCustomDate('');
+                    setDateFilter('ALL');
+                  }}
+                  className="p-1 rounded-lg hover:bg-slate-200 text-slate-400"
+                  title="Clear date filter"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Filter by corridor or bus..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
-            />
+          {/* Sort Selector & Search */}
+          <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+            
+            {/* Sort Dropdown */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-transparent text-slate-900 font-bold focus:outline-none cursor-pointer"
+              >
+                <option value="CREATED_DESC">Latest Created First</option>
+                <option value="DEP_ASC">Departure: Soonest First</option>
+                <option value="DEP_DESC">Departure: Furthest First</option>
+              </select>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-full sm:w-56">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search corridor or coach..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 transition"
+              />
+            </div>
           </div>
+
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-500 uppercase text-[10px] font-bold">
-                <th className="py-3 px-4 rounded-l-xl">Trip ID</th>
-                <th className="py-3 px-4">Corridor Route</th>
-                <th className="py-3 px-4">Assigned Fleet Vehicle</th>
-                <th className="py-3 px-4">Departure Time</th>
-                <th className="py-3 px-4">Base Fare</th>
-                <th className="py-3 px-4 text-center">Occupancy</th>
-                <th className="py-3 px-4 text-center">Seat Chart</th>
-                <th className="py-3 px-4 text-right rounded-r-xl">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {paginated.map((t) => {
-                const occupancyPercent = t.occupancyRate ?? Math.round((t.bookedSeats / (t.totalSeats || 1)) * 100);
-                const occColor = occupancyPercent >= 80 ? 'bg-emerald-500' : occupancyPercent >= 50 ? 'bg-blue-500' : 'bg-amber-500';
-                return (
-                  <tr key={t.id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-3.5 px-4 font-mono font-bold text-blue-700">{t.id}</td>
-                    <td className="py-3.5 px-4 font-bold text-slate-900">{t.corridor}</td>
-                    <td className="py-3.5 px-4 text-slate-600 font-medium">{t.bus}</td>
-                    <td className="py-3.5 px-4 text-slate-500 font-medium">{t.departure}</td>
-                    <td className="py-3.5 px-4 font-bold text-slate-900">₹{t.baseFare}</td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="font-bold text-slate-800 text-[11px]">
-                          {t.bookedSeats} / {t.totalSeats} ({occupancyPercent}%)
-                        </span>
-                        <div className="w-20 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                          <div 
-                            className={`${occColor} h-1.5 rounded-full`}
-                            style={{ width: `${Math.min(100, occupancyPercent)}%` }}
-                          />
+        {/* Trips Table */}
+        {loading ? (
+          <div className="py-20 text-center text-slate-400 flex flex-col items-center gap-2">
+            <RefreshCw className="w-7 h-7 animate-spin text-blue-600" />
+            <span className="text-xs font-bold">Loading live company trips...</span>
+          </div>
+        ) : filteredTrips.length === 0 ? (
+          <div className="py-16 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 flex flex-col items-center justify-center p-6 space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Bus className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">No Trips Match the Selected Filters</h3>
+              <p className="text-xs text-slate-500 max-w-sm mt-1">
+                {searchTerm || dateFilter !== 'ALL' || statusFilter !== 'ALL'
+                  ? 'No departures match your filter query. Reset date filter to view all trips.'
+                  : 'Your company has not dispatched any trips yet. Click below to schedule a run.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {(dateFilter !== 'ALL' || searchTerm || statusFilter !== 'ALL') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateFilter('ALL');
+                    setCustomDate('');
+                    setStatusFilter('ALL');
+                    setSearchTerm('');
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                >
+                  Clear Filters
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setDispatchModalOpen(true)}
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition"
+              >
+                + Dispatch Daily Trip
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-500 uppercase text-[10px] font-bold">
+                  <th className="py-3 px-4 rounded-l-xl">Trip ID</th>
+                  <th className="py-3 px-4">Corridor Route</th>
+                  <th className="py-3 px-4">Assigned Fleet Vehicle</th>
+                  <th className="py-3 px-4">Departure Schedule</th>
+                  <th className="py-3 px-4">Base Fare</th>
+                  <th className="py-3 px-4 text-center">Occupancy</th>
+                  <th className="py-3 px-4 text-center">Chart Status</th>
+                  <th className="py-3 px-4 text-right rounded-r-xl">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paginated.map((t) => {
+                  const occupancyPercent = t.occupancyRate ?? Math.round((t.bookedSeats / (t.totalSeats || 1)) * 100);
+                  const occColor = occupancyPercent >= 80 ? 'bg-emerald-500' : occupancyPercent >= 50 ? 'bg-blue-500' : 'bg-amber-500';
+                  
+                  const depDate = new Date(t.departureTime);
+                  const isPast = t.isExpired || depDate < new Date();
+                  const todayStr = new Date().toISOString().split('T')[0];
+                  const depDateStr = !isNaN(depDate.getTime()) ? depDate.toISOString().split('T')[0] : '';
+                  const isToday = depDateStr === todayStr;
+
+                  return (
+                    <tr key={t.id} className="hover:bg-slate-50/80 transition">
+                      <td className="py-3.5 px-4 font-mono font-bold text-blue-700">
+                        {t.id}
+                        {t.createdAt && (
+                          <span className="block text-[9px] text-slate-400 font-normal">
+                            Added: {new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-bold text-slate-900">{t.corridor}</td>
+                      <td className="py-3.5 px-4 text-slate-600 font-medium">{t.bus}</td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-col items-start gap-1">
+                          {isPast ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                              DEPARTED
+                            </span>
+                          ) : isToday ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              TODAY
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                              {depDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                            </span>
+                          )}
+                          <span className="text-slate-800 font-bold text-xs">
+                            {t.departure}
+                          </span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      {t.chartPrepared ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
-                          <Lock className="w-3 h-3 text-blue-600" />
-                          <span>Locked</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold">
-                          <span>Pending</span>
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {!t.chartPrepared && (
+                      </td>
+                      <td className="py-3.5 px-4 font-bold text-slate-900">₹{t.baseFare}</td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="font-bold text-slate-800 text-[11px]">
+                            {t.bookedSeats} / {t.totalSeats} ({occupancyPercent}%)
+                          </span>
+                          <div className="w-20 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div 
+                              className={`${occColor} h-1.5 rounded-full`}
+                              style={{ width: `${Math.min(100, occupancyPercent)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        {isPast ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+                            <span>Closed</span>
+                          </span>
+                        ) : t.chartPrepared ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                            <Lock className="w-3 h-3 text-blue-600" />
+                            <span>Prepared</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
+                            <span>Open</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isPast ? (
+                            <span 
+                              className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-400 font-bold text-[10px] border border-slate-200 select-none"
+                              title="Departure date has passed. Chart preparation is not active."
+                            >
+                              Departure Passed
+                            </span>
+                          ) : !t.chartPrepared ? (
+                            <button
+                              type="button"
+                              onClick={() => handlePrepareChart(t)}
+                              disabled={chartPreparingId === t.rawTripId}
+                              className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] shadow-xs flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                              title="Generate seat chart & activate boarding"
+                            >
+                              <FileText className="w-3 h-3" />
+                              <span>{chartPreparingId === t.rawTripId ? 'Preparing...' : 'Prepare Chart'}</span>
+                            </button>
+                          ) : (
+                            <span className="px-2 py-1 text-[10px] font-bold text-blue-700 bg-blue-50 rounded-lg">
+                              Chart Locked
+                            </span>
+                          )}
                           <button
                             type="button"
-                            onClick={() => handlePrepareChart(t)}
-                            disabled={chartPreparing}
-                            className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] shadow-xs flex items-center gap-1 transition cursor-pointer"
-                            title="Generate seat chart & activate boarding"
+                            onClick={() => handleOpenManifest(t)}
+                            className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] border border-slate-200 flex items-center gap-1 transition cursor-pointer"
+                            title="View and print passenger manifest chart"
                           >
-                            <FileText className="w-3 h-3" />
-                            <span>Prepare Chart</span>
+                            <Printer className="w-3 h-3" />
+                            <span>Seat Sheet</span>
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenManifest(t)}
-                          className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] border border-slate-200 flex items-center gap-1 transition cursor-pointer"
-                          title="View and print passenger manifest chart"
-                        >
-                          <Printer className="w-3 h-3" />
-                          <span>Seat Sheet</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-        {/* 10-Item Pagination Controls */}
-        {filtered.length > ITEMS_PER_PAGE && (
+        {/* Pagination Controls */}
+        {filteredTrips.length > ITEMS_PER_PAGE && (
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
             <span className="text-slate-500 font-medium">
               Showing <span className="font-bold text-slate-800">{startIndex + 1}</span> to{' '}
               <span className="font-bold text-slate-800">{endIndex}</span> of{' '}
-              <span className="font-bold text-slate-800">{filtered.length}</span> trips
+              <span className="font-bold text-slate-800">{filteredTrips.length}</span> trips
             </span>
 
             <div className="flex items-center gap-1.5">
@@ -550,10 +824,12 @@ export default function CompanyTripsPage() {
         )}
       </div>
 
-      {/* DISPATCH DAILY TRIP MODAL */}
+      {/* DISPATCH DAILY TRIP MODAL (Supports any date up to next 7 days & Rupadiya direction toggle) */}
       {dispatchModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200/80 w-full max-w-lg rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white border border-slate-200/90 w-full max-w-xl rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl my-8 max-h-[90vh] overflow-y-auto">
+            
+            {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -561,59 +837,146 @@ export default function CompanyTripsPage() {
                   <span>Dispatch Daily Corridor Trip</span>
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Schedule an active run on approved Rupadiya Hub-and-Spoke corridors.
+                  Schedule active departures for today or any date up to the next 7 days.
                 </p>
               </div>
-              <button onClick={() => setDispatchModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+              <button 
+                onClick={() => setDispatchModalOpen(false)} 
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleDispatch} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">Origin City *</label>
-                  <select
-                    value={form.origin}
-                    onChange={(e) => setForm({ ...form, origin: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:bg-white focus:border-blue-500"
-                  >
-                    <option value="Rupadiya (Hub)">Rupadiya (Hub)</option>
-                    <option value="Ahmedabad">Ahmedabad</option>
-                    <option value="Surat">Surat</option>
-                    <option value="Vadodara">Vadodara</option>
-                    <option value="Bengaluru">Bengaluru</option>
-                    <option value="Hyderabad">Hyderabad</option>
-                    <option value="Mumbai (Borivali)">Mumbai (Borivali)</option>
-                  </select>
+              
+              {/* Departure Date Selection with Quick Pills */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-700 font-bold flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Departure Date (Up to Next 7 Days) *</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-medium">Select specific date</span>
                 </div>
 
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">Destination City *</label>
-                  <select
-                    value={form.destination}
-                    onChange={(e) => setForm({ ...form, destination: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:bg-white focus:border-blue-500"
+                {/* Quick Date Pills */}
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                  {next7Days.map((d) => {
+                    const isSelected = form.departureDate === d.dateStr;
+                    return (
+                      <button
+                        type="button"
+                        key={d.dateStr}
+                        onClick={() => setForm({ ...form, departureDate: d.dateStr })}
+                        className={`p-1.5 rounded-xl border text-center transition ${
+                          isSelected
+                            ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="text-[9px] uppercase tracking-wider block opacity-90">{d.label}</div>
+                        <div className="text-[11px] font-bold">{d.formattedShort}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <input
+                  type="date"
+                  required
+                  min={minDateStr}
+                  max={maxDateStr}
+                  value={form.departureDate}
+                  onChange={(e) => setForm({ ...form, departureDate: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold focus:outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+
+              {/* Corridor Route with Fixed Rupadiya & Dynamic Opposite Options */}
+              <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Corridor Direction</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSwapDirection}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-blue-700 text-[10px] font-bold hover:bg-blue-100 transition shadow-2xs cursor-pointer"
                   >
-                    <option value="Ahmedabad">Ahmedabad</option>
-                    <option value="Surat">Surat</option>
-                    <option value="Vadodara">Vadodara</option>
-                    <option value="Bengaluru">Bengaluru</option>
-                    <option value="Hyderabad">Hyderabad</option>
-                    <option value="Mumbai (Borivali)">Mumbai (Borivali)</option>
-                  </select>
+                    <ArrowLeftRight className="w-3 h-3" />
+                    <span>⇄ Swap Direction</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  {/* Origin Field */}
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">
+                      Origin {direction === 'OUTBOUND' ? '(Fixed Hub)' : '(Spoke City)'} *
+                    </label>
+                    <select
+                      value={direction === 'OUTBOUND' ? 'Rupadiya (Hub)' : selectedSpoke}
+                      onChange={(e) => handleOriginChange(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:outline-none focus:border-blue-500 shadow-2xs"
+                    >
+                      {direction === 'OUTBOUND' ? (
+                        <option value="Rupadiya (Hub)">Rupadiya (Hub)</option>
+                      ) : (
+                        SPOKE_OPTIONS.map(s => (
+                          <option key={s.id} value={s.name}>
+                            {s.name} ({s.state})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  {/* Destination Field */}
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">
+                      Destination {direction === 'INBOUND' ? '(Fixed Hub)' : '(Spoke City)'} *
+                    </label>
+                    <select
+                      value={direction === 'INBOUND' ? 'Rupadiya (Hub)' : selectedSpoke}
+                      onChange={(e) => handleDestinationChange(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:outline-none focus:border-blue-500 shadow-2xs"
+                    >
+                      {direction === 'INBOUND' ? (
+                        <option value="Rupadiya (Hub)">Rupadiya (Hub)</option>
+                      ) : (
+                        SPOKE_OPTIONS.map(s => (
+                          <option key={s.id} value={s.name}>
+                            {s.name} ({s.state})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-blue-700 flex items-center gap-1 font-medium">
+                  <Info className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Approved Corridor: <strong>{direction === 'OUTBOUND' ? 'Rupadiya' : selectedSpoke}</strong> → <strong>{direction === 'OUTBOUND' ? selectedSpoke : 'Rupadiya'}</strong>
+                  </span>
                 </div>
               </div>
 
+              {/* Time & Base Fare */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Scheduled Departure Time *</label>
+                  <label className="text-slate-700 font-bold block mb-1 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Departure Time *</span>
+                  </label>
                   <input
                     type="time"
                     required
                     value={form.departureTime}
                     onChange={(e) => setForm({ ...form, departureTime: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:bg-white focus:border-blue-500"
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold focus:outline-none focus:bg-white focus:border-blue-500"
                   />
                 </div>
 
@@ -621,7 +984,7 @@ export default function CompanyTripsPage() {
                   <label className="text-slate-700 font-bold block mb-1">Standard Passenger Fare (₹) *</label>
                   <input
                     type="number"
-                    min="500"
+                    min="300"
                     step="50"
                     required
                     value={form.fare}
@@ -631,18 +994,36 @@ export default function CompanyTripsPage() {
                 </div>
               </div>
 
+              {/* Assigned Fleet Bus */}
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Assigned Fleet Bus</label>
-                <select
-                  value={form.bus}
-                  onChange={(e) => setForm({ ...form, bus: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:bg-white focus:border-blue-500"
-                >
-                  <option value="UP-40-BT-1001 (BharatBenz Luxury AC)">UP-40-BT-1001 (BharatBenz Luxury AC)</option>
-                  <option value="UP-40-BT-1002 (BharatBenz Luxury AC)">UP-40-BT-1002 (BharatBenz Luxury AC)</option>
-                  <option value="UP-40-BT-1003 (Volvo 9600 Multi-Axle)">UP-40-BT-1003 (Volvo 9600 Multi-Axle)</option>
-                  <option value="UP-40-BT-1004 (Setra s517 HD Luxury)">UP-40-BT-1004 (Setra s517 HD Luxury)</option>
-                </select>
+                <label className="text-slate-700 font-bold block mb-1 flex items-center gap-1">
+                  <Bus className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Assigned Fleet Vehicle *</span>
+                </label>
+                {loadingBuses ? (
+                  <div className="p-2.5 bg-slate-50 rounded-xl text-slate-400 text-xs flex items-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Loading company fleet coaches...</span>
+                  </div>
+                ) : fleetBuses.length === 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs flex items-center justify-between">
+                    <span>No fleet buses found under your company.</span>
+                    <a href="/fleet/add" className="font-bold underline text-amber-800">+ Add Bus</a>
+                  </div>
+                ) : (
+                  <select
+                    value={form.busId}
+                    required
+                    onChange={(e) => setForm({ ...form, busId: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold focus:outline-none focus:bg-white focus:border-blue-500"
+                  >
+                    {fleetBuses.map((b) => (
+                      <option key={b._id} value={b._id}>
+                        {b.busNumber} — {b.name || 'Fleet Coach'} ({b.busType || '2+2 Seater'})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="pt-2 flex gap-3">
@@ -655,9 +1036,17 @@ export default function CompanyTripsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-500/20 transition cursor-pointer"
+                  disabled={dispatching || fleetBuses.length === 0}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Publish Daily Departure →
+                  {dispatching ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Scheduling Trip...</span>
+                    </>
+                  ) : (
+                    <span>Confirm & Dispatch Trip →</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -665,7 +1054,7 @@ export default function CompanyTripsPage() {
         </div>
       )}
 
-      {/* PRINTABLE SEAT SHEET MANIFEST MODAL */}
+      {/* PRINTABLE SEAT SHEET MANIFEST MODAL (Shows Real Live Details & Real Vacant State) */}
       {manifestModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white border border-slate-200/90 w-full max-w-4xl rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl my-8 max-h-[90vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:p-0">
@@ -681,7 +1070,7 @@ export default function CompanyTripsPage() {
                     <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
                       Official Passenger Manifest
                     </span>
-                    <span className="text-xs text-slate-400 font-medium">· Conductor & Pilot Seat Sheet</span>
+                    <span className="text-xs text-slate-400 font-medium">· Live Seat Sheet Manifest</span>
                   </div>
                   <h3 className="text-lg font-bold text-slate-900">
                     Seat Sheet Chart · Departure Manifest
@@ -711,17 +1100,17 @@ export default function CompanyTripsPage() {
             {manifestLoading ? (
               <div className="py-20 text-center text-slate-400 flex flex-col items-center gap-2">
                 <RefreshCw className="w-7 h-7 animate-spin text-blue-600" />
-                <span className="text-xs font-bold">Generating Seat Chart Manifest...</span>
+                <span className="text-xs font-bold">Loading live seat chart manifest from database...</span>
               </div>
             ) : manifestData ? (
               <div className="space-y-6 print:space-y-4">
                 
-                {/* Print Banner */}
+                {/* Print Banner / Key Details */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
                   <div>
                     <span className="text-[10px] font-bold uppercase text-slate-400 block">Corridor Route</span>
                     <span className="font-bold text-slate-900 text-sm">
-                      {manifestData.trip?.route?.fromCity?.name || 'Rupadiya'} → {manifestData.trip?.route?.toCity?.name || 'Ahmedabad'}
+                      {manifestData.trip?.route?.fromCity?.name || 'Rupadiya'} → {manifestData.trip?.route?.toCity?.name || 'Destination'}
                     </span>
                     <span className="text-[10px] font-bold text-blue-700 block mt-0.5">
                       {formatDeparture(manifestData.trip?.departureTime)}
@@ -730,38 +1119,61 @@ export default function CompanyTripsPage() {
                   <div>
                     <span className="text-[10px] font-bold uppercase text-slate-400 block">Assigned Coach</span>
                     <span className="font-bold text-blue-700">
-                      {manifestData.trip?.bus?.busNumber || 'UP-40-BT-1001'}
+                      {manifestData.trip?.bus?.busNumber || 'Fleet Vehicle'}
                     </span>
                     <span className="text-[10px] text-slate-500 block truncate">
-                      {manifestData.trip?.bus?.busType || '36 Sleeper / 40 Seater'}
+                      {manifestData.trip?.bus?.busType || 'Luxury Coach'}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] font-bold uppercase text-slate-400 block">Driver In-Charge</span>
                     <span className="font-bold text-slate-800">
-                      {manifestData.trip?.bus?.driverName || 'Vikram Singh'}
+                      {manifestData.trip?.bus?.driverName || 'Assigned Driver'}
                     </span>
                     <span className="text-[10px] font-mono text-slate-500 block">
-                      {manifestData.trip?.bus?.driverPhone || '+91 9876543210'}
+                      {manifestData.trip?.bus?.driverPhone || '—'}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] font-bold uppercase text-slate-400 block">Chart Status</span>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold text-[11px] border border-blue-200 mt-0.5">
-                      <Lock className="w-3 h-3 text-blue-600" />
-                      <span>{manifestData.trip?.chartPrepared ? 'Chart Prepared' : 'Scheduled'}</span>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[11px] border mt-0.5 ${
+                      manifestData.trip?.chartPrepared
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    }`}>
+                      {manifestData.trip?.chartPrepared ? (
+                        <>
+                          <Lock className="w-3 h-3 text-blue-600" />
+                          <span>Chart Prepared</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>Open for Booking</span>
+                        </>
+                      )}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Occupancy</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Live Occupancy</span>
                     <span className="font-bold text-emerald-700 text-sm">
-                      {manifestData.summary?.bookedSeats} / {manifestData.summary?.totalSeats} ({manifestData.summary?.occupancyRate}%)
+                      {manifestData.summary?.bookedSeats} / {manifestData.summary?.totalSeats} ({manifestData.summary?.occupancyRate || 0}%)
                     </span>
                     <span className="text-[10px] font-semibold text-slate-500 block">
                       ₹{Number(manifestData.summary?.totalCollected || 0).toLocaleString('en-IN')} collected
                     </span>
                   </div>
                 </div>
+
+                {/* If 0 seats booked, show clear live status banner */}
+                {manifestData.summary?.bookedSeats === 0 && (
+                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                    <Info className="w-4 h-4 shrink-0 text-amber-600" />
+                    <span>
+                      <strong>Live Status:</strong> No passengers booked yet for this departure. All {manifestData.summary?.totalSeats} seats are currently vacant.
+                    </span>
+                  </div>
+                )}
 
                 {/* Manifest Table */}
                 <div className="border border-slate-200 rounded-2xl overflow-hidden">
@@ -788,13 +1200,13 @@ export default function CompanyTripsPage() {
                             {row.seatNumber}
                           </td>
                           <td className="py-2 px-3 text-[10px] font-bold text-slate-500">
-                            {row.deck}
+                            {row.deck || 'LOWER'}
                           </td>
-                          <td className="py-2 px-3 font-bold text-slate-900">
+                          <td className={`py-2 px-3 ${row.status === 'CONFIRMED' ? 'font-bold text-slate-900' : 'italic text-slate-400'}`}>
                             {row.passengerName}
                           </td>
                           <td className="py-2 px-3 text-slate-600">
-                            {row.age ? `${row.age}y / ${row.gender?.toUpperCase()}` : '—'}
+                            {row.age && row.age !== '—' ? `${row.age}y / ${String(row.gender).toUpperCase()}` : '—'}
                           </td>
                           <td className="py-2 px-3 font-mono font-bold text-slate-700">
                             {row.pnr}

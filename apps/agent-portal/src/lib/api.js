@@ -290,12 +290,25 @@ export const api = {
     return request(`/agent/tickets/search?${query}`);
   },
 
+  // 5B. Booking History
+  getBookings: (params = {}) => {
+    const cleanParams = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '' && v !== 'undefined' && v !== 'ALL') {
+        cleanParams[k] = v;
+      }
+    }
+    const query = new URLSearchParams(cleanParams).toString();
+    return request(`/agent/bookings${query ? `?${query}` : ''}`);
+  },
+
   // 6. Cancel Ticket
   cancelTicket: (payload) => request('/agent/tickets/cancel', { method: 'POST', body: JSON.stringify(payload) }),
 
   // 7. My Rewards & Referrals
   getRewards: () => request('/agent/rewards'),
   getReferrals: () => request('/agent/referrals'),
+  refreshReferralCode: () => request('/agent/referral-code/refresh', { method: 'POST' }),
 
   // 8. Booking Engine
   searchTrips: (from, to, date) => request(`/trips?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`),

@@ -44,8 +44,8 @@ export default function AdminDashboardPage() {
   }, []);
 
   const stats = [
-    { label: '33 Companies Registry', value: '33 Franchises', sub: 'Codes #01 to #33 Registry', icon: Building2, color: 'text-blue-700 bg-blue-50', href: '/companies' },
-    { label: 'Global Agents', value: `${data?.totalAgents || 0} Registered`, sub: 'Across 33 Franchise Codes', icon: Users, color: 'text-sky-700 bg-sky-50', href: '/agents' },
+    { label: '34 Companies Registry', value: '34 Franchises', sub: 'Fixed Ranks #01 to #34 (Ntt to Ott)', icon: Building2, color: 'text-blue-700 bg-blue-50', href: '/companies' },
+    { label: 'Global Agents', value: `${data?.totalAgents || 0} Registered`, sub: 'Across 34 Franchise Codes', icon: Users, color: 'text-sky-700 bg-sky-50', href: '/agents' },
     { label: 'Active Fleet Buses', value: `${data?.totalBuses || 0} Coaches`, sub: '36 Sleeper & 40 Seater Fleet', icon: Bus, color: 'text-emerald-700 bg-emerald-50', href: '/fleet' },
     { label: 'Platform Gross Volume', value: `₹${Number(data?.totalGMV || 0).toLocaleString('en-IN')}`, sub: `${data?.totalSeatsBooked || 0} Seats Booked`, icon: Receipt, color: 'text-amber-700 bg-amber-50', href: '/bookings' },
   ];
@@ -61,7 +61,7 @@ export default function AdminDashboardPage() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Rupadiya Platform Command Center</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Universal oversight across all 33 franchise companies, global agent lifecycle, standardized 36/40 fleet, and tax reconciliation.
+            Universal oversight across all 34 franchise companies (Passenger Ranking), global agent lifecycle, standardized 36/40 fleet, and tax reconciliation.
           </p>
         </div>
 
@@ -77,7 +77,7 @@ export default function AdminDashboardPage() {
             href="/companies"
             className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-700 to-sky-600 hover:from-blue-800 hover:to-sky-700 text-white font-bold text-xs shadow-md shadow-blue-600/20 transition"
           >
-            Manage 33 Companies →
+            Manage 34 Companies →
           </Link>
         </div>
       </div>

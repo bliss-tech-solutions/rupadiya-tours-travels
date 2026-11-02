@@ -109,6 +109,7 @@ router.post('/', async (req, res, next) => {
     const trip = new Trip({
       routeId,
       busId,
+      companyId: bus.companyId || req.user?.companyId || null,
       companyCode: bus.companyCode || 1,
       departureTime: new Date(departureTime),
       arrivalTime: new Date(arrivalTime),

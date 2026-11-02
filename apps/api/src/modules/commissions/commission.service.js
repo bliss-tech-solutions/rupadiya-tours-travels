@@ -45,6 +45,7 @@ class CommissionService {
         pnr: booking.pnr,
         tripId: trip._id,
         agentId: agent._id,
+        companyId: agent.companyId || booking.companyId || null,
         companyCode: agent.companyCode || booking.companyCode,
         level,
         seatCount,
@@ -78,7 +79,9 @@ class CommissionService {
       if (!wallet) {
         wallet = await Wallet.create({
           userId: agent._id,
+          companyId: agent.companyId || booking.companyId || null,
           companyCode: agent.companyCode || booking.companyCode,
+          ownerType: 'AGENT',
           availableBalance: 0,
           reservedBalance: 0
         });
@@ -91,6 +94,7 @@ class CommissionService {
       await WalletLedger.create({
         walletId: wallet._id,
         userId: agent._id,
+        companyId: agent.companyId || booking.companyId || null,
         companyCode: agent.companyCode || booking.companyCode,
         entryType: 'CREDIT',
         amount: netCommission,

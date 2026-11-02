@@ -11,10 +11,15 @@ const userSchema = new mongoose.Schema({
     enum: Object.values(ROLES),
     default: ROLES.PASSENGER
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true
+  },
   companyCode: {
     type: Number,
     min: 1,
-    max: 33,
     default: null
   },
   referralCode: {
@@ -24,6 +29,15 @@ const userSchema = new mongoose.Schema({
     uppercase: true,
     trim: true,
     default: undefined
+  },
+  previousReferralCodes: [{
+    type: String,
+    uppercase: true,
+    trim: true
+  }],
+  referralCodeUpdatedAt: {
+    type: Date,
+    default: Date.now
   },
   referredBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -96,5 +110,6 @@ const userSchema = new mongoose.Schema({
 
 userSchema.index({ phone: 1 });
 userSchema.index({ companyCode: 1, role: 1 });
+userSchema.index({ companyId: 1, role: 1 });
 
 module.exports = mongoose.model('User', userSchema);
