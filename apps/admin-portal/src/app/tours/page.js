@@ -100,7 +100,7 @@ export default function AdminToursPage() {
             <Compass className="w-3.5 h-3.5" />
             <span>Curated Escapes</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Handpicked Tour Packages Manager</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Handpicked Tour Packages Manager</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Real-time MongoDB tour catalog with accurate package pricing, dates, and inclusions.
           </p>
@@ -138,10 +138,10 @@ export default function AdminToursPage() {
                 <div>
                   <div className="flex items-start justify-between">
                     <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-200/60 px-2 py-0.5 rounded">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-200/60 px-2 py-0.5 rounded">
                         {tour.category || 'Curated Escape'}
                       </span>
-                      <h3 className="text-lg font-black text-slate-900 mt-1.5">{tour.title}</h3>
+                      <h3 className="text-lg font-bold text-slate-900 mt-1.5">{tour.title}</h3>
                       <div className="flex items-center gap-2 text-xs text-slate-500 font-medium mt-1">
                         <MapPin className="w-3.5 h-3.5 text-blue-600" />
                         <span>{location}</span>
@@ -186,7 +186,7 @@ export default function AdminToursPage() {
                 <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] text-slate-500 block font-medium">Base Package Price</span>
-                    <span className="text-xl font-black text-slate-900">
+                    <span className="text-xl font-bold text-slate-900">
                       ₹{price.toLocaleString()} <span className="text-xs text-slate-500 font-normal">/ traveler</span>
                     </span>
                   </div>
@@ -255,7 +255,7 @@ export default function AdminToursPage() {
       {modalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <h3 className="text-base font-black text-slate-900">Publish New Handpicked Tour</h3>
+            <h3 className="text-base font-bold text-slate-900">Publish New Handpicked Tour</h3>
             
             <form onSubmit={handleAddTour} className="space-y-3">
               <div>

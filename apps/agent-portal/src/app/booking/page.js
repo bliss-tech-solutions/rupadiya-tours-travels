@@ -28,14 +28,31 @@ import { downloadTicketPdf } from '../../lib/pdfGenerator';
 import { openRazorpayCheckout } from '../../lib/razorpay';
 
 const HUB_CITY = 'Rupadiya';
-const SPOKE_CITIES = [
-  'Ahmedabad',
-  'Vadodara',
-  'Surat',
-  'Bengaluru',
-  'Hyderabad',
-  'Mumbai'
+
+const ROUTE_GROUPS = [
+  {
+    id: 'route-1-gujarat',
+    name: 'Route 1 - Gujarat',
+    cities: ['Himatnagar', 'Ahmedabad', 'Baroda', 'Ankleshwar', 'Surat', 'Vapi']
+  },
+  {
+    id: 'route-2-saurashtra',
+    name: 'Route 2 - Saurashtra',
+    cities: ['Ambli Bopal', 'Chotila', 'Rajkot', 'Jamnagar']
+  },
+  {
+    id: 'route-3-south',
+    name: 'Route 3 - South',
+    cities: ['Hyderabad', 'Bangalore']
+  },
+  {
+    id: 'route-4-maharashtra-goa',
+    name: 'Route 4 - Maharashtra / Goa',
+    cities: ['Nashik', 'Mumbai', 'Pune', 'Goa']
+  }
 ];
+
+const SPOKE_CITIES = ROUTE_GROUPS.flatMap(g => g.cities);
 const ALL_CITIES = [HUB_CITY, ...SPOKE_CITIES];
 
 export default function AgentBookingPage() {
@@ -559,7 +576,14 @@ export default function AgentBookingPage() {
                   onChange={(e) => handleSourceChange(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-500"
                 >
-                  {ALL_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value={HUB_CITY}>{HUB_CITY} (Hub)</option>
+                  {ROUTE_GROUPS.map(g => (
+                    <optgroup key={g.id} label={g.name}>
+                      {g.cities.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
 
@@ -585,9 +609,17 @@ export default function AgentBookingPage() {
                   onChange={(e) => handleDestinationChange(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-500"
                 >
-                  {(sourceCity === HUB_CITY ? SPOKE_CITIES : [HUB_CITY]).map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
+                  {sourceCity === HUB_CITY ? (
+                    ROUTE_GROUPS.map(g => (
+                      <optgroup key={g.id} label={g.name}>
+                        {g.cities.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </optgroup>
+                    ))
+                  ) : (
+                    <option value={HUB_CITY}>{HUB_CITY} (Hub)</option>
+                  )}
                 </select>
               </div>
 
@@ -1294,7 +1326,7 @@ export default function AgentBookingPage() {
                     <RefreshCw className="w-4 h-4 animate-spin" /> Authorizing Payment...
                   </>
                 ) : paymentMode === 'ONLINE' ? (
-                  <>Pay ₹{grandTotal.toLocaleString('en-IN')} Online via Razorpay →</>
+                  <>Pay Online</>
                 ) : (
                   <>Deduct & Issue Ticket (₹{grandTotal.toLocaleString('en-IN')}) →</>
                 )}

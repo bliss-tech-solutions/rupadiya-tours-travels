@@ -244,7 +244,7 @@ export default function CheckoutPassengerDetailsPage() {
 
       // Store in session and localStorage for homepage active hold banner
       sessionStorage.setItem('rupadiya_checkout', JSON.stringify(finalCheckoutData));
-      localStorage.setItem('rupadiya_active_hold', JSON.stringify(finalCheckoutData));
+      sessionStorage.setItem('rupadiya_active_hold', JSON.stringify(finalCheckoutData));
 
       addToast('Seats reserved! 10-minute payment timer started.', 'success', 'Seats Locked');
       router.push(`/payment/${actualHoldId}`);

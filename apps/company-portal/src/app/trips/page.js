@@ -31,22 +31,59 @@ import { formatDeparture, formatDateTime, formatDate } from '../../lib/dateUtils
 
 const ITEMS_PER_PAGE = 10;
 
-const SPOKE_OPTIONS = [
-  { id: 'ahmedabad', name: 'Ahmedabad', state: 'Gujarat', defaultFare: 1650 },
-  { id: 'surat', name: 'Surat', state: 'Gujarat', defaultFare: 1750 },
-  { id: 'vadodara', name: 'Vadodara', state: 'Gujarat', defaultFare: 1550 },
-  { id: 'bangalore', name: 'Bengaluru', state: 'Karnataka', defaultFare: 2400 },
-  { id: 'hyderabad', name: 'Hyderabad', state: 'Telangana', defaultFare: 2150 },
-  { id: 'mumbai', name: 'Mumbai', state: 'Maharashtra', defaultFare: 1950 },
-  { id: 'lucknow', name: 'Lucknow', state: 'Uttar Pradesh', defaultFare: 450 },
-  { id: 'delhi', name: 'Delhi', state: 'Delhi NCR', defaultFare: 1100 },
-  { id: 'kanpur', name: 'Kanpur', state: 'Uttar Pradesh', defaultFare: 600 },
-  { id: 'varanasi', name: 'Varanasi', state: 'Uttar Pradesh', defaultFare: 750 }
+const ROUTE_GROUPS = [
+  {
+    id: 'route-1-gujarat',
+    name: 'Route 1 - Gujarat',
+    cities: [
+      { id: 'himatnagar', name: 'Himatnagar', state: 'Gujarat', defaultFare: 1500 },
+      { id: 'ahmedabad', name: 'Ahmedabad', state: 'Gujarat', defaultFare: 1650 },
+      { id: 'baroda', name: 'Baroda', state: 'Gujarat', defaultFare: 1550 },
+      { id: 'ankleshwar', name: 'Ankleshwar', state: 'Gujarat', defaultFare: 1650 },
+      { id: 'surat', name: 'Surat', state: 'Gujarat', defaultFare: 1750 },
+      { id: 'vapi', name: 'Vapi', state: 'Gujarat', defaultFare: 1850 }
+    ]
+  },
+  {
+    id: 'route-2-saurashtra',
+    name: 'Route 2 - Saurashtra',
+    cities: [
+      { id: 'ambli-bopal', name: 'Ambli Bopal', state: 'Gujarat', defaultFare: 1680 },
+      { id: 'chotila', name: 'Chotila', state: 'Gujarat', defaultFare: 1800 },
+      { id: 'rajkot', name: 'Rajkot', state: 'Gujarat', defaultFare: 1900 },
+      { id: 'jamnagar', name: 'Jamnagar', state: 'Gujarat', defaultFare: 2050 }
+    ]
+  },
+  {
+    id: 'route-3-south',
+    name: 'Route 3 - South',
+    cities: [
+      { id: 'hyderabad', name: 'Hyderabad', state: 'Telangana', defaultFare: 2150 },
+      { id: 'bangalore', name: 'Bangalore', state: 'Karnataka', defaultFare: 2400 }
+    ]
+  },
+  {
+    id: 'route-4-maharashtra-goa',
+    name: 'Route 4 - Maharashtra / Goa',
+    cities: [
+      { id: 'nashik', name: 'Nashik', state: 'Maharashtra', defaultFare: 1800 },
+      { id: 'mumbai', name: 'Mumbai', state: 'Maharashtra', defaultFare: 1950 },
+      { id: 'pune', name: 'Pune', state: 'Maharashtra', defaultFare: 2050 },
+      { id: 'goa', name: 'Goa', state: 'Goa', defaultFare: 2500 }
+    ]
+  }
 ];
+
+const SPOKE_OPTIONS = ROUTE_GROUPS.flatMap(g => g.cities.map(c => ({
+  ...c,
+  routeGroupId: g.id,
+  routeName: g.name
+})));
 
 function getNext7Days() {
   const days = [];
   const now = new Date();
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   for (let i = 0; i <= 7; i++) {
     const d = new Date(now);
     d.setDate(d.getDate() + i);
@@ -56,7 +93,7 @@ function getNext7Days() {
     else if (i === 1) label = 'Tomorrow';
     else label = `+${i} Days`;
     
-    const formattedShort = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    const formattedShort = `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]}`;
     days.push({
       dateStr,
       label,
@@ -100,6 +137,7 @@ export default function CompanyTripsPage() {
   // Dispatch Form State
   const [direction, setDirection] = useState('OUTBOUND'); // 'OUTBOUND': Rupadiya -> Spoke, 'INBOUND': Spoke -> Rupadiya
   const [selectedSpoke, setSelectedSpoke] = useState('Ahmedabad');
+  const [selectedRouteGroup, setSelectedRouteGroup] = useState('ALL');
   const [form, setForm] = useState({
     departureDate: minDateStr,
     departureTime: '18:00',
@@ -827,7 +865,7 @@ export default function CompanyTripsPage() {
       {/* DISPATCH DAILY TRIP MODAL (Supports any date up to next 7 days & Rupadiya direction toggle) */}
       {dispatchModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white border border-slate-200/90 w-full max-w-xl rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl my-8 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white border border-slate-200/90 w-full max-w-5xl rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl my-8 max-h-[90vh] overflow-y-auto">
             
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -895,7 +933,50 @@ export default function CompanyTripsPage() {
 
               {/* Corridor Route with Fixed Rupadiya & Dynamic Opposite Options */}
               <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-100 space-y-3">
-                <div className="flex items-center justify-between">
+                
+                {/* Route Selection Filter */}
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1.5 flex items-center justify-between">
+                    <span>Select Route Corridor *</span>
+                    <span className="text-[10px] text-blue-600 lowercase font-medium">filters destination dropdown</span>
+                  </label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRouteGroup('ALL')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        selectedRouteGroup === 'ALL'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      All Routes (16 Cities)
+                    </button>
+                    {ROUTE_GROUPS.map(g => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRouteGroup(g.id);
+                          const firstCity = g.cities[0];
+                          if (firstCity) {
+                            setSelectedSpoke(firstCity.name);
+                            setForm(prev => ({ ...prev, fare: String(firstCity.defaultFare) }));
+                          }
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          selectedRouteGroup === g.id
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {g.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-blue-100/60">
                   <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 text-blue-600" />
                     <span>Corridor Direction</span>
@@ -906,7 +987,7 @@ export default function CompanyTripsPage() {
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-blue-700 text-[10px] font-bold hover:bg-blue-100 transition shadow-2xs cursor-pointer"
                   >
                     <ArrowLeftRight className="w-3 h-3" />
-                    <span>⇄ Swap Direction</span>
+                    <span>Swap Direction</span>
                   </button>
                 </div>
 
@@ -924,10 +1005,17 @@ export default function CompanyTripsPage() {
                       {direction === 'OUTBOUND' ? (
                         <option value="Rupadiya (Hub)">Rupadiya (Hub)</option>
                       ) : (
-                        SPOKE_OPTIONS.map(s => (
-                          <option key={s.id} value={s.name}>
-                            {s.name} ({s.state})
-                          </option>
+                        (selectedRouteGroup === 'ALL'
+                          ? ROUTE_GROUPS
+                          : ROUTE_GROUPS.filter(g => g.id === selectedRouteGroup)
+                        ).map(g => (
+                          <optgroup key={g.id} label={g.name}>
+                            {g.cities.map(s => (
+                              <option key={s.id} value={s.name}>
+                                {s.name} ({s.state}) · ₹{s.defaultFare}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))
                       )}
                     </select>
@@ -946,10 +1034,17 @@ export default function CompanyTripsPage() {
                       {direction === 'INBOUND' ? (
                         <option value="Rupadiya (Hub)">Rupadiya (Hub)</option>
                       ) : (
-                        SPOKE_OPTIONS.map(s => (
-                          <option key={s.id} value={s.name}>
-                            {s.name} ({s.state})
-                          </option>
+                        (selectedRouteGroup === 'ALL'
+                          ? ROUTE_GROUPS
+                          : ROUTE_GROUPS.filter(g => g.id === selectedRouteGroup)
+                        ).map(g => (
+                          <optgroup key={g.id} label={g.name}>
+                            {g.cities.map(s => (
+                              <option key={s.id} value={s.name}>
+                                {s.name} ({s.state}) · ₹{s.defaultFare}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))
                       )}
                     </select>

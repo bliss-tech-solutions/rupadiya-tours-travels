@@ -5,12 +5,13 @@ const companySchema = new mongoose.Schema({
     type: Number,
     required: true,
     unique: true,
-    min: 1
+    min: 1,
+    max: 35
   },
   rank: {
     type: Number,
     min: 1,
-    max: 34,
+    max: 35,
     index: true
   },
   shortCode: {
@@ -19,6 +20,7 @@ const companySchema = new mongoose.Schema({
     index: true
   },
   name: { type: String, required: true, trim: true },
+  shareCapital: { type: Number, default: 0 },
   slug: { type: String, required: true, unique: true },
   ownerId: {
     type: mongoose.Schema.Types.ObjectId,

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { api, clearOwnerSession, isOwnerSessionValid } from '../lib/api';
 import { useCompanyWallet } from '../context/CompanyWalletContext';
+import { getFranchiseByCode } from '../lib/companies';
 
 export default function CompanySidebar({ onNavigate }) {
   const pathname = usePathname();
@@ -48,8 +49,10 @@ export default function CompanySidebar({ onNavigate }) {
   };
 
   const code = companyData?.companyCode || owner?.companyCode || 1;
-  const shortCode = companyData?.company?.shortCode || '';
-  const companyName = companyData?.company?.name || `Rupadiya Franchise Carrier #${String(code).padStart(2, '0')}`;
+  const staticSpec = getFranchiseByCode(code);
+  const company = companyData?.company || owner?.company || staticSpec;
+  const shortCode = company?.shortCode || staticSpec?.shortCode || '';
+  const companyName = company?.name || staticSpec?.name || 'Franchise Carrier';
   const pendingWdCount = companyData?.stats?.pendingWithdrawalsCount || 0;
 
   const navItems = [
@@ -69,22 +72,22 @@ export default function CompanySidebar({ onNavigate }) {
         {/* Brand Header */}
         <div className="p-5 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm shadow-blue-500/20">
+            <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm shadow-blue-500/20 shrink-0">
               <Building2 className="w-5 h-5" />
             </div>
             <div className="truncate">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-blue-600 block">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-600 block">
                 Company Portal
               </span>
-              <div className="flex items-center gap-1.5 truncate">
-                <h2 className="text-sm font-bold text-slate-900 truncate">
-                  Company #{String(code).padStart(2, '0')}
-                </h2>
+              <div className="flex items-center gap-1.5 truncate mt-0.5">
                 {shortCode && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-blue-50 text-blue-700 border border-blue-200">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
                     {shortCode}
                   </span>
                 )}
+                <h2 className="text-xs font-bold text-slate-900 truncate" title={companyName}>
+                  {companyName}
+                </h2>
               </div>
             </div>
           </div>
@@ -132,12 +135,12 @@ export default function CompanySidebar({ onNavigate }) {
       {/* Footer User Info & Logout Button */}
       <div className="p-4 border-t border-slate-100 space-y-3 bg-slate-50/50">
         <div className="flex items-center gap-3 px-1">
-          <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-xs font-semibold text-blue-700">
+          <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-xs font-semibold text-blue-700 shrink-0">
             {owner?.name ? owner.name[0].toUpperCase() : 'O'}
           </div>
           <div className="truncate flex-1">
             <div className="text-xs font-semibold text-slate-900 truncate">{owner?.name || 'Franchise Owner'}</div>
-            <div className="text-[10px] text-slate-500 font-normal">Code #{String(code).padStart(2, '0')} Operator</div>
+            <div className="text-[10px] text-slate-500 font-normal truncate">{shortCode ? `${shortCode} Operator` : `${companyName} Operator`}</div>
           </div>
         </div>
 

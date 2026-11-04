@@ -80,11 +80,11 @@ export default function AdminBookingsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-black uppercase tracking-wider mb-2 border border-emerald-200/60">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold uppercase tracking-wider mb-2 border border-emerald-200/60">
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
             <span>Master Transactions</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Platform Master Bookings Ledger</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Platform Master Bookings Ledger</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Real-time passenger bookings across all 33 companies, ticket fare breakdowns, and insurance audits.
           </p>
@@ -110,20 +110,20 @@ export default function AdminBookingsPage() {
       {/* KPI Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-1">
-          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Bookings</span>
-          <div className="text-2xl font-black text-slate-900">{filtered.length} Bookings</div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Bookings</span>
+          <div className="text-2xl font-bold text-slate-900">{filtered.length} Bookings</div>
           <span className="text-[11px] text-slate-500 font-medium">₹{totalGMV.toLocaleString('en-IN')} Gross Volume</span>
         </div>
 
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-1">
-          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Insured Travelers</span>
-          <div className="text-2xl font-black text-emerald-700">{totalInsured} Tickets</div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Insured Travelers</span>
+          <div className="text-2xl font-bold text-emerald-700">{totalInsured} Tickets</div>
           <span className="text-[11px] text-slate-500 font-medium">₹{totalInsurancePremium.toLocaleString('en-IN')} Insurance Premium collected (₹5/pax)</span>
         </div>
 
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-1">
-          <span className="text-[10px] font-black uppercase tracking-wider text-sky-600">Settlement Guarantee</span>
-          <div className="text-2xl font-black text-sky-700">100% Verified</div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-sky-600">Settlement Guarantee</span>
+          <div className="text-2xl font-bold text-sky-700">100% Verified</div>
           <span className="text-[11px] text-slate-500 font-medium">Direct Razorpay & Agent Wallets</span>
         </div>
       </div>
@@ -225,7 +225,7 @@ export default function AdminBookingsPage() {
                       )}
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className="font-black text-slate-900 text-sm">
+                      <span className="font-bold text-slate-900 text-sm">
                         ₹{Number(b.amount).toLocaleString('en-IN')}
                       </span>
                     </td>

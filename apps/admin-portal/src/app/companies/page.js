@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, 
   Search, 
@@ -11,15 +11,11 @@ import {
   CheckCircle2, 
   AlertCircle,
   Edit3,
-  Bus, 
-  Users, 
   ChevronLeft, 
   ChevronRight, 
   PlusCircle,
   MapPin,
-  Phone,
-  Mail,
-  Award
+  Coins
 } from 'lucide-react';
 import { api } from '../../lib/api';
 
@@ -43,9 +39,9 @@ export default function AdminCompaniesPage() {
   // Edit Company Details Form
   const [editForm, setEditForm] = useState({
     companyCode: 1,
-    rank: 1,
     shortCode: '',
     name: '',
+    shareCapital: 0,
     city: '',
     state: '',
     address: '',
@@ -56,10 +52,11 @@ export default function AdminCompaniesPage() {
   });
 
   // New Company & Owner state
-  const [newCompCode, setNewCompCode] = useState('1');
+  const [newCompCode, setNewCompCode] = useState('');
+  const [newShortCode, setNewShortCode] = useState('');
   const [newCompName, setNewCompName] = useState('');
+  const [newShareCapital, setNewShareCapital] = useState('0');
   const [newCity, setNewCity] = useState('');
-  const [newAddress, setNewAddress] = useState('');
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
   const [newOwnerPhone, setNewOwnerPhone] = useState('');
@@ -98,15 +95,15 @@ export default function AdminCompaniesPage() {
     setSelectedComp(c);
     setEditForm({
       companyCode: c.companyCode,
-      rank: c.rank || c.companyCode,
-      shortCode: c.shortCode || `C${c.companyCode}`,
+      shortCode: c.shortCode || '',
       name: c.name || '',
+      shareCapital: c.shareCapital || 0,
       city: c.city || 'Rupadiya',
       state: c.state || 'Uttar Pradesh',
       address: c.address || '',
       contactPhone: c.contactPhone || '',
       contactEmail: c.contactEmail || '',
-      status: c.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
+      status: c.status || 'ACTIVE',
       targetPassengers: String(c.annualTarget?.targetPassengers || 12000)
     });
     setEditModalOpen(true);
@@ -115,31 +112,73 @@ export default function AdminCompaniesPage() {
   const handleUpdateCompanySubmit = async (e) => {
     e.preventDefault();
     if (!selectedComp) return;
-
     setSubmitting(true);
     try {
       const res = await api.updateCompany(selectedComp.companyCode, {
-        name: editForm.name.trim(),
-        city: editForm.city.trim(),
-        state: editForm.state.trim(),
-        address: editForm.address.trim(),
-        contactPhone: editForm.contactPhone.trim(),
-        contactEmail: editForm.contactEmail.trim(),
+        name: editForm.name,
+        shortCode: editForm.shortCode,
+        shareCapital: Number(editForm.shareCapital) || 0,
+        city: editForm.city,
+        state: editForm.state,
+        address: editForm.address,
+        contactPhone: editForm.contactPhone,
+        contactEmail: editForm.contactEmail,
         status: editForm.status,
         targetPassengers: Number(editForm.targetPassengers) || 12000
       });
 
       if (res?.success) {
-        setSuccessMsg(res.message || 'Company details updated successfully!');
-        setTimeout(() => {
-          setEditModalOpen(false);
-          setSelectedComp(null);
-          setSuccessMsg('');
-          fetchCompanies();
-        }, 1200);
+        setSuccessMsg(`Franchise carrier ${editForm.shortCode || editForm.name} updated successfully.`);
+        setEditModalOpen(false);
+        fetchCompanies();
+      } else {
+        alert(res?.error || 'Failed to update company details');
       }
     } catch (err) {
-      alert(err.message || 'Failed to update company details');
+      alert(err.message || 'Network error updating company');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAssignOwnerSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedComp || !ownerEmail) return;
+    setSubmitting(true);
+    try {
+      const res = await api.assignCompanyOwner(selectedComp.companyCode, {
+        ownerEmail: ownerEmail.trim(),
+        companyName: companyName.trim()
+      });
+      if (res?.success) {
+        setSuccessMsg(`Owner ${ownerEmail} assigned to ${selectedComp.shortCode || selectedComp.name} successfully.`);
+        setAssignModalOpen(false);
+        fetchCompanies();
+      } else {
+        alert(res?.error || 'Failed to assign owner');
+      }
+    } catch (err) {
+      alert(err.message || 'Error assigning owner');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleTargetSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedComp || !targetQuota) return;
+    setSubmitting(true);
+    try {
+      const res = await api.updateCompanyTarget(selectedComp.companyCode, Number(targetQuota));
+      if (res?.success) {
+        setSuccessMsg(`Target for ${selectedComp.shortCode || selectedComp.name} updated to ${Number(targetQuota).toLocaleString('en-IN')} pax.`);
+        setTargetModalOpen(false);
+        fetchCompanies();
+      } else {
+        alert(res?.error || 'Failed to update target');
+      }
+    } catch (err) {
+      alert(err.message || 'Error updating target');
     } finally {
       setSubmitting(false);
     }
@@ -150,109 +189,75 @@ export default function AdminCompaniesPage() {
     setSubmitting(true);
     try {
       const res = await api.createCompanyWithOwner({
-        companyCode: Number(newCompCode),
+        companyCode: Number(newCompCode) || undefined,
+        shortCode: newShortCode.trim().toUpperCase(),
         name: newCompName.trim(),
-        city: newCity.trim(),
-        address: newAddress.trim(),
+        shareCapital: Number(newShareCapital) || 0,
+        city: newCity.trim() || 'Rupadiya',
+        targetPassengers: Number(newTarget) || 12000,
         ownerName: newOwnerName.trim(),
         ownerEmail: newOwnerEmail.trim(),
         ownerPhone: newOwnerPhone.trim(),
-        ownerPassword: newOwnerPassword,
-        targetPassengers: Number(newTarget) || 12000
+        ownerPassword: newOwnerPassword
       });
+
       if (res?.success) {
-        setSuccessMsg(res.message || 'Company and Owner registered successfully!');
-        setTimeout(() => {
-          setCreateModalOpen(false);
-          setNewCompName('');
-          setNewCity('');
-          setNewAddress('');
-          setNewOwnerName('');
-          setNewOwnerEmail('');
-          setNewOwnerPhone('');
-          setSuccessMsg('');
-          fetchCompanies();
-        }, 1200);
+        setSuccessMsg(`Franchise carrier ${newShortCode || newCompName} registered successfully.`);
+        setCreateModalOpen(false);
+        setNewCompCode('');
+        setNewShortCode('');
+        setNewCompName('');
+        setNewShareCapital('0');
+        setNewCity('');
+        setNewOwnerName('');
+        setNewOwnerEmail('');
+        setNewOwnerPhone('');
+        fetchCompanies();
+      } else {
+        alert(res?.error || 'Failed to create company');
       }
     } catch (err) {
-      alert(err.message || 'Failed to create company and owner');
+      alert(err.message || 'Error registering company');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleAssignOwnerSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedComp || !ownerEmail) return;
+  // Filter & Search Logic
+  const filtered = useMemo(() => {
+    return companies.filter(c => {
+      if (statusFilter === 'ACTIVE' && c.status !== 'ACTIVE') return false;
+      if (statusFilter === 'SUSPENDED' && c.status !== 'SUSPENDED') return false;
+      if (statusFilter === 'UNASSIGNED' && c.ownerId != null) return false;
 
-    setSubmitting(true);
-    try {
-      const res = await api.assignCompanyOwner(selectedComp.companyCode, {
-        ownerEmail: ownerEmail.trim(),
-        companyName: companyName.trim() || undefined
-      });
-      if (res.success) {
-        setSuccessMsg(res.message || 'Owner assigned successfully!');
-        setTimeout(() => {
-          setAssignModalOpen(false);
-          setSelectedComp(null);
-          setOwnerEmail('');
-          setCompanyName('');
-          setSuccessMsg('');
-          fetchCompanies();
-        }, 1200);
-      }
-    } catch (err) {
-      alert(err.message || 'Failed to assign owner');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase().trim();
+      const name = (c.name || '').toLowerCase();
+      const shortCode = (c.shortCode || '').toLowerCase();
+      const codeStr = String(c.companyCode || '');
+      const city = (c.city || '').toLowerCase();
+      const ownerEmail = (c.ownerId?.email || '').toLowerCase();
+      const ownerName = (c.ownerId?.name || '').toLowerCase();
+      const phone = (c.contactPhone || '').toLowerCase();
 
-  const handleTargetSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedComp) return;
+      return (
+        name.includes(term) ||
+        shortCode.includes(term) ||
+        codeStr.includes(term) ||
+        city.includes(term) ||
+        ownerEmail.includes(term) ||
+        ownerName.includes(term) ||
+        phone.includes(term)
+      );
+    });
+  }, [companies, statusFilter, searchTerm]);
 
-    setSubmitting(true);
-    try {
-      const res = await api.updateCompanyTarget(selectedComp.companyCode, Number(targetQuota));
-      if (res.success) {
-        setSuccessMsg(res.message || 'Target updated successfully!');
-        setTimeout(() => {
-          setTargetModalOpen(false);
-          setSelectedComp(null);
-          setSuccessMsg('');
-          fetchCompanies();
-        }, 1200);
-      }
-    } catch (err) {
-      alert(err.message || 'Failed to update target');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const filtered = companies.filter(c => {
-    const matchesSearch = 
-      c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      String(c.companyCode).includes(searchTerm) ||
-      String(c.rank).includes(searchTerm) ||
-      c.shortCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.ownerId?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.ownerId?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.city?.toLowerCase().includes(searchTerm.toLowerCase());
-
-    if (!matchesSearch) return false;
-
-    if (statusFilter === 'ACTIVE') return c.status === 'ACTIVE';
-    if (statusFilter === 'SUSPENDED') return c.status === 'SUSPENDED';
-    if (statusFilter === 'UNASSIGNED') return !c.ownerId;
-
-    return true;
-  });
-
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE) || 1;
-  const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filtered.slice(start, start + ITEMS_PER_PAGE);
+  }, [filtered, currentPage]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -260,35 +265,40 @@ export default function AdminCompaniesPage() {
 
   const assignedCount = companies.filter(c => c.ownerId != null).length;
   const activeCount = companies.filter(c => c.status === 'ACTIVE').length;
+  const totalCapital = companies.reduce((sum, c) => sum + (c.shareCapital || 0), 0);
 
   return (
     <div className="w-full space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/90 pb-6">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200/60 text-blue-700 text-xs font-bold uppercase tracking-wider mb-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200/60 text-blue-700 text-xs font-semibold uppercase tracking-wider mb-2">
             <Building2 className="w-3.5 h-3.5" />
             <span>Master Franchise Registry</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            34 Companies Registry (Passenger Ranking)
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+            Companies Registry
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl">
-            Fixed franchise rankings (Rank 1: <strong className="text-slate-800">Ntt</strong> to Rank 34: <strong className="text-slate-800">Ott</strong>). Admin can manage and edit franchise display names, contact phone/email, address, active status, and passenger quotas.
+            Directory of affiliated franchise carriers, codes, profiles, share capital details, and assigned operators.
           </p>
         </div>
 
         <div className="flex items-center gap-3 self-start sm:self-auto shrink-0">
           <button
-            onClick={() => setCreateModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition shadow-md shadow-blue-500/20"
+            onClick={() => {
+              const highest = companies.reduce((max, c) => Math.max(max, c.companyCode || 0), 0);
+              setNewCompCode(String(highest + 1));
+              setCreateModalOpen(true);
+            }}
+            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-2 cursor-pointer transition shadow-sm"
           >
             <PlusCircle className="w-4 h-4" />
             <span>Register Franchise Slot</span>
           </button>
           <button
             onClick={fetchCompanies}
-            className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200/90 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-2 cursor-pointer transition"
+            className="px-4 py-2.5 rounded-xl bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center gap-2 cursor-pointer transition shadow-2xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
             <span>Refresh</span>
@@ -297,8 +307,8 @@ export default function AdminCompaniesPage() {
       </div>
 
       {successMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/60 text-emerald-700 text-xs font-bold flex items-center gap-2 shadow-xs">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/60 text-emerald-800 text-xs font-semibold flex items-center gap-2 shadow-xs">
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
           <span>{successMsg}</span>
         </div>
       )}
@@ -310,142 +320,143 @@ export default function AdminCompaniesPage() {
         </div>
       )}
 
-      {/* Summary KPI Badges */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-200/90 p-5 rounded-3xl space-y-1 shadow-xs">
+      {/* Summary KPI Cards - Responsive Grid for md, lg, xl */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white border border-slate-200/90 p-5 rounded-2xl space-y-1 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Fixed Ranking Hierarchy</span>
-            <Award className="w-4 h-4 text-blue-600" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Franchise Carriers</span>
+            <Building2 className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">34 Franchise Codes</div>
-          <span className="text-[11px] text-slate-500 font-medium">Rank 1 (#01 Ntt) to Rank 34 (#34 Ott)</span>
+          <div className="text-2xl font-bold text-slate-900">{companies.length} Carriers</div>
+          <span className="text-[11px] text-slate-500 font-medium">Franchise Network Registry</span>
         </div>
 
-        <div className="bg-white border border-slate-200/90 p-5 rounded-3xl space-y-1 shadow-xs">
+        <div className="bg-white border border-slate-200/90 p-5 rounded-2xl space-y-1 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Assigned Franchise Owners</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Share Capital </span>
+            <Coins className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="text-2xl font-bold text-slate-900">₹{totalCapital.toLocaleString('en-IN')}</div>
+          <span className="text-[11px] text-slate-500 font-medium">Cumulated Network Capital</span>
+        </div>
+
+        <div className="bg-white border border-slate-200/90 p-5 rounded-2xl space-y-1 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Assigned Operators</span>
             <UserCheck className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-blue-700">{assignedCount} Assigned</div>
-          <span className="text-[11px] text-slate-500 font-medium">{34 - assignedCount} slots pending assignment</span>
+          <div className="text-2xl font-bold text-blue-700">{assignedCount} Assigned</div>
+          <span className="text-[11px] text-slate-500 font-medium">{Math.max(0, companies.length - assignedCount)} slots unassigned</span>
         </div>
 
-        <div className="bg-white border border-slate-200/90 p-5 rounded-3xl space-y-1 shadow-xs">
+        <div className="bg-white border border-slate-200/90 p-5 rounded-2xl space-y-1 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Active Status</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Active Status</span>
             <Building2 className="w-4 h-4 text-sky-600" />
           </div>
-          <div className="text-2xl font-black text-emerald-700">{activeCount} / 34 Active</div>
-          <span className="text-[11px] text-slate-500 font-medium">Default Quota: 12,000 pax / company</span>
+          <div className="text-2xl font-bold text-emerald-700">{activeCount} / {companies.length} Active</div>
+          <span className="text-[11px] text-slate-500 font-medium">Authorized to Dispatch & Book</span>
         </div>
       </div>
 
       {/* Companies Table Card */}
-      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4 shadow-xs">
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 space-y-4 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900">
-              Franchise Passenger Ranking Directory ({filtered.length} of 34)
+              Franchise Carriers Directory ({filtered.length} of {companies.length})
             </h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Click &quot;Edit Details&quot; to update company profile, contacts, city, or status.
+              Click &quot;Edit Details&quot; to update company profile, share capital, contacts, or status.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             {/* Quick Status Filters */}
-            <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-bold">
+            <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-semibold">
               {[
-                { id: 'ALL', label: 'All 34' },
+                { id: 'ALL', label: `All (${companies.length})` },
                 { id: 'ACTIVE', label: 'Active' },
                 { id: 'SUSPENDED', label: 'Suspended' },
                 { id: 'UNASSIGNED', label: 'Unassigned' }
-              ].map(f => (
+              ].map(tab => (
                 <button
-                  key={f.id}
-                  onClick={() => setStatusFilter(f.id)}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer text-[11px] ${
-                    statusFilter === f.id
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-900'
+                  key={tab.id}
+                  onClick={() => setStatusFilter(tab.id)}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    statusFilter === tab.id
+                      ? 'bg-white text-blue-700 font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  {f.label}
+                  {tab.label}
                 </button>
               ))}
             </div>
 
             {/* Search Input */}
-            <div className="relative w-full sm:w-64">
+            <div className="relative min-w-[240px]">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search rank, code (e.g. Ntt), name..."
+                placeholder="Search code, name, city..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 font-medium"
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 bg-slate-50/50"
               />
             </div>
           </div>
         </div>
 
         {loading ? (
-          <div className="py-20 text-center text-slate-500 flex flex-col items-center gap-2">
+          <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
             <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
-            <span className="text-xs font-bold">Loading 34 companies registry...</span>
+            <span className="text-xs font-semibold">Loading companies registry...</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center text-slate-500 border border-dashed border-slate-200 rounded-2xl space-y-1">
+            <Building2 className="w-8 h-8 text-slate-300 mx-auto" />
+            <div className="text-sm font-semibold">No franchise carriers found</div>
+            <p className="text-xs text-slate-400">Try adjusting your search or status filter.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto min-w-full -mx-5 sm:mx-0">
+            <table className="w-full text-left text-xs min-w-[950px]">
               <thead>
-                <tr className="border-b border-slate-200/90 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
-                  <th className="py-3 px-3 text-center">Rank</th>
-                  <th className="py-3 px-3">Fixed Code</th>
-                  <th className="py-3 px-4">Franchise Company Name</th>
-                  <th className="py-3 px-4">Assigned Franchise Owner</th>
-                  <th className="py-3 px-4 text-right">Annual Target</th>
-                  <th className="py-3 px-3 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                <tr className="border-b border-slate-200/80 bg-slate-50/60 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                  <th className="py-3 px-4 w-32">Company Code</th>
+                  <th className="py-3 px-4 min-w-[280px]">Carrier & Company Name</th>
+                  <th className="py-3 px-4 w-40 text-right">Capital</th>
+                  <th className="py-3 px-4 min-w-[190px]">Assigned Operator</th>
+                  <th className="py-3 px-4 text-right w-28">Annual Quota</th>
+                  <th className="py-3 px-4 text-center w-24">Status</th>
+                  <th className="py-3 px-4 text-right w-44">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginated.map((c) => {
                   const owner = c.ownerId;
                   const target = c.annualTarget?.targetPassengers || 12000;
-                  const rank = c.rank || c.companyCode;
                   const shortCode = c.shortCode || `C${c.companyCode}`;
 
                   return (
                     <tr key={c.companyCode} className="hover:bg-slate-50/60 transition">
-                      {/* Rank Column */}
-                      <td className="py-3.5 px-3 text-center">
-                        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-xl font-black text-xs ${
-                          rank <= 3
-                            ? 'bg-amber-100 text-amber-800 border border-amber-300 font-extrabold shadow-2xs'
-                            : 'bg-slate-100 text-slate-700'
-                        }`}>
-                          {rank}
-                        </span>
-                      </td>
-
-                      {/* Fixed Code Column */}
-                      <td className="py-3.5 px-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-2.5 py-1 rounded-lg font-mono font-black text-xs bg-blue-50 text-blue-700 border border-blue-200 tracking-wider">
+                      {/* Company Code Column (No #01, No rank) */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-lg font-mono font-bold text-xs bg-blue-50 text-blue-700 border border-blue-200 tracking-wider">
                             {shortCode}
                           </span>
-                          <span className="text-[10px] font-mono text-slate-500">
-                            #{String(c.companyCode).padStart(2, '0')}
-                          </span>
                         </div>
                       </td>
 
-                      {/* Company Name & Location */}
+                      {/* Company Name (English + Nepali + City/Contacts) */}
                       <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                          <span>{c.name}</span>
+                        <div className="font-semibold text-slate-900 text-sm">
+                          {c.name}
                         </div>
-                        <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
                           <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
                           <span>{c.city || 'Rupadiya'}{c.state ? `, ${c.state}` : ''}</span>
                           {c.contactPhone && (
@@ -457,6 +468,14 @@ export default function AdminCompaniesPage() {
                         </div>
                       </td>
 
+                      {/* Share Capital  Column */}
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="font-bold text-slate-900 font-mono text-sm">
+                          ₹{Number(c.shareCapital || 0).toLocaleString('en-IN')}
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium">Capital</span>
+                      </td>
+
                       {/* Owner Details */}
                       <td className="py-3.5 px-4">
                         {owner ? (
@@ -465,20 +484,20 @@ export default function AdminCompaniesPage() {
                             <div className="text-[10px] text-slate-500 font-mono">{owner.email} · {owner.phone}</div>
                           </div>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
                             Unassigned
                           </span>
                         )}
                       </td>
 
                       {/* Target */}
-                      <td className="py-3.5 px-4 text-right font-black text-slate-900">
-                        {target.toLocaleString('en-IN')} <span className="text-[10px] text-slate-500 font-normal">pax/yr</span>
+                      <td className="py-3.5 px-4 text-right font-semibold text-slate-900">
+                        {target.toLocaleString('en-IN')} <span className="text-[10px] text-slate-500 font-normal">pax</span>
                       </td>
 
                       {/* Status */}
-                      <td className="py-3.5 px-3 text-center">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      <td className="py-3.5 px-4 text-center">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
                           c.status === 'ACTIVE'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-rose-50 text-rose-700 border border-rose-200'
@@ -493,17 +512,17 @@ export default function AdminCompaniesPage() {
                           {/* EDIT DETAILS BUTTON */}
                           <button
                             onClick={() => handleOpenEditModal(c)}
-                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold text-[11px] border border-slate-200 hover:border-blue-200 transition flex items-center gap-1 cursor-pointer"
-                            title="Edit Company Details (Name, Phone, City, Status)"
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-semibold text-[11px] border border-slate-200 hover:border-blue-200 transition flex items-center gap-1 cursor-pointer"
+                            title="Edit Company Details"
                           >
                             <Edit3 className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Edit Details</span>
+                            <span>Edit</span>
                           </button>
 
                           {/* VIEW DETAILS BUTTON */}
                           <Link
                             href={`/companies/${c.companyCode}`}
-                            className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] shadow-xs transition flex items-center gap-1"
+                            className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[11px] shadow-2xs transition flex items-center gap-1"
                           >
                             <span>Profile</span>
                             <ChevronRight className="w-3.5 h-3.5" />
@@ -559,7 +578,7 @@ export default function AdminCompaniesPage() {
                 type="button"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold flex items-center gap-1 transition cursor-pointer"
+                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold flex items-center gap-1 transition cursor-pointer"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
                 <span>Prev</span>
@@ -571,9 +590,9 @@ export default function AdminCompaniesPage() {
                     key={page}
                     type="button"
                     onClick={() => setCurrentPage(page)}
-                    className={`w-8 h-8 rounded-xl font-bold transition cursor-pointer ${
+                    className={`w-8 h-8 rounded-xl font-semibold transition cursor-pointer ${
                       currentPage === page
-                        ? 'bg-blue-600 text-white shadow-sm'
+                        ? 'bg-blue-600 text-white shadow-xs'
                         : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
@@ -586,7 +605,7 @@ export default function AdminCompaniesPage() {
                 type="button"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold flex items-center gap-1 transition cursor-pointer"
+                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold flex items-center gap-1 transition cursor-pointer"
               >
                 <span>Next</span>
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -597,19 +616,19 @@ export default function AdminCompaniesPage() {
       </div>
 
       {/* ============================================================== */}
-      {/* EDIT COMPANY DETAILS MODAL (Admin can edit all except fixed code) */}
+      {/* EDIT COMPANY DETAILS MODAL */}
       {/* ============================================================== */}
       {editModalOpen && selectedComp && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white border border-slate-200 w-full max-w-lg rounded-3xl p-6 space-y-4 shadow-2xl my-8">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <Edit3 className="w-5 h-5 text-blue-600" />
-                  <span>Edit Franchise Company Details</span>
+                  <span>Edit Franchise Carrier Details</span>
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Update operator information, contact details, city, and annual quota
+                  Update operator information, capital, contact details, city, and quota
                 </p>
               </div>
               <button 
@@ -620,54 +639,78 @@ export default function AdminCompaniesPage() {
               </button>
             </div>
 
-            {/* Fixed Ranking Banner (Immutable) */}
+            {/* Code Badge */}
             <div className="p-3 bg-blue-50 border border-blue-200/80 rounded-2xl flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-lg bg-blue-700 text-white font-mono font-black text-sm">
+                <span className="px-2.5 py-1 rounded-lg bg-blue-700 text-white font-mono font-bold text-sm">
                   {editForm.shortCode}
                 </span>
                 <div>
-                  <span className="text-xs font-bold text-blue-900 block">
-                    Fixed Code · Rank #{editForm.rank}
+                  <span className="text-xs font-semibold text-blue-900 block">
+                    Franchise Code {editForm.companyCode}
                   </span>
                   <span className="text-[10px] text-blue-700">
-                    Master Passenger Ranking Code (Permanent)
+                    Network Carrier Identifier
                   </span>
                 </div>
               </div>
-              <span className="text-[10px] uppercase font-mono font-bold text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">
-                Code #{editForm.companyCode}
-              </span>
             </div>
 
             <form onSubmit={handleUpdateCompanySubmit} className="space-y-3.5 text-xs">
-              {/* Company Display Name */}
+              {/* Company Display Name & Short Code */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="text-slate-700 font-semibold block mb-1">Company English Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.name}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-blue-600"
+                    placeholder="e.g. Bageshwari Darshan Tours and Travels"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-semibold block mb-1">Short Code *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.shortCode}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, shortCode: e.target.value.toUpperCase() }))}
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-600"
+                    placeholder="BDTT"
+                  />
+                </div>
+              </div>
+
+              {/* Share Capital */}
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Franchise Company Name *</label>
+                <label className="text-slate-700 font-semibold block mb-1">Share Capital</label>
                 <input
-                  type="text"
-                  required
-                  value={editForm.name}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:outline-none focus:border-blue-600"
-                  placeholder="e.g. Ntt Travels & Logistics"
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={editForm.shareCapital}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, shareCapital: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-600"
+                  placeholder="650000"
                 />
               </div>
 
               {/* City & State */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Headquarters City</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Headquarters City</label>
                   <input
                     type="text"
                     value={editForm.city}
                     onChange={(e) => setEditForm(prev => ({ ...prev, city: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"
-                    placeholder="e.g. Rupadiya / Lucknow"
+                    placeholder="Rupadiya"
                   />
                 </div>
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">State</label>
+                  <label className="text-slate-700 font-semibold block mb-1">State</label>
                   <input
                     type="text"
                     value={editForm.state}
@@ -680,7 +723,7 @@ export default function AdminCompaniesPage() {
 
               {/* Office Address */}
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Office / Terminal Address</label>
+                <label className="text-slate-700 font-semibold block mb-1">Office / Terminal Address</label>
                 <input
                   type="text"
                   value={editForm.address}
@@ -693,7 +736,7 @@ export default function AdminCompaniesPage() {
               {/* Contact Phone & Email */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Contact Phone</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Contact Phone</label>
                   <input
                     type="tel"
                     value={editForm.contactPhone}
@@ -703,7 +746,7 @@ export default function AdminCompaniesPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Official Email</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Official Email</label>
                   <input
                     type="email"
                     value={editForm.contactEmail}
@@ -717,25 +760,25 @@ export default function AdminCompaniesPage() {
               {/* Status & Annual Target */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Operating Status</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Operating Status</label>
                   <select
                     value={editForm.status}
                     onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:outline-none focus:border-blue-600 cursor-pointer"
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:border-blue-600 cursor-pointer"
                   >
                     <option value="ACTIVE">ACTIVE (Authorized to Dispatch & Book)</option>
                     <option value="SUSPENDED">SUSPENDED (Temporarily Blocked)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Annual Passenger Quota</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Annual Passenger Quota</label>
                   <input
                     type="number"
                     min="1000"
                     step="500"
                     value={editForm.targetPassengers}
                     onChange={(e) => setEditForm(prev => ({ ...prev, targetPassengers: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:outline-none focus:border-blue-600"
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:border-blue-600"
                   />
                 </div>
               </div>
@@ -744,14 +787,14 @@ export default function AdminCompaniesPage() {
                 <button
                   type="button"
                   onClick={() => setEditModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-md shadow-blue-500/20 transition"
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50 cursor-pointer shadow-sm transition"
                 >
                   {submitting ? 'Saving Changes...' : 'Save Company Details'}
                 </button>
@@ -761,7 +804,9 @@ export default function AdminCompaniesPage() {
         </div>
       )}
 
-      {/* CREATE / INITIALIZE COMPANY MODAL */}
+      {/* ============================================================== */}
+      {/* REGISTER NEW FRANCHISE CARRIER MODAL */}
+      {/* ============================================================== */}
       {createModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white border border-slate-200 w-full max-w-lg rounded-3xl p-6 space-y-4 shadow-2xl my-8">
@@ -769,45 +814,42 @@ export default function AdminCompaniesPage() {
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-blue-700" />
-                  <span>Register Franchise Slot & Owner</span>
+                  <span>Register Franchise Carrier & Owner</span>
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">Initialize one of the 34 passenger ranking franchise codes</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Initialize a new franchise carrier in the network registry</p>
               </div>
               <button onClick={() => setCreateModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1 cursor-pointer">✕</button>
             </div>
 
             <form onSubmit={handleCreateCompanyWithOwner} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Company Code (1 to 34) *</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Code Number *</label>
                   <input
                     type="number"
                     min="1"
-                    max="34"
                     required
-                    placeholder="1 to 34"
+                    placeholder="e.g. 36"
                     value={newCompCode}
                     onChange={(e) => setNewCompCode(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:outline-none focus:border-blue-600"
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:border-blue-600"
                   />
                 </div>
 
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Company Display Name *</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Short Code *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Ntt Travels & Logistics"
-                    value={newCompName}
-                    onChange={(e) => setNewCompName(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"
+                    placeholder="e.g. NEWTT"
+                    value={newShortCode}
+                    onChange={(e) => setNewShortCode(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-600"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">City</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Headquarters</label>
                   <input
                     type="text"
                     placeholder="Rupadiya"
@@ -816,18 +858,31 @@ export default function AdminCompaniesPage() {
                     className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">Annual Quota Target</label>
-                  <input
-                    type="number"
-                    min="1000"
-                    step="1000"
-                    value={newTarget}
-                    onChange={(e) => setNewTarget(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:outline-none focus:border-blue-600"
-                  />
-                </div>
+              <div>
+                <label className="text-slate-700 font-semibold block mb-1">Company English Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Himalayan Express Tours and Travels"
+                  value={newCompName}
+                  onChange={(e) => setNewCompName(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-semibold block mb-1">Share Capital</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  placeholder="100000"
+                  value={newShareCapital}
+                  onChange={(e) => setNewShareCapital(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-600"
+                />
               </div>
 
               <div className="border-t border-slate-100 pt-2.5">
@@ -835,7 +890,7 @@ export default function AdminCompaniesPage() {
                 <div className="space-y-2.5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-slate-700 font-bold block mb-1">Owner Full Name *</label>
+                      <label className="text-slate-700 font-semibold block mb-1">Owner Full Name *</label>
                       <input
                         type="text"
                         required
@@ -847,7 +902,7 @@ export default function AdminCompaniesPage() {
                     </div>
 
                     <div>
-                      <label className="text-slate-700 font-bold block mb-1">Owner Phone *</label>
+                      <label className="text-slate-700 font-semibold block mb-1">Owner Phone *</label>
                       <input
                         type="tel"
                         required
@@ -861,7 +916,7 @@ export default function AdminCompaniesPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-slate-700 font-bold block mb-1">Owner Email *</label>
+                      <label className="text-slate-700 font-semibold block mb-1">Owner Email *</label>
                       <input
                         type="email"
                         required
@@ -873,7 +928,7 @@ export default function AdminCompaniesPage() {
                     </div>
 
                     <div>
-                      <label className="text-slate-700 font-bold block mb-1">Password *</label>
+                      <label className="text-slate-700 font-semibold block mb-1">Password *</label>
                       <input
                         type="text"
                         required
@@ -890,14 +945,14 @@ export default function AdminCompaniesPage() {
                 <button
                   type="button"
                   onClick={() => setCreateModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-md shadow-blue-500/20"
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50 cursor-pointer shadow-sm"
                 >
                   {submitting ? 'Registering...' : 'Register Company & Owner'}
                 </button>
@@ -907,7 +962,9 @@ export default function AdminCompaniesPage() {
         </div>
       )}
 
+      {/* ============================================================== */}
       {/* ASSIGN OWNER MODAL */}
+      {/* ============================================================== */}
       {assignModalOpen && selectedComp && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white border border-slate-200 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl">
@@ -918,7 +975,7 @@ export default function AdminCompaniesPage() {
                   <span>Assign Franchise Owner</span>
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Rank #{selectedComp.rank || selectedComp.companyCode} · Code: {selectedComp.shortCode || `C${selectedComp.companyCode}`}
+                  Code: {selectedComp.shortCode || `C${selectedComp.companyCode}`} · {selectedComp.name}
                 </p>
               </div>
               <button onClick={() => setAssignModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1 cursor-pointer">✕</button>
@@ -926,18 +983,18 @@ export default function AdminCompaniesPage() {
 
             <form onSubmit={handleAssignOwnerSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Company Display Name</label>
+                <label className="text-slate-700 font-semibold block mb-1">Company Display Name</label>
                 <input
                   type="text"
                   required
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600 font-semibold"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600 font-medium"
                 />
               </div>
 
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Owner Email ID *</label>
+                <label className="text-slate-700 font-semibold block mb-1">Owner Email ID *</label>
                 <input
                   type="email"
                   required
@@ -947,7 +1004,7 @@ export default function AdminCompaniesPage() {
                   className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">
-                  The user with this email will be assigned COMPANY_OWNER role for Franchise #{selectedComp.companyCode} ({selectedComp.shortCode}).
+                  The user with this email will be assigned COMPANY_OWNER role for Franchise {selectedComp.shortCode || selectedComp.companyCode}.
                 </span>
               </div>
 
@@ -955,14 +1012,14 @@ export default function AdminCompaniesPage() {
                 <button
                   type="button"
                   onClick={() => setAssignModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-md shadow-blue-500/20"
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50 cursor-pointer shadow-sm"
                 >
                   {submitting ? 'Binding...' : 'Save & Assign Owner'}
                 </button>
@@ -972,7 +1029,9 @@ export default function AdminCompaniesPage() {
         </div>
       )}
 
+      {/* ============================================================== */}
       {/* ADJUST TARGET MODAL */}
+      {/* ============================================================== */}
       {targetModalOpen && selectedComp && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white border border-slate-200 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl">
@@ -983,7 +1042,7 @@ export default function AdminCompaniesPage() {
                   <span>Adjust Annual Quota Target</span>
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Rank #{selectedComp.rank || selectedComp.companyCode} · {selectedComp.name} ({selectedComp.shortCode})
+                  {selectedComp.shortCode || `Code ${selectedComp.companyCode}`} · {selectedComp.name}
                 </p>
               </div>
               <button onClick={() => setTargetModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1 cursor-pointer">✕</button>
@@ -991,7 +1050,7 @@ export default function AdminCompaniesPage() {
 
             <form onSubmit={handleTargetSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Annual Passenger Target Quota</label>
+                <label className="text-slate-700 font-semibold block mb-1">Annual Passenger Target Quota</label>
                 <input
                   type="number"
                   min="500"
@@ -999,7 +1058,7 @@ export default function AdminCompaniesPage() {
                   required
                   value={targetQuota}
                   onChange={(e) => setTargetQuota(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-emerald-700 font-black text-lg focus:outline-none focus:border-blue-600"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-emerald-700 font-bold text-lg focus:outline-none focus:border-blue-600"
                 />
                 <div className="grid grid-cols-4 gap-2 mt-2">
                   {['5000', '10000', '12000', '20000'].map(p => (
@@ -1007,7 +1066,7 @@ export default function AdminCompaniesPage() {
                       key={p}
                       type="button"
                       onClick={() => setTargetQuota(p)}
-                      className={`py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                      className={`py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                         targetQuota === p ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
@@ -1021,14 +1080,14 @@ export default function AdminCompaniesPage() {
                 <button
                   type="button"
                   onClick={() => setTargetModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-md shadow-emerald-500/20"
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50 cursor-pointer shadow-sm"
                 >
                   {submitting ? 'Updating...' : 'Save Target Quota'}
                 </button>

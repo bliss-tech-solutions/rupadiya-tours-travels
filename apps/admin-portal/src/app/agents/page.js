@@ -218,7 +218,7 @@ sponsorReferralCode: '',
             <Users className="w-3.5 h-3.5" />
             <span>Master Agency Directory</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Global Agents Management</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Global Agents Management</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Search, inspect, fund, and govern all agents across all 33 franchise companies.
           </p>
@@ -328,7 +328,7 @@ sponsorReferralCode: '',
                       <div>{ag.phone}</div>
                       <div className="text-[10px] text-slate-500">{ag.email}</div>
                     </td>
-                    <td className="py-3.5 px-4 text-right font-black text-emerald-700 text-sm">
+                    <td className="py-3.5 px-4 text-right font-bold text-emerald-700 text-sm">
                       ₹{Number(ag.availableBalance || 0).toLocaleString('en-IN')}
                     </td>
                     <td className="py-3.5 px-4 text-center">
@@ -554,7 +554,7 @@ sponsorReferralCode: '',
                   required
                   value={formData.initialWalletAmount}
                   onChange={(e) => setFormData({ ...formData, initialWalletAmount: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200/90 text-emerald-700 font-black text-lg focus:outline-none focus:border-blue-600"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200/90 text-emerald-700 font-bold text-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
 

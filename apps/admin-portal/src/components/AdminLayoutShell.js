@@ -5,10 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import AdminSidebar from "./Sidebar";
 import RealtimeNotificationListener from "./RealtimeNotificationListener";
 import { AdminProvider, useAdmin } from "../context/AdminContext";
-import { ShieldAlert, LogOut, Clock, Menu, X, User } from "lucide-react";
+import { ShieldAlert, LogOut, Menu, X } from "lucide-react";
 import { api, isAdminSessionValid } from "../lib/api";
-
-const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 Hours
 
 export default function AdminLayoutShell({ children }) {
   const pathname = usePathname();
@@ -44,18 +42,11 @@ export default function AdminLayoutShell({ children }) {
           }
           setAdmin(res.user);
           localStorage.setItem("admin_user", JSON.stringify(res.user));
-        } else if (res?.success && userRaw) {
-          // Keep current admin session on safe 304 / empty response
         } else if (!userRaw) {
           router.push("/login?reason=session_expired");
         }
       } catch (err) {
-        const loginTime = parseInt(
-          localStorage.getItem("admin_login_time") || "0",
-          10,
-        );
-        const isRecentLogin = Date.now() - loginTime < 30000;
-        if (!isRecentLogin && !userRaw) {
+        if (!userRaw) {
           router.push("/login?reason=session_expired");
         }
       }
@@ -105,6 +96,7 @@ export default function AdminLayoutShell({ children }) {
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? (
                 <X className="w-5 h-5" />
@@ -113,19 +105,19 @@ export default function AdminLayoutShell({ children }) {
               )}
             </button>
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-700 to-sky-600 text-white flex items-center justify-center font-black shadow-md shadow-blue-500/20">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-700 to-sky-600 text-white flex items-center justify-center font-bold shadow-sm shadow-blue-500/20 shrink-0">
                 <ShieldAlert className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/60">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/60">
                     Super Admin
                   </span>
-                  <span className="text-xs font-bold text-slate-400 hidden sm:inline">
+                  <span className="text-xs font-medium text-slate-400 hidden sm:inline">
                     · Rupadiya Platform
                   </span>
                 </div>
-                <h1 className="text-sm font-black text-slate-900 leading-tight">
+                <h1 className="text-sm font-bold text-slate-900 leading-tight">
                   Universal Governance Center
                 </h1>
               </div>
@@ -134,15 +126,15 @@ export default function AdminLayoutShell({ children }) {
 
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 pl-2">
-              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 font-black text-xs flex items-center justify-center border border-blue-300">
+              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center border border-blue-300 shrink-0">
                 {admin?.name ? admin.name[0].toUpperCase() : "A"}
               </div>
               <div className="hidden md:block text-left">
-                <span className="text-xs font-bold text-slate-900 block leading-none">
+                <span className="text-xs font-semibold text-slate-900 block leading-none">
                   {admin?.name || "Super Admin"}
                 </span>
                 <span className="text-[10px] text-slate-400 font-medium">
-                  Root Access (34 Companies)
+                  Root Governance Access
                 </span>
               </div>
               <button
@@ -159,8 +151,8 @@ export default function AdminLayoutShell({ children }) {
 
       {/* Main Container with Sidebar + Content */}
       <div className="flex-1 flex w-full overflow-hidden">
-        {/* Desktop Sidebar (Exact device height below header, independently scrollable) */}
-        <div className="hidden lg:flex flex-col w-64 shrink-0 h-full overflow-y-auto border-r border-slate-200/90 bg-white">
+        {/* Desktop Sidebar (Stable width, independently scrollable) */}
+        <div className="hidden lg:flex flex-col w-64 xl:w-72 shrink-0 h-full overflow-y-auto border-r border-slate-200/90 bg-white">
           <AdminSidebar />
         </div>
 
@@ -173,7 +165,7 @@ export default function AdminLayoutShell({ children }) {
             />
             <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-slate-200 shadow-2xl z-50 flex flex-col">
               <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-                <span className="text-xs font-black uppercase text-blue-700">
+                <span className="text-xs font-bold uppercase text-blue-700">
                   Navigation
                 </span>
                 <button
@@ -193,9 +185,9 @@ export default function AdminLayoutShell({ children }) {
           </div>
         )}
 
-        {/* Right Scrollable Content div (Full responsive width on XL & 2XL devices) */}
-        <main className="flex-1 h-full p-4 sm:p-6 lg:p-8 min-w-0 overflow-y-auto">
-          <div className="w-full max-w-[1720px] mx-auto px-1 sm:px-2 lg:px-4">
+        {/* Right Scrollable Content div with responsive padding for md, lg, xl */}
+        <main className="flex-1 h-full p-3 sm:p-5 md:p-6 lg:p-8 xl:p-10 min-w-0 overflow-y-auto">
+          <div className="w-full max-w-[1720px] mx-auto space-y-6">
             {children}
           </div>
         </main>

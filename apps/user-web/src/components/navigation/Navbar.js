@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bus, Compass, Ticket, User, LogOut, Calendar } from 'lucide-react';
+import { Bus, Compass, Ticket, User, LogOut, Calendar, Route } from 'lucide-react';
 import LanguageSelector from './LanguageSelector';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -21,12 +21,14 @@ export default function Navbar() {
   const navLinks = user
     ? [
         { label: t('bookBus'), href: '/', icon: Bus },
+        { label: 'Routes', href: '/routes', icon: Route },
         { label: t('discoverTours'), href: '/tours', icon: Compass },
         { label: t('myCalendar'), href: '/calendar', icon: Calendar },
         { label: t('myTrips'), href: '/bookings', icon: Ticket },
       ]
     : [
         { label: t('bookBus'), href: '/', icon: Bus },
+        { label: 'Routes', href: '/routes', icon: Route },
         { label: t('discoverTours'), href: '/tours', icon: Compass },
       ];
 

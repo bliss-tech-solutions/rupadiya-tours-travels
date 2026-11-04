@@ -150,7 +150,7 @@ export default function CompanyPaymentMethodsPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-bold uppercase tracking-wider border border-blue-200">
-              Company #{String(companyCode).padStart(2, '0')} Controls
+              Franchise Payment Controls
             </span>
             <span className="text-xs text-slate-400">· Agent Checkout Governance</span>
           </div>
@@ -224,7 +224,7 @@ export default function CompanyPaymentMethodsPage() {
             </h3>
           </div>
           <p className="text-xs text-slate-500">
-            Enable or restrict payment instruments for all agents affiliated with Company #{String(companyCode).padStart(2, '0')}.
+            Enable or restrict payment instruments for all agents affiliated with this franchise carrier.
           </p>
         </div>
 

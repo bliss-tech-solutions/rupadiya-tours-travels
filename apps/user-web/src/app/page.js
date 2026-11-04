@@ -23,6 +23,7 @@ import { api } from "../lib/api";
 import {
   HUB_CITY,
   SPOKE_CITIES,
+  ROUTE_GROUPS,
   getAllowedDestinations,
   getAllowedOrigins,
 } from "../lib/routes";
@@ -43,6 +44,7 @@ export default function HomePage() {
   const [fromCity, setFromCity] = useState("rupadiya");
   const [toCity, setToCity] = useState("ahmedabad");
   const [selectedRegion, setSelectedRegion] = useState("All");
+  const [selectedRouteGroup, setSelectedRouteGroup] = useState("ALL");
   const [departureDate, setDepartureDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0];
@@ -53,7 +55,7 @@ export default function HomePage() {
     const checkHold = () => {
       const raw =
         typeof window !== "undefined"
-          ? localStorage.getItem("rupadiya_active_hold")
+          ? sessionStorage.getItem("rupadiya_active_hold")
           : null;
       if (raw) {
         try {
@@ -64,12 +66,12 @@ export default function HomePage() {
             setActiveHold(hold);
             setHoldTimeLeft(diff);
           } else {
-            localStorage.removeItem("rupadiya_active_hold");
+            sessionStorage.removeItem("rupadiya_active_hold");
             sessionStorage.removeItem("rupadiya_checkout");
             setActiveHold(null);
           }
         } catch (e) {
-          localStorage.removeItem("rupadiya_active_hold");
+          sessionStorage.removeItem("rupadiya_active_hold");
         }
       } else {
         setActiveHold(null);
@@ -80,7 +82,7 @@ export default function HomePage() {
     const interval = setInterval(() => {
       setHoldTimeLeft((prev) => {
         if (prev <= 1) {
-          localStorage.removeItem("rupadiya_active_hold");
+          sessionStorage.removeItem("rupadiya_active_hold");
           sessionStorage.removeItem("rupadiya_checkout");
           setActiveHold(null);
           return 0;
@@ -98,7 +100,7 @@ export default function HomePage() {
         await api.releaseHold(activeHold.holdId);
       } catch (e) {}
     }
-    localStorage.removeItem("rupadiya_active_hold");
+    sessionStorage.removeItem("rupadiya_active_hold");
     sessionStorage.removeItem("rupadiya_checkout");
     setActiveHold(null);
   };
@@ -205,10 +207,52 @@ export default function HomePage() {
         </div>
 
         {/* Headline */}
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-tight mb-5">
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-tight mb-3">
           Where would you <br />
           want to go?
         </h1>
+
+        {/* Route Selector Chips (Filters Dropdown) */}
+        <div className="mb-3.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Select Route Corridor:</span>
+            <Link href="/routes" className="text-xs font-bold text-sky-600 hover:underline">
+              View Route Map →
+            </Link>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setSelectedRouteGroup("ALL")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer ${
+                selectedRouteGroup === "ALL"
+                  ? "bg-sky-500 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              All Routes
+            </button>
+            {ROUTE_GROUPS.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => {
+                  setSelectedRouteGroup(g.id);
+                  if (fromCity === "rupadiya") {
+                    setToCity(g.cities[0].id);
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer ${
+                  selectedRouteGroup === g.id
+                    ? "bg-sky-500 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                {g.name}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Mobile Search Form with Floating Center Swap Button */}
         <div className="relative mb-6">
@@ -233,10 +277,14 @@ export default function HomePage() {
                   className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-base cursor-pointer"
                 >
                   <option value="rupadiya">Rupadiya (Hub)</option>
-                  {SPOKE_CITIES.map((spoke) => (
-                    <option key={spoke.id} value={spoke.id}>
-                      {spoke.name}
-                    </option>
+                  {ROUTE_GROUPS.map((g) => (
+                    <optgroup key={g.id} label={g.name}>
+                      {g.cities.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.state})
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </div>
@@ -254,11 +302,22 @@ export default function HomePage() {
                   onChange={(e) => setToCity(e.target.value)}
                   className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-base cursor-pointer"
                 >
-                  {allowedTo.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.id === "rupadiya" ? "(Hub)" : ""}
-                    </option>
-                  ))}
+                  {fromCity === "rupadiya" ? (
+                    (selectedRouteGroup === "ALL"
+                      ? ROUTE_GROUPS
+                      : ROUTE_GROUPS.filter((g) => g.id === selectedRouteGroup)
+                    ).map((g) => (
+                      <optgroup key={g.id} label={g.name}>
+                        {g.cities.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.state}) · ₹{s.baseFare}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))
+                  ) : (
+                    <option value="rupadiya">Rupadiya (Hub)</option>
+                  )}
                 </select>
               </div>
               <MapPin className="w-5 h-5 text-slate-300" />
@@ -526,18 +585,61 @@ export default function HomePage() {
             <div className="lg:col-span-6">
               <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-100 p-8 sm:p-10 relative">
                 {/* Card Title & Fixed Corridors Note */}
-                <div className="flex items-start gap-4 mb-6">
-                  <div className="w-10 h-10 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 flex-shrink-0">
-                    <Search className="w-5 h-5" />
+                <div className="flex items-start justify-between gap-4 mb-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 flex-shrink-0">
+                      <Search className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900">
+                        Choose your bus route
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-1 leading-snug">
+                        Strictly governed hub corridors connecting Rupadiya to 16 major cities
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">
-                      Choose your bus route
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-1 leading-snug">
-                      Rupadiya ↔ Ahmedabad · Surat · Vadodara · Bengaluru ·
-                      Hyderabad · Mumbai
-                    </p>
+                  <Link
+                    href="/routes"
+                    className="text-xs font-bold text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 px-3 py-1.5 rounded-xl transition shrink-0"
+                  >
+                    View 4 Routes →
+                  </Link>
+                </div>
+
+                {/* Desktop Route Corridor Selector Filter */}
+                <div className="mb-4">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRouteGroup("ALL")}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        selectedRouteGroup === "ALL"
+                          ? "bg-slate-900 text-white shadow-xs"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      All Routes (16 Cities)
+                    </button>
+                    {ROUTE_GROUPS.map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRouteGroup(g.id);
+                          if (fromCity === "rupadiya") {
+                            setToCity(g.cities[0].id);
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                          selectedRouteGroup === g.id
+                            ? "bg-sky-500 text-white shadow-xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        {g.name}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -566,10 +668,14 @@ export default function HomePage() {
                             className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-sm cursor-pointer"
                           >
                             <option value="rupadiya">Rupadiya (Hub)</option>
-                            {SPOKE_CITIES.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
+                            {ROUTE_GROUPS.map((g) => (
+                              <optgroup key={g.id} label={g.name}>
+                                {g.cities.map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name} ({s.state})
+                                  </option>
+                                ))}
+                              </optgroup>
                             ))}
                           </select>
                         </div>
@@ -587,11 +693,22 @@ export default function HomePage() {
                             onChange={(e) => setToCity(e.target.value)}
                             className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-sm cursor-pointer"
                           >
-                            {allowedTo.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name} {c.id === "rupadiya" ? "(Hub)" : ""}
-                              </option>
-                            ))}
+                            {fromCity === "rupadiya" ? (
+                              (selectedRouteGroup === "ALL"
+                                ? ROUTE_GROUPS
+                                : ROUTE_GROUPS.filter((g) => g.id === selectedRouteGroup)
+                              ).map((g) => (
+                                <optgroup key={g.id} label={g.name}>
+                                  {g.cities.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.name} ({s.state}) · ₹{s.baseFare}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))
+                            ) : (
+                              <option value="rupadiya">Rupadiya (Hub)</option>
+                            )}
                           </select>
                         </div>
                       </div>

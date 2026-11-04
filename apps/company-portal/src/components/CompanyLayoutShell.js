@@ -8,6 +8,7 @@ import { useCompanyWallet } from '../context/CompanyWalletContext';
 import CompanySidebar from './Sidebar';
 import RealtimeNotificationListener from './RealtimeNotificationListener';
 import { api, isOwnerSessionValid, clearOwnerSession } from '../lib/api';
+import { getFranchiseByCode } from '../lib/companies';
 
 export default function CompanyLayoutShell({ children }) {
   const pathname = usePathname();
@@ -15,11 +16,16 @@ export default function CompanyLayoutShell({ children }) {
   const isLoginPage = pathname === '/login';
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { balance: walletBalance, companyInfo, companyCode: contextCode, loading: walletLoading, refreshWallet } = useCompanyWallet();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Check 24-hour session validity on mount & route change (silent background verification)
   useEffect(() => {
-    if (!isLoginPage) {
+    if (!isLoginPage && mounted) {
       if (!isOwnerSessionValid()) {
         clearOwnerSession();
         router.push('/login?expired=1');
@@ -43,9 +49,7 @@ export default function CompanyLayoutShell({ children }) {
 
       return () => clearInterval(interval);
     }
-  }, [pathname, isLoginPage, router]);
-
-
+  }, [pathname, isLoginPage, mounted, router]);
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -56,7 +60,8 @@ export default function CompanyLayoutShell({ children }) {
     return <main className="min-h-screen bg-slate-50 text-slate-900">{children}</main>;
   }
 
-  if (typeof window !== 'undefined' && !isOwnerSessionValid()) {
+  // Consistent SSR & initial client hydration: render spinner until mounted
+  if (!mounted) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -64,8 +69,19 @@ export default function CompanyLayoutShell({ children }) {
     );
   }
 
-  const code = companyInfo?.companyCode || 1;
-  const companyName = companyInfo?.company?.name || `Company #${String(code).padStart(2, '0')}`;
+  if (!isOwnerSessionValid()) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  const code = companyInfo?.companyCode || contextCode || 1;
+  const staticSpec = getFranchiseByCode(code);
+  const company = companyInfo?.company || staticSpec;
+  const shortCode = company?.shortCode || staticSpec?.shortCode || '';
+  const companyName = company?.name || staticSpec?.name || 'Franchise Carrier';
 
   return (
     <div className="h-screen w-full bg-slate-50 text-slate-900 flex flex-col lg:flex-row overflow-hidden">
@@ -104,7 +120,7 @@ export default function CompanyLayoutShell({ children }) {
       <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden bg-slate-50">
         {/* Top Navbar Header */}
         <header className="shrink-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4 z-30 shadow-2xs">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
@@ -114,22 +130,24 @@ export default function CompanyLayoutShell({ children }) {
               <Menu className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
                 <Building2 className="w-4 h-4" />
               </div>
-              <div>
-                <span className="font-bold text-slate-900 text-sm hidden sm:inline-block">
+              <div className="flex items-center gap-2 min-w-0">
+                {shortCode && (
+                  <span className="px-2 py-0.5 rounded-md text-xs font-bold font-mono bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                    {shortCode}
+                  </span>
+                )}
+                <span className="font-semibold text-slate-900 text-sm truncate">
                   {companyName}
-                </span>
-                <span className="inline-flex sm:ml-2 items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 font-mono">
-                  Code #{String(code).padStart(2, '0')}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Live Wallet Balance Pill */}
             <Link
               href="/"
@@ -157,14 +175,15 @@ export default function CompanyLayoutShell({ children }) {
           </div>
         </header>
 
-        {/* Page Content Body (Independently Vertically Scrollable, Full space utilization for responsive xl/2xl displays) */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 w-full">
-          <div className="w-full max-w-[1720px] mx-auto px-1 sm:px-2 lg:px-4">
+        {/* Scrollable Page Body with Independent Vertical Scroll */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <div className="max-w-7xl mx-auto space-y-6">
             {children}
           </div>
         </main>
       </div>
-      <RealtimeNotificationListener companyCode={contextCode} />
+
+      <RealtimeNotificationListener />
     </div>
   );
 }

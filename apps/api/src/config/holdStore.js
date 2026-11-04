@@ -1,14 +1,15 @@
 /**
- * Hold Store - Manages 10-minute temporary seat reservations with atomic consistency.
+ * Hold Store - Manages 10-minute temporary seat reservations with atomic consistency
+ * and Tab-Isolated ownership.
  * Uses an in-memory TTL map with sub-millisecond precision, designed to be swapped
  * with Redis for multi-node deployments.
  */
 
 class HoldStore {
   constructor() {
-    // Map key: `${tripId}:${seatNumber}` -> { holdToken, expiresAt, passengerId }
+    // Map key: `${tripId}:${seatNumber}` -> { holdToken, expiresAt, tabId, passengerId }
     this.seatLocks = new Map();
-    // Map key: holdToken -> { holdToken, tripId, seatNumbers, passengerDetails, createdAt, expiresAt }
+    // Map key: holdToken -> { holdToken, tripId, seatNumbers, passengerDetails, tabId, passengerId, createdAt, expiresAt }
     this.holdRecords = new Map();
 
     // Auto-clean expired holds every 10 seconds
@@ -17,10 +18,18 @@ class HoldStore {
   }
 
   /**
-   * Atomically hold multiple seats for a trip
+   * Atomically hold multiple seats for a trip bound to a specific browser tab or user session
    * All-or-nothing: If any single seat is held by another active session, the entire batch fails.
    */
-  async holdSeats({ tripId, seatNumbers, passengerDetails, holdToken, ttlSeconds = 600 }) {
+  async holdSeats({
+    tripId,
+    seatNumbers,
+    passengerDetails,
+    holdToken,
+    tabId = null,
+    passengerId = null,
+    ttlSeconds = 600
+  }) {
     this.cleanupExpiredHolds();
 
     const now = Date.now();
@@ -52,6 +61,8 @@ class HoldStore {
         holdToken,
         tripId,
         seat,
+        tabId,
+        passengerId,
         expiresAt
       });
     }
@@ -61,6 +72,8 @@ class HoldStore {
       tripId,
       seatNumbers: [...seatNumbers],
       passengerDetails,
+      tabId,
+      passengerId,
       createdAt: new Date(now),
       expiresAt: new Date(expiresAt),
       ttlSeconds
@@ -71,6 +84,7 @@ class HoldStore {
     return {
       success: true,
       holdToken,
+      tabId,
       expiresAt: new Date(expiresAt),
       ttlRemainingSeconds: ttlSeconds,
       seatNumbers
@@ -86,7 +100,7 @@ class HoldStore {
     if (!record) return null;
 
     if (Date.now() > record.expiresAt.getTime()) {
-      this.releaseHold(holdToken);
+      this.releaseHold(holdToken, { isForce: true });
       return null;
     }
 
@@ -95,11 +109,22 @@ class HoldStore {
   }
 
   /**
-   * Release hold upon cancellation or expiration
+   * Release hold upon cancellation or expiration, enforcing tab or user ownership
    */
-  releaseHold(holdToken) {
+  releaseHold(holdToken, { tabId = null, passengerId = null, isForce = false } = {}) {
     const record = this.holdRecords.get(holdToken);
     if (!record) return false;
+
+    // Check ownership if caller specified tabId or passengerId (unless force release by system)
+    if (!isForce) {
+      const hasTabOwnership = tabId && record.tabId && record.tabId === tabId;
+      const hasUserOwnership = passengerId && record.passengerId && record.passengerId.toString() === passengerId.toString();
+      
+      // If the hold was bound to a tab and caller presents an unequal tab without matching user
+      if (record.tabId && tabId && !hasTabOwnership && !hasUserOwnership) {
+        return false;
+      }
+    }
 
     for (const seat of record.seatNumbers) {
       const lockKey = `${record.tripId}:${seat}`;
@@ -134,7 +159,7 @@ class HoldStore {
     const now = Date.now();
     for (const [token, record] of this.holdRecords.entries()) {
       if (record.expiresAt.getTime() <= now) {
-        this.releaseHold(token);
+        this.releaseHold(token, { isForce: true });
       }
     }
   }
@@ -146,4 +171,3 @@ class HoldStore {
 
 const holdStore = new HoldStore();
 module.exports = holdStore;
-

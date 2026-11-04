@@ -5,6 +5,7 @@ const Trip = require('./trip.model');
 const Bus = require('../fleet/bus.model');
 const Booking = require('../bookings/booking.model');
 const { isValidCorridor } = require('../../config/constants');
+const { searchLimiter } = require('../../middleware/rateLimit.middleware');
 
 // Search trips
 const handleSearch = async (req, res, next) => {
@@ -14,7 +15,7 @@ const handleSearch = async (req, res, next) => {
     if (from && to && !isValidCorridor(from, to)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid route. Journeys are strictly between Rupadiya and approved destination cities (Ahmedabad, Vadodara, Surat, Bangalore, Hyderabad, Mumbai).'
+        error: 'Invalid route corridor. Journeys are strictly between Rupadiya Central Hub and approved corridor cities across Gujarat, Saurashtra, South, and Maharashtra / Goa.'
       });
     }
 
@@ -46,8 +47,8 @@ const handleSearch = async (req, res, next) => {
   }
 };
 
-router.get('/', handleSearch);
-router.get('/search', handleSearch);
+router.get('/', searchLimiter, handleSearch);
+router.get('/search', searchLimiter, handleSearch);
 
 // Get single trip details
 router.get('/:tripId', async (req, res, next) => {
@@ -245,4 +246,3 @@ router.get('/:tripId/seat-chart', async (req, res, next) => {
 });
 
 module.exports = router;
-

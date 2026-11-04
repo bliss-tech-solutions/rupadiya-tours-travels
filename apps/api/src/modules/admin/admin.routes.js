@@ -52,18 +52,19 @@ router.get('/dashboard', async (req, res, next) => {
   }
 });
 
-// Companies List (1-34 Fixed Passenger Ranking) & Owner Assignment
+// Companies List & Owner Assignment (Dynamic & Flexible)
 router.get('/companies', async (req, res, next) => {
   try {
     const dbCompanies = await Company.find().populate('ownerId', 'name email phone role isActive');
 
-    // Merge with master 34 company codes to ensure all 1..34 exist with fixed ranks and codes
+    // Merge with master company codes
     const fullList = COMPANY_CODES.map(c => {
       const match = dbCompanies.find(dc => dc.companyCode === c.code || (dc.shortCode && dc.shortCode.toLowerCase() === c.shortCode.toLowerCase()));
       if (match) {
         const obj = match.toObject();
         obj.rank = c.rank;
-        obj.shortCode = c.shortCode;
+        obj.shortCode = obj.shortCode || c.shortCode;
+        if (obj.shareCapital == null || obj.shareCapital === 0) obj.shareCapital = c.shareCapital || 0;
         return obj;
       }
       return {
@@ -71,6 +72,7 @@ router.get('/companies', async (req, res, next) => {
         rank: c.rank,
         shortCode: c.shortCode,
         name: c.defaultName,
+        shareCapital: c.shareCapital || 0,
         slug: c.slug,
         ownerId: null,
         status: 'UNASSIGNED',
@@ -78,8 +80,15 @@ router.get('/companies', async (req, res, next) => {
       };
     });
 
-    // Ensure sorted by fixed rank 1 to 34
-    fullList.sort((a, b) => (a.rank || a.companyCode) - (b.rank || b.companyCode));
+    // Also include any dynamic companies in DB that are outside predefined codes
+    const existingCodes = new Set(fullList.map(c => c.companyCode));
+    for (const dc of dbCompanies) {
+      if (!existingCodes.has(dc.companyCode)) {
+        fullList.push(dc.toObject());
+      }
+    }
+
+    fullList.sort((a, b) => (a.companyCode || a.rank) - (b.companyCode || b.rank));
 
     res.json({ success: true, count: fullList.length, companies: fullList });
   } catch (err) {
@@ -283,7 +292,7 @@ function resolveCompanySpec(rawParam) {
   if (!rawParam) return { code: 1, spec: COMPANY_CODES[0] };
   const str = String(rawParam).trim();
   const num = parseInt(str, 10);
-  if (!isNaN(num) && num >= 1 && num <= 34) {
+  if (!isNaN(num) && num >= 1) {
     const spec = COMPANY_CODES.find(c => c.code === num);
     return { code: num, spec };
   }
@@ -369,6 +378,8 @@ router.put('/companies/:code', async (req, res, next) => {
 
     const {
       name,
+      shortCode: newShortCode,
+      shareCapital,
       contactPhone,
       contactEmail,
       address,
@@ -411,6 +422,8 @@ router.put('/companies/:code', async (req, res, next) => {
 
     // Editable fields
     if (name && name.trim()) company.name = name.trim();
+    if (newShortCode && newShortCode.trim()) company.shortCode = newShortCode.trim().toUpperCase();
+    if (shareCapital !== undefined) company.shareCapital = Number(shareCapital) || 0;
     if (contactPhone !== undefined) company.contactPhone = contactPhone.trim();
     if (contactEmail !== undefined) company.contactEmail = contactEmail.trim().toLowerCase();
     if (address !== undefined) company.address = address.trim();

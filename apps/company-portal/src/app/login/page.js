@@ -73,7 +73,7 @@ function LoginContent() {
         password: regData.password,
         role: 'COMPANY_OWNER',
         companyCode: Number(regData.companyCode) || 1,
-        agencyName: regData.agencyName.trim() || `Company #${regData.companyCode}`
+        agencyName: regData.agencyName.trim() || `Franchise Carrier ${regData.companyCode}`
       };
 
       await api.register(payload);

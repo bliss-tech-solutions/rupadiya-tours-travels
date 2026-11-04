@@ -21,6 +21,33 @@ export default function AdminRoutesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [selectedRouteGroup, setSelectedRouteGroup] = useState('ALL');
+
+  const ROUTE_GROUPS = [
+    { id: 'route-1-gujarat', name: 'Route 1 - Gujarat' },
+    { id: 'route-2-saurashtra', name: 'Route 2 - Saurashtra' },
+    { id: 'route-3-south', name: 'Route 3 - South' },
+    { id: 'route-4-maharashtra-goa', name: 'Route 4 - Maharashtra / Goa' }
+  ];
+
+  const filteredRoutes = routes.filter(r => {
+    if (selectedRouteGroup === 'ALL') return true;
+    if (r.routeGroupId) return r.routeGroupId === selectedRouteGroup;
+    const name = ((r.name || '') + (r.fromCity?.name || '') + (r.toCity?.name || '')).toLowerCase();
+    if (selectedRouteGroup === 'route-1-gujarat') {
+      return /himatnagar|ahmedabad|baroda|vadodara|ankleshwar|surat|vapi/.test(name);
+    }
+    if (selectedRouteGroup === 'route-2-saurashtra') {
+      return /bopal|chotila|rajkot|jamnagar/.test(name);
+    }
+    if (selectedRouteGroup === 'route-3-south') {
+      return /hyderabad|bangalore|bengaluru/.test(name);
+    }
+    if (selectedRouteGroup === 'route-4-maharashtra-goa') {
+      return /nashik|mumbai|pune|goa/.test(name);
+    }
+    return true;
+  });
 
   // Editing base fare state
   const [editingId, setEditingId] = useState(null);
@@ -123,7 +150,7 @@ export default function AdminRoutesPage() {
             <Route className="w-3.5 h-3.5" />
             <span>Intercity Corridors</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Hub-and-Spoke Routes & Base Fares</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Hub-and-Spoke Routes & Base Fares</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Governed corridors between Rupadiya Central Hub and authorized spoke cities with tariff governance.
           </p>
@@ -163,13 +190,58 @@ export default function AdminRoutesPage() {
 
       {/* Routes Table Card */}
       <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4 shadow-xs">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-          <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">
-            Active Hub Corridors ({routes.length} Corridors)
-          </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+              Active Hub Corridors ({filteredRoutes.length} of {routes.length} Corridors)
+            </h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">Filter corridors by approved regional routes</p>
+          </div>
           <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
             <ShieldCheck className="w-4 h-4" /> Strictly Hub-Enforced
           </span>
+        </div>
+
+        {/* Route Filter Tabs */}
+        <div className="flex items-center gap-1.5 flex-wrap pb-1">
+          <button
+            type="button"
+            onClick={() => setSelectedRouteGroup('ALL')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              selectedRouteGroup === 'ALL'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            All Corridors ({routes.length})
+          </button>
+          {ROUTE_GROUPS.map(g => {
+            const count = routes.filter(r => {
+              if (r.routeGroupId) return r.routeGroupId === g.id;
+              const name = ((r.name || '') + (r.fromCity?.name || '') + (r.toCity?.name || '')).toLowerCase();
+              if (g.id === 'route-1-gujarat') return /himatnagar|ahmedabad|baroda|vadodara|ankleshwar|surat|vapi/.test(name);
+              if (g.id === 'route-2-saurashtra') return /bopal|chotila|rajkot|jamnagar/.test(name);
+              if (g.id === 'route-3-south') return /hyderabad|bangalore|bengaluru/.test(name);
+              if (g.id === 'route-4-maharashtra-goa') return /nashik|mumbai|pune|goa/.test(name);
+              return false;
+            }).length;
+
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => setSelectedRouteGroup(g.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  selectedRouteGroup === g.id
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <span>{g.name}</span>
+                <span className="ml-1.5 opacity-75 font-mono">({count})</span>
+              </button>
+            );
+          })}
         </div>
 
         {loading ? (
@@ -191,12 +263,12 @@ export default function AdminRoutesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {routes.map((r) => (
+                {filteredRoutes.map((r) => (
                   <tr key={r._id || r.id} className="hover:bg-slate-50/50 transition">
                     <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
                       <div>
-                        <div className="font-black text-slate-900">{r.name}</div>
+                        <div className="font-bold text-slate-900">{r.name}</div>
                         <div className="text-[10px] text-slate-400 font-medium">
                           {r.fromCity?.name || 'Rupadiya'} ↔ {r.toCity?.name || r.name}
                         </div>
@@ -211,7 +283,7 @@ export default function AdminRoutesPage() {
                       {r.estimatedDurationHours ? `${r.estimatedDurationHours}h` : '21h'}
                     </td>
 
-                    <td className="py-3.5 px-4 text-right font-black text-slate-900">
+                    <td className="py-3.5 px-4 text-right font-bold text-slate-900">
                       {editingId === (r._id || r.id) ? (
                         <div className="flex items-center justify-end gap-1.5">
                           <input
@@ -232,7 +304,7 @@ export default function AdminRoutesPage() {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-sm font-black text-slate-900">
+                        <span className="text-sm font-bold text-slate-900">
                           ₹{Number(r.baseFare || 0).toLocaleString('en-IN')}
                         </span>
                       )}
@@ -285,7 +357,7 @@ export default function AdminRoutesPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
                 Create Hub-and-Spoke Corridor
               </h3>
               <button onClick={() => setCreateModalOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold">

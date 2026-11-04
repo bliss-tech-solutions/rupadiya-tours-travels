@@ -257,12 +257,12 @@ export default function AddTourPackagePage() {
             </Link>
             <div>
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-black uppercase tracking-wider border border-blue-200">
+                <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wider border border-blue-200">
                   Tour Package Builder
                 </span>
                 <span className="text-xs text-slate-400 font-medium">· Dedicated Publisher</span>
               </div>
-              <h1 className="text-xl font-black text-slate-900 tracking-tight">
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
                 Create & Publish Curated Tour
               </h1>
             </div>
@@ -279,7 +279,7 @@ export default function AddTourPackagePage() {
               type="button"
               onClick={handleSubmit}
               disabled={submitting}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-700 hover:to-sky-700 text-white text-xs font-black shadow-lg shadow-blue-500/20 transition cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-700 hover:to-sky-700 text-white text-xs font-bold shadow-lg shadow-blue-500/20 transition cursor-pointer disabled:opacity-50 flex items-center gap-2"
             >
               {submitting ? (
                 <>
@@ -317,7 +317,7 @@ export default function AddTourPackagePage() {
                   <Compass className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-black text-slate-900">Package Title & Categorization</h2>
+                  <h2 className="text-sm font-bold text-slate-900">Package Title & Categorization</h2>
                   <p className="text-xs text-slate-400">Destination, category, duration, and marketing hook</p>
                 </div>
               </div>
@@ -439,7 +439,7 @@ export default function AddTourPackagePage() {
                   <DollarSign className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-black text-slate-900">Package Pricing & Passenger Tariff</h2>
+                  <h2 className="text-sm font-bold text-slate-900">Package Pricing & Passenger Tariff</h2>
                   <p className="text-xs text-slate-400">All-inclusive per-passenger fare breakdown</p>
                 </div>
               </div>
@@ -454,7 +454,7 @@ export default function AddTourPackagePage() {
                     required
                     value={basePrice}
                     onChange={(e) => setBasePrice(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-emerald-300 text-lg font-black text-emerald-900 focus:outline-none focus:border-emerald-600"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-emerald-300 text-lg font-bold text-emerald-900 focus:outline-none focus:border-emerald-600"
                   />
                   <span className="text-[10px] text-emerald-700 block font-medium">Standard adult per-head tariff</span>
                 </div>
@@ -467,7 +467,7 @@ export default function AddTourPackagePage() {
                     step="50"
                     value={childPrice}
                     onChange={(e) => setChildPrice(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-blue-300 text-lg font-black text-blue-900 focus:outline-none focus:border-blue-600"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-blue-300 text-lg font-bold text-blue-900 focus:outline-none focus:border-blue-600"
                   />
                   <span className="text-[10px] text-blue-700 block font-medium">Discounted seat tariff for children</span>
                 </div>
@@ -481,7 +481,7 @@ export default function AddTourPackagePage() {
                   <Calendar className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-black text-slate-900">Upcoming Departure Dates</h2>
+                  <h2 className="text-sm font-bold text-slate-900">Upcoming Departure Dates</h2>
                   <p className="text-xs text-slate-400">Available fixed-departure dates for this curated escape</p>
                 </div>
               </div>
@@ -530,7 +530,7 @@ export default function AddTourPackagePage() {
                     <Clock className="w-5 h-5" />
                   </div>
                   <div>
-                    <h2 className="text-sm font-black text-slate-900">Day-by-Day Journey Itinerary</h2>
+                    <h2 className="text-sm font-bold text-slate-900">Day-by-Day Journey Itinerary</h2>
                     <p className="text-xs text-slate-400">Step-by-step itinerary schedule with meal inclusions</p>
                   </div>
                 </div>
@@ -549,7 +549,7 @@ export default function AddTourPackagePage() {
                 {itinerary.map((dayItem, index) => (
                   <div key={index} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white font-mono font-black text-[10px] uppercase">
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white font-mono font-bold text-[10px] uppercase">
                         Day {dayItem.day}
                       </span>
                       {itinerary.length > 1 && (
@@ -619,7 +619,7 @@ export default function AddTourPackagePage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Inclusions */}
               <div className="bg-white rounded-3xl border border-blue-100 p-6 shadow-sm space-y-3">
-                <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800">
                   What is Included
                 </h3>
                 <div className="flex gap-1.5">
@@ -652,7 +652,7 @@ export default function AddTourPackagePage() {
 
               {/* Exclusions */}
               <div className="bg-white rounded-3xl border border-blue-100 p-6 shadow-sm space-y-3">
-                <h3 className="text-xs font-black uppercase tracking-wider text-rose-800">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-rose-800">
                   What is Excluded
                 </h3>
                 <div className="flex gap-1.5">
@@ -691,7 +691,7 @@ export default function AddTourPackagePage() {
                   <ImageIcon className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-black text-slate-900">Tour Photos & Hero Cover</h2>
+                  <h2 className="text-sm font-bold text-slate-900">Tour Photos & Hero Cover</h2>
                   <p className="text-xs text-slate-400">High-resolution gallery pictures uploaded to S3 storage</p>
                 </div>
               </div>
@@ -727,7 +727,7 @@ export default function AddTourPackagePage() {
                       </button>
                     </div>
                     {thumbnail === img && (
-                      <span className="absolute top-2 left-2 bg-blue-600 text-white text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow">
+                      <span className="absolute top-2 left-2 bg-blue-600 text-white text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shadow">
                         Cover
                       </span>
                     )}
@@ -743,10 +743,10 @@ export default function AddTourPackagePage() {
             <div className="bg-white rounded-3xl border border-blue-200/80 p-6 shadow-lg shadow-blue-500/5 space-y-5">
               
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <span className="text-[10px] font-black uppercase tracking-wider text-blue-600">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
                   Live Package Preview
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-black border border-blue-200">
+                <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200">
                   {category}
                 </span>
               </div>
@@ -760,7 +760,7 @@ export default function AddTourPackagePage() {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                 <div className="absolute bottom-3 left-3 right-3 text-white">
-                  <h3 className="text-base font-black truncate">{title || 'Tour Package Title'}</h3>
+                  <h3 className="text-base font-bold truncate">{title || 'Tour Package Title'}</h3>
                   <div className="flex items-center gap-2 text-xs text-slate-200 mt-0.5">
                     <MapPin className="w-3.5 h-3.5 text-blue-400" />
                     <span>{destination || 'Destination'}, {state}</span>
@@ -774,7 +774,7 @@ export default function AddTourPackagePage() {
               <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-slate-600 font-bold">Base Adult Fare:</span>
-                  <span className="text-xl font-black text-blue-900">₹{basePrice.toLocaleString('en-IN')}</span>
+                  <span className="text-xl font-bold text-blue-900">₹{basePrice.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs text-slate-600">
                   <span>Child Fare:</span>
@@ -794,7 +794,7 @@ export default function AddTourPackagePage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-700 hover:to-sky-700 text-white font-black text-sm shadow-xl shadow-blue-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-700 hover:to-sky-700 text-white font-bold text-sm shadow-xl shadow-blue-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {submitting ? (
                   <>

@@ -27,7 +27,7 @@ export default function CompanyTargetsPage() {
   }, []);
 
   const code = data?.companyCode || 1;
-  const companyName = data?.company?.name || `Company #${String(code).padStart(2, '0')}`;
+  const companyName = data?.company?.name || `Franchise Carrier`;
   const stats = data?.stats || {};
   const targetPassengers = stats.targetPassengers || 10000;
   const totalPassengers = stats.totalPassengers || 0;

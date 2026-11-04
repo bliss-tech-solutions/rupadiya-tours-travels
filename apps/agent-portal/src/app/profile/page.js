@@ -139,7 +139,7 @@ export default function AgentProfilePage() {
           <Lock className="w-4 h-4" />
         </div>
         <div className="text-xs text-amber-900 space-y-0.5">
-          <span className="font-bold block">Company-Managed Account Policy</span>
+          <span className="font-bold block">Company Account Policy</span>
           <p className="text-[11px] text-amber-800">
             Because this booking agent terminal was provisioned and authorized by your Company Owner, legal records (Phone, Email, KYC documents, and Franchise assignment) are locked. You may update your Operator Display Name below. For other updates, please contact your company owner.
           </p>

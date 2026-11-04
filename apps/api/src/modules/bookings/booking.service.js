@@ -73,8 +73,9 @@ class BookingService {
 
   /**
    * Atomic 10-minute seat hold with dynamic adjacent female preference check
+   * and per-tab isolation.
    */
-  async holdSeats({ tripId, seatNumbers, passengers, passengerId, referralCode }) {
+  async holdSeats({ tripId, seatNumbers, passengers, passengerId, referralCode, tabId = null }) {
     const trip = await Trip.findById(tripId).populate('routeId').populate('busId');
     if (!trip) throw new Error('Trip not found');
 
@@ -85,8 +86,6 @@ class BookingService {
         femaleBookedSeats.add(s.seatNumber);
       }
     });
-
-    const requestedSet = new Set(seatNumbers.map(s => s.toString()));
 
     const normalizedSeatNumbers = [];
 
@@ -120,13 +119,15 @@ class BookingService {
       }
     }
 
-    // 2. Atomic hold in holdStore
+    // 2. Atomic hold in holdStore with tab-bound ownership
     const holdToken = `HOLD_${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
     const holdResult = await holdStore.holdSeats({
       tripId: tripId.toString(),
       seatNumbers: normalizedSeatNumbers,
       passengerDetails: passengers || [],
       holdToken,
+      tabId,
+      passengerId,
       ttlSeconds: env.HOLD_DURATION_SECONDS
     });
 
@@ -147,6 +148,7 @@ class BookingService {
     return {
       success: true,
       holdToken,
+      tabId,
       expiresAt: holdResult.expiresAt,
       ttlRemainingSeconds: holdResult.ttlRemainingSeconds,
       trip: {
@@ -161,7 +163,7 @@ class BookingService {
   }
 
   /**
-   * Confirm booking and finalize ticket
+   * Confirm booking and finalize ticket with tab ownership and payment validation
    */
   async confirmBooking({
     holdToken,
@@ -177,7 +179,8 @@ class BookingService {
     tripId,
     seatNumbers,
     insuranceOpted = false,
-    insuranceAmount
+    insuranceAmount,
+    tabId = null
   }) {
     // 1. Validate hold token or recover from database if memory was cleared
     let hold = holdToken ? holdStore.getHold(holdToken) : null;
@@ -201,6 +204,8 @@ class BookingService {
               seatNumbers: targetSeats.map(s => s.toString()),
               passengerDetails: passengers || [],
               holdToken: tokenToUse,
+              tabId,
+              passengerId,
               ttlSeconds: env.HOLD_DURATION_SECONDS || 600
             });
             hold = holdStore.getHold(tokenToUse);
@@ -217,6 +222,15 @@ class BookingService {
       const err = new Error('Your 10-minute seat reservation has expired. Please choose your seats again.');
       err.statusCode = 410;
       throw err;
+    }
+
+    // Verify Tab Ownership if hold was created by a specific tab
+    if (hold.tabId && tabId && hold.tabId !== tabId) {
+      if (!passengerId || hold.passengerId?.toString() !== passengerId?.toString()) {
+        const err = new Error('Security Violation: This seat reservation belongs to another browser tab.');
+        err.statusCode = 403;
+        throw err;
+      }
     }
 
     const trip = await Trip.findById(hold.tripId).populate('routeId').populate('busId');
@@ -248,6 +262,8 @@ class BookingService {
     // 2. Process or verify payment
     let paymentVerified = false;
     let paymentRef = '';
+    let paymentRecord = null;
+    let referralAgentId = null;
 
     if (paymentProvider === 'agent_wallet') {
       const { Wallet, WalletLedger } = require('../wallets/wallet.model');
@@ -311,12 +327,15 @@ class BookingService {
 
       // 1. Verify against database captured Payment record
       if (paymentDetails?.paymentId && paymentDetails?.orderId) {
-        const paymentRecord = await Payment.findOne({
+        paymentRecord = await Payment.findOne({
           orderId: paymentDetails.orderId,
           paymentId: paymentDetails.paymentId,
           status: 'CAPTURED'
         });
         if (paymentRecord) {
+          if (paymentRecord.consumedByBooking) {
+            throw new Error(`This payment was already consumed for booking ${paymentRecord.consumedByBooking}`);
+          }
           verifyRes = { verified: true, transactionId: paymentRecord.paymentId };
         }
       }
@@ -375,12 +394,16 @@ class BookingService {
       insuranceOpted
     });
 
+    // High-End Payment Validation: Ensure captured payment covers quote
+    if (paymentRecord && paymentRecord.amount && (paymentRecord.amount < quote.totalPayable - 1)) {
+      throw new Error(`Payment amount ₹${paymentRecord.amount} is insufficient for booking fare ₹${quote.totalPayable}.`);
+    }
+
     const pnr = `RUP-${Math.floor(100000 + Math.random() * 900000)}`;
     const bookingId = `BK_${Date.now()}_${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
     // Resolve referral agent if provided
-    let referralAgentId = null;
-    if (referralCode) {
+    if (referralCode && !referralAgentId) {
       const User = require('../users/user.model');
       const codeUpper = String(referralCode).toUpperCase().trim();
       const expiredOwner = await User.findOne({ previousReferralCodes: codeUpper });
@@ -457,8 +480,12 @@ class BookingService {
 
     await booking.save();
 
-    // 6. Release lock from holdStore
-    holdStore.releaseHold(holdToken);
+    // 6. Release lock from holdStore & mark payment as consumed
+    holdStore.releaseHold(hold.holdToken, { isForce: true });
+    if (paymentRecord) {
+      paymentRecord.consumedByBooking = booking.bookingId;
+      await paymentRecord.save().catch(() => {});
+    }
 
     // Record 5% GST in tax_entries table per PDF specification
     try {

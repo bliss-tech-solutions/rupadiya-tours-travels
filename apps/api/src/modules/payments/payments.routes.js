@@ -8,6 +8,8 @@ const { authorizeRoles } = require('../../middleware/rbac.middleware');
 const { ROLES } = require('../../config/constants');
 const jwt = require('jsonwebtoken');
 const env = require('../../config/env');
+const holdStore = require('../../config/holdStore');
+const bookingService = require('../bookings/booking.service');
 
 function resolveUserFromRequest(req) {
   const token = req.cookies?.rupadiya_access_token || 
@@ -43,17 +45,46 @@ router.post('/create-order', paymentLimiter, async (req, res, next) => {
       notes = {}
     } = req.body;
 
+    let verifiedAmount = Number(amount);
+
+    // High-End Payment Security: Tamper-proof amount validation for ticket bookings
+    if (purpose === 'TICKET_BOOKING') {
+      const holdToken = metadata?.holdToken || metadata?.holdId || req.body?.holdToken || req.body?.holdId;
+      if (holdToken) {
+        const activeHold = holdStore.getHold(holdToken);
+        if (activeHold) {
+          const quote = await bookingService.calculateQuote({
+            tripId: activeHold.tripId,
+            seatNumbers: activeHold.seatNumbers,
+            offerCode: metadata.couponCode || metadata.offerCode || null,
+            insuranceOpted: Boolean(metadata.insuranceOpted)
+          });
+
+          // If client supplied an amount and it deviates from the server-calculated quote, block tampering
+          if (amount !== undefined && amount !== null && Math.abs(Number(amount) - quote.totalPayable) > 1) {
+            return res.status(400).json({
+              success: false,
+              error: `Payment Security Violation: Amount tampering detected. Expected ₹${quote.totalPayable}, but client requested ₹${amount}.`,
+              code: 'AMOUNT_TAMPERING_DETECTED'
+            });
+          }
+          verifiedAmount = quote.totalPayable;
+        }
+      }
+    }
+
     const resolvedUserId = user?.id || user?._id || user?.userId || req.body.userId || metadata?.userId || null;
     const resolvedCompanyCode = user?.companyCode || req.body.companyCode || metadata?.companyCode || 1;
 
     const orderResult = await paymentService.createOrder({
-      amount,
+      amount: verifiedAmount,
       currency,
       purpose,
       userId: resolvedUserId,
       companyCode: resolvedCompanyCode,
       metadata: {
         ...metadata,
+        verifiedAmount,
         userId: resolvedUserId,
         companyCode: resolvedCompanyCode
       },
@@ -287,4 +318,3 @@ router.get('/:id', async (req, res, next) => {
 });
 
 module.exports = router;
-

@@ -2,7 +2,10 @@ const express = require('express');
 const router = express.Router();
 const authController = require('./auth.controller');
 const { authenticateToken, optionalAuth } = require('../../middleware/auth.middleware');
-const { authLimiter } = require('../../middleware/rateLimit.middleware');
+const { authLimiter, guestTokenLimiter } = require('../../middleware/rateLimit.middleware');
+
+// Tab-specific Guest Token Generation (Reduces surface & isolates multi-tab sessions)
+router.post('/guest-token', guestTokenLimiter, (req, res, next) => authController.getGuestToken(req, res, next));
 
 // Phone OTP Authentication (First priority) - Protected by authLimiter
 router.post('/otp/send', authLimiter, (req, res, next) => authController.sendOtp(req, res, next));

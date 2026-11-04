@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   Building2, 
-  Users,
-  Bus,
+  Users, 
+  Bus, 
   Route, 
   Compass, 
   FileSpreadsheet, 
@@ -14,7 +14,6 @@ import {
   Receipt, 
   CreditCard,
   LayoutDashboard,
-  ShieldCheck,
   ChevronRight
 } from 'lucide-react';
 import { api } from '../lib/api';
@@ -37,7 +36,7 @@ export default function AdminSidebar() {
 
   const navItems = [
     { label: 'Command Center', href: '/', icon: LayoutDashboard },
-    { label: '34 Companies Registry', href: '/companies', icon: Building2 },
+    { label: 'Companies Registry', href: '/companies', icon: Building2 },
     { label: 'Global Agents Directory', href: '/agents', icon: Users },
     { label: 'Fleet & Bus Management', href: '/fleet', icon: Bus },
     { label: 'Corridors & Fares', href: '/routes', icon: Route },
@@ -49,11 +48,11 @@ export default function AdminSidebar() {
   ];
 
   return (
-    <aside className="w-full flex flex-col justify-between py-5 px-3 space-y-4">
+    <aside className="w-full flex flex-col justify-between py-5 px-3 space-y-4 select-none">
       <div className="space-y-4">
         {/* Navigation Section */}
         <div className="px-2">
-          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-2">
             Platform Modules
           </span>
           <nav className="space-y-1">
@@ -63,9 +62,9 @@ export default function AdminSidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                     active
-                      ? 'bg-blue-50 text-blue-700 font-black border border-blue-200/80 shadow-xs'
+                      ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200/80 shadow-xs'
                       : 'text-slate-600 hover:text-blue-700 hover:bg-blue-50/50'
                   }`}
                 >
@@ -74,7 +73,7 @@ export default function AdminSidebar() {
                     <span>{item.label}</span>
                   </div>
                   {item.badge != null ? (
-                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200">
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
                       {item.badge}
                     </span>
                   ) : active ? (
@@ -91,10 +90,10 @@ export default function AdminSidebar() {
       <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[11px] font-bold text-slate-800">Franchise Network</span>
+          <span className="text-[11px] font-semibold text-slate-800">Franchise Network</span>
         </div>
         <p className="text-[11px] text-slate-500 leading-tight">
-          34 Companies active (Passenger Ranking)
+          Active Franchise Carriers Registry
         </p>
       </div>
     </aside>

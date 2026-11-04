@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { api, isAdminSessionValid } from '../lib/api';
 
 const AdminContext = createContext({
@@ -17,12 +17,23 @@ export function AdminProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const refreshAdmin = useCallback(async () => {
+  const isFetchingRef = useRef(false);
+  const lastFetchedRef = useRef(0);
+
+  const refreshAdmin = useCallback(async (force = false) => {
     if (typeof window === 'undefined') return;
     if (!isAdminSessionValid()) {
       setLoading(false);
       return;
     }
+
+    const now = Date.now();
+    if (!force && now - lastFetchedRef.current < 60000) {
+      return;
+    }
+
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
 
     try {
       const meRes = await api.me().catch(() => null);
@@ -33,11 +44,13 @@ export function AdminProvider({ children }) {
           return merged;
         });
       }
+      lastFetchedRef.current = Date.now();
       setError(null);
     } catch (err) {
       console.warn('Admin context refresh error:', err);
       setError(err.message);
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
     }
   }, []);
@@ -59,9 +72,8 @@ export function AdminProvider({ children }) {
       if (raw) setAdmin(JSON.parse(raw));
     } catch (e) {}
 
-    refreshAdmin();
+    refreshAdmin(true);
 
-    const handleUpdate = () => refreshAdmin();
     const handleUserUpdate = () => {
       try {
         const raw = localStorage.getItem('admin_user');
@@ -70,11 +82,9 @@ export function AdminProvider({ children }) {
     };
 
     window.addEventListener('admin-user-updated', handleUserUpdate);
-    window.addEventListener('focus', handleUpdate);
 
     return () => {
       window.removeEventListener('admin-user-updated', handleUserUpdate);
-      window.removeEventListener('focus', handleUpdate);
     };
   }, [refreshAdmin]);
 
@@ -84,7 +94,7 @@ export function AdminProvider({ children }) {
       admin,
       loading,
       error,
-      refreshAdmin,
+      refreshAdmin: () => refreshAdmin(true),
       updateUser
     }}>
       {children}

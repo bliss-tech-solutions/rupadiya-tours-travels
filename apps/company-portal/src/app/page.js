@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { api, isOwnerSessionValid } from '../lib/api';
 import { openRazorpayCheckout } from '../lib/razorpay';
+import { getFranchiseByCode } from '../lib/companies';
 
 export default function CompanyDashboardPage() {
   const [data, setData] = useState(null);
@@ -166,7 +167,10 @@ export default function CompanyDashboardPage() {
   }
 
   const code = data?.companyCode || 1;
-  const companyName = data?.company?.name || `Rupadiya Franchise Carrier #${String(code).padStart(2, '0')}`;
+  const staticSpec = getFranchiseByCode(code);
+  const company = data?.company || staticSpec;
+  const shortCode = company?.shortCode || staticSpec?.shortCode || '';
+  const companyName = company?.name || staticSpec?.name || 'Franchise Carrier';
   const stats = data?.stats || {};
   const wallet = data?.wallet || {};
   const targetPassengers = stats.targetPassengers || 10000;
@@ -182,9 +186,16 @@ export default function CompanyDashboardPage() {
             <Sparkles className="w-3.5 h-3.5" />
             <span>Franchise Operations Center</span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">{companyName}</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Company Code #{String(code).padStart(2, '0')} · Strictly scoped fleet, verified agents, and passenger operations.
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">{companyName}</h1>
+            {shortCode && (
+              <span className="px-2.5 py-0.5 rounded-lg text-xs font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                {shortCode}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Strictly scoped fleet, verified agents, and passenger operations.
           </p>
         </div>
 
@@ -207,9 +218,17 @@ export default function CompanyDashboardPage() {
       </div>
 
       {error && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={() => loadDashboard()}
+            className="px-3 py-1 bg-white border border-rose-300 rounded-lg text-rose-700 hover:bg-rose-100 text-xs font-bold transition shadow-2xs"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -294,7 +313,7 @@ export default function CompanyDashboardPage() {
               </h2>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              {totalPassengers.toLocaleString('en-IN')} of {targetPassengers.toLocaleString('en-IN')} passengers committed under Company Code #{String(code).padStart(2, '0')}
+              {totalPassengers.toLocaleString('en-IN')} of {targetPassengers.toLocaleString('en-IN')} passengers committed under {shortCode || companyName}
             </p>
           </div>
           <span className="text-2xl font-bold text-blue-700">{progressPercent}%</span>
@@ -464,7 +483,7 @@ export default function CompanyDashboardPage() {
                     disabled={fundingLoading}
                     className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-50 shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    {fundingLoading ? 'Connecting...' : `Pay ₹${Number(depositAmount || 0).toLocaleString('en-IN')} Online via Razorpay →`}
+                    {fundingLoading ? 'Connecting...' : `Pay Online`}
                   </button>
                 </div>
               </form>

@@ -118,15 +118,15 @@ export default function AdminKycQueuePage() {
 
   const getDocTypeBadge = (type) => {
     if (type === 'NEPAL_CITIZENSHIP' || type === 'NEPAL_NATIONAL_ID') {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">Nepal Nagarikta</span>;
+      return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">Nepal Nagarikta</span>;
     }
     if (type === 'AADHAAR') {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200">Aadhaar (UIDAI)</span>;
+      return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200">Aadhaar (UIDAI)</span>;
     }
     if (type === 'PAN') {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">PAN Card</span>;
+      return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">PAN Card</span>;
     }
-    return <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-50 text-slate-700 border border-slate-200">{type}</span>;
+    return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-50 text-slate-700 border border-slate-200">{type}</span>;
   };
 
   return (
@@ -138,7 +138,7 @@ export default function AdminKycQueuePage() {
             <UserCheck className="w-3.5 h-3.5" />
             <span>Compliance Operations</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Agent KYC Approvals Queue</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Agent KYC Approvals Queue</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Review and verify Aadhaar, PAN, and Nepali Nagarikta credentials before enabling withdrawal settlements and sub-agent recruiting.
           </p>
@@ -193,7 +193,7 @@ export default function AdminKycQueuePage() {
       {/* KYC Submissions Table */}
       <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4 shadow-xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
             Submissions ({filtered.length} Records)
           </h2>
         </div>
@@ -247,7 +247,7 @@ export default function AdminKycQueuePage() {
                       </td>
 
                       <td className="py-3.5 px-4 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                           doc.status === 'VERIFIED'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : doc.status === 'REJECTED'
@@ -326,7 +326,7 @@ export default function AdminKycQueuePage() {
       {rejectModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200">
-            <h3 className="text-sm font-black text-rose-700 uppercase tracking-wider">
+            <h3 className="text-sm font-bold text-rose-700 uppercase tracking-wider">
               Reject KYC Document
             </h3>
             <p className="text-xs text-slate-600">

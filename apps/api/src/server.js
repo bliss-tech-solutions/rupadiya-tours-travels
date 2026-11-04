@@ -6,8 +6,8 @@ const websocketService = require('./services/websocket.service');
 
 async function startServer() {
   try {
-    // Attempt DB connection
-    await connectDB();
+    // Attempt DB connection with automatic retries
+    await connectDB(5, 1500);
 
     const server = http.createServer(app);
 

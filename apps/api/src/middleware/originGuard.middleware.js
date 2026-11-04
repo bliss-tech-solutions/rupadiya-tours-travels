@@ -38,6 +38,7 @@ function originGuard(req, res, next) {
   if (
     path === '/health' ||
     path === '/api/v1/health' ||
+    path.startsWith('/api/v1/auth/guest-token') ||
     path.startsWith('/api/v1/payments/webhook') ||
     path.startsWith('/uploads')
   ) {
@@ -110,4 +111,3 @@ module.exports = {
   originGuard,
   getAllowedOrigins
 };
-

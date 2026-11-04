@@ -13,13 +13,18 @@ export default function AgentLayoutShell({ children }) {
   const pathname = usePathname();
   const isLoginPage = pathname === '/login';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const { balance, loading, refreshWallet, agent } = useWallet();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close mobile drawer when route changes and verify agent session
   useEffect(() => {
     setMobileMenuOpen(false);
-    if (!isLoginPage && typeof window !== 'undefined') {
+    if (!isLoginPage && mounted && typeof window !== 'undefined') {
       api.me().then(res => {
         if (res?.user && res.user.role !== 'AGENT') {
           try {
@@ -30,13 +35,22 @@ export default function AgentLayoutShell({ children }) {
         }
       }).catch(() => {});
     }
-  }, [pathname, isLoginPage]);
+  }, [pathname, isLoginPage, mounted]);
 
   if (isLoginPage) {
     return <main className="min-h-screen bg-slate-50 text-slate-900">{children}</main>;
   }
 
-  if (typeof window !== 'undefined' && !isAgentSessionValid()) {
+  // Consistent SSR & initial client hydration: render spinner until mounted
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAgentSessionValid()) {
     if (typeof window !== 'undefined') window.location.href = '/login';
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">

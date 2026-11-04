@@ -333,7 +333,7 @@ export default function MakeDepositPage() {
             ) : (
               <>
                 <Zap className="w-5 h-5" />
-                <span>Pay ₹{Number(amount || 0).toLocaleString('en-IN')} Online via Razorpay →</span>
+                <span>Pay Online</span>
               </>
             )}
           </button>

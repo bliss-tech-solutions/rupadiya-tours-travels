@@ -1,6 +1,8 @@
 const authService = require('./auth.service');
 const { isValidEmail } = require('../../config/validation');
 const env = require('../../config/env');
+const { v4: uuidv4 } = require('uuid');
+const { generateGuestToken } = require('../../middleware/tabGuest.middleware');
 
 const isProd = env.NODE_ENV === 'production';
 const isSecure = isProd || env.COOKIE_SAME_SITE === 'none';
@@ -57,6 +59,36 @@ function getRequestMeta(req) {
 }
 
 class AuthController {
+  /**
+   * Issue a signed guest token scoped strictly to an individual browser tab.
+   * Isolates multi-tab guest sessions, seat holds, and rate limit buckets.
+   */
+  async getGuestToken(req, res, next) {
+    try {
+      const rawTabId = req.body?.tabId || req.headers['x-tab-id'];
+      const tabId = (rawTabId && typeof rawTabId === 'string' && rawTabId.trim().length > 0)
+        ? rawTabId.trim()
+        : `tab_${uuidv4()}`;
+
+      const guestToken = generateGuestToken({
+        tabId,
+        sessionId: req.browserSessionId,
+        ip: req.ip
+      });
+
+      res.status(201).json({
+        success: true,
+        guestToken,
+        token: guestToken,
+        tabId,
+        expiresIn: '24h',
+        message: 'Tab guest session established securely.'
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async sendOtp(req, res, next) {
     try {
       const { phone } = req.body;

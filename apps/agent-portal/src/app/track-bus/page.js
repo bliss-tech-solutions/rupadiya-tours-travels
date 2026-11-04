@@ -255,7 +255,7 @@ function TrackBusContent() {
 
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
               <span className="text-[10px] text-slate-500 uppercase block">Customer Mobile</span>
-              <span className="text-slate-900 font-mono font-medium block mt-0.5">
+              <span className="text-slate-900 font-mono font-bold block mt-0.5">
                 {trackedTicket.contactDetails?.phone || 'On Record'}
               </span>
             </div>

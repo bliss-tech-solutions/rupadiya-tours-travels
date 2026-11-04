@@ -182,7 +182,7 @@ export default function AdminAgentDetailPage() {
         <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold space-y-2">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-rose-600" />
-            <span className="text-sm font-black">Agent Not Found</span>
+            <span className="text-sm font-bold">Agent Not Found</span>
           </div>
           <p>{error || 'The requested agent could not be found.'}</p>
         </div>
@@ -208,22 +208,22 @@ export default function AdminAgentDetailPage() {
       {/* Top Header Card */}
       <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="flex items-start sm:items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-700 text-white flex items-center justify-center font-black text-2xl shadow-lg shadow-sky-600/20 shrink-0">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-700 text-white flex items-center justify-center font-bold text-2xl shadow-lg shadow-sky-600/20 shrink-0">
             {agent.name ? agent.name[0].toUpperCase() : 'A'}
           </div>
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
                 {agent.name}
               </h1>
-              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                 agent.isActive
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   : 'bg-rose-50 text-rose-700 border border-rose-200'
               }`}>
                 {agent.isActive ? 'Active Account' : 'Suspended'}
               </span>
-              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                 agent.kycStatus === 'VERIFIED'
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -264,37 +264,37 @@ export default function AdminAgentDetailPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Available Wallet</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Available Wallet</span>
             <Wallet className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">₹{Number(wallet.availableBalance || 0).toLocaleString('en-IN')}</div>
+          <div className="text-2xl font-bold text-slate-900">₹{Number(wallet.availableBalance || 0).toLocaleString('en-IN')}</div>
           <p className="text-[11px] text-slate-500">Live booking balance</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Tickets Issued</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Tickets Issued</span>
             <Ticket className="w-4 h-4 text-sky-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{stats.totalTickets || bookings.length} Bookings</div>
+          <div className="text-2xl font-bold text-slate-900">{stats.totalTickets || bookings.length} Bookings</div>
           <p className="text-[11px] text-slate-500">Confirmed passenger seats</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Cumulative Volume</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Cumulative Volume</span>
             <Building2 className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">₹{Number(stats.totalGMV || 0).toLocaleString('en-IN')}</div>
+          <div className="text-2xl font-bold text-slate-900">₹{Number(stats.totalGMV || 0).toLocaleString('en-IN')}</div>
           <p className="text-[11px] text-emerald-600 font-bold">Gross revenue generated</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Franchise Code</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Franchise Code</span>
             <ShieldCheck className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">#{String(agent.companyCode).padStart(2, '0')}</div>
+          <div className="text-2xl font-bold text-slate-900">#{String(agent.companyCode).padStart(2, '0')}</div>
           <p className="text-[11px] text-slate-500">{company?.name || 'Assigned Franchise'}</p>
         </div>
       </div>
@@ -304,7 +304,7 @@ export default function AdminAgentDetailPage() {
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-blue-700" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
               Government Identity & KYC Credentials
             </h3>
           </div>
@@ -322,10 +322,10 @@ export default function AdminAgentDetailPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
                       {doc.documentType === 'NEPAL_CITIZENSHIP' ? 'Nepali Nagarikta (Citizenship)' : doc.documentType}
                     </span>
-                    <div className="text-sm font-mono font-black text-slate-900 pt-1">
+                    <div className="text-sm font-mono font-bold text-slate-900 pt-1">
                       ID: {doc.documentNumberMasked}
                     </div>
                     <p className="text-[11px] text-slate-400">
@@ -333,7 +333,7 @@ export default function AdminAgentDetailPage() {
                     </p>
                   </div>
 
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                     doc.status === 'VERIFIED'
                       ? 'bg-emerald-100 text-emerald-800'
                       : doc.status === 'REJECTED'
@@ -401,7 +401,7 @@ export default function AdminAgentDetailPage() {
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
             <Wallet className="w-4 h-4 text-blue-700" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
               Wallet Transaction Ledger (Last 30 Records)
             </h3>
           </div>
@@ -443,7 +443,7 @@ export default function AdminAgentDetailPage() {
                     <td className="py-2.5 px-3 font-medium text-slate-800">
                       {item.description || item.transactionType || 'Transaction'}
                     </td>
-                    <td className={`py-2.5 px-3 text-right font-black ${
+                    <td className={`py-2.5 px-3 text-right font-bold ${
                       item.entryType === 'CREDIT' ? 'text-emerald-700' : 'text-rose-600'
                     }`}>
                       {item.entryType === 'CREDIT' ? '+' : '-'}₹{Number(item.amount || 0).toLocaleString('en-IN')}
@@ -469,7 +469,7 @@ export default function AdminAgentDetailPage() {
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
             <Ticket className="w-4 h-4 text-blue-700" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
               Customer Tickets Issued ({bookings.length} Recent)
             </h3>
           </div>
@@ -497,7 +497,7 @@ export default function AdminAgentDetailPage() {
                     <td className="py-2.5 px-3 font-mono text-slate-600">
                       {Array.isArray(b.seatNumbers) ? b.seatNumbers.join(', ') : '1 Seat'}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-black text-slate-900">
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-900">
                       ₹{Number(b.fareBreakdown?.totalPayable || 0).toLocaleString('en-IN')}
                     </td>
                     <td className="py-2.5 px-3 text-center">
@@ -523,7 +523,7 @@ export default function AdminAgentDetailPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl space-y-5 border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
                 Adjust Agent Working Capital
               </h3>
               <button 
@@ -618,7 +618,7 @@ export default function AdminAgentDetailPage() {
       {rejectModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200">
-            <h3 className="text-sm font-black text-rose-700 uppercase tracking-wider">
+            <h3 className="text-sm font-bold text-rose-700 uppercase tracking-wider">
               Reject KYC Document
             </h3>
             <p className="text-xs text-slate-600">

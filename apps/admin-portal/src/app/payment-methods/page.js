@@ -142,7 +142,7 @@ export default function AdminPaymentMethodsPage() {
             </span>
             <span className="text-xs text-slate-400">· Global Payment Routing</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
             Payment Gateway Governance
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -210,7 +210,7 @@ export default function AdminPaymentMethodsPage() {
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
               <div>
-                <h3 className="text-sm font-black text-slate-900">
+                <h3 className="text-sm font-bold text-slate-900">
                   Allowed Payment Methods
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -305,7 +305,7 @@ export default function AdminPaymentMethodsPage() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-blue-600" />
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
                   Live Checkout Preview
                 </h3>
               </div>
@@ -323,7 +323,7 @@ export default function AdminPaymentMethodsPage() {
               <div className="bg-white rounded-xl p-3 border border-slate-100 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Rupadiya Platform</span>
-                  <span className="text-sm font-black text-slate-900">Pay ₹1,733 via Razorpay</span>
+                  <span className="text-sm font-bold text-slate-900">Pay ₹1,733 via Razorpay</span>
                 </div>
                 <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
                   <Lock className="w-4 h-4" />

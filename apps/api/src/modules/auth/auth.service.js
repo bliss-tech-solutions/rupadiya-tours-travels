@@ -255,6 +255,12 @@ class AuthService {
     const sanitized = user.toObject();
     delete sanitized.passwordHash;
 
+    if (user.companyCode) {
+      const Company = require('../companies/company.model');
+      const comp = await Company.findOne({ companyCode: user.companyCode }).lean();
+      if (comp) sanitized.company = comp;
+    }
+
     let wallet = null;
     if (user.role === ROLES.AGENT || user.role === ROLES.COMPANY_OWNER) {
       wallet = await Wallet.findOne({ userId: user._id });

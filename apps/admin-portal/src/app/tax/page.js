@@ -65,7 +65,7 @@ export default function AdminTaxReportsPage() {
             <Receipt className="w-3.5 h-3.5" />
             <span>State Compliance</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900">GST & TCS Tax Compliance Statement</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">GST & TCS Tax Compliance Statement</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Statutory 5% GST on passenger transport and Section 194-O (1% TCS on e-commerce operators).
           </p>
@@ -101,7 +101,7 @@ export default function AdminTaxReportsPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white border border-slate-200/90 p-6 rounded-3xl space-y-2 shadow-xs">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">GST on Bus Passenger Service</span>
-          <div className="text-3xl font-black text-slate-900">5.0%</div>
+          <div className="text-3xl font-bold text-slate-900">5.0%</div>
           <p className="text-xs text-slate-500">Without Input Tax Credit (ITC) as prescribed under Indian GST statutes.</p>
           <div className="pt-2 border-t border-slate-100 font-mono font-bold text-sm text-blue-700">
             Total Collected: ₹{totalGst.toLocaleString('en-IN')}
@@ -110,7 +110,7 @@ export default function AdminTaxReportsPage() {
 
         <div className="bg-white border border-slate-200/90 p-6 rounded-3xl space-y-2 shadow-xs">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">TCS Section 194-O Withholding</span>
-          <div className="text-3xl font-black text-emerald-700">1.0%</div>
+          <div className="text-3xl font-bold text-emerald-700">1.0%</div>
           <p className="text-xs text-slate-500">Deducted on gross sales proceeds credited to non-corporate franchise operators.</p>
           <div className="pt-2 border-t border-slate-100 font-mono font-bold text-sm text-emerald-700">
             Total Withheld: ₹{totalTcs.toLocaleString('en-IN')}
@@ -119,7 +119,7 @@ export default function AdminTaxReportsPage() {
 
         <div className="bg-white border border-slate-200/90 p-6 rounded-3xl space-y-2 shadow-xs">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Net Operator Settlement</span>
-          <div className="text-3xl font-black text-slate-900">₹{netRemitted.toLocaleString('en-IN')}</div>
+          <div className="text-3xl font-bold text-slate-900">₹{netRemitted.toLocaleString('en-IN')}</div>
           <p className="text-xs text-slate-500">Gross passenger volume remitted to 33 franchise companies after statutory taxes.</p>
           <div className="pt-2 border-t border-slate-100 font-mono font-bold text-sm text-slate-600">
             Fares: ₹{totalFare.toLocaleString('en-IN')}
@@ -130,7 +130,7 @@ export default function AdminTaxReportsPage() {
       {/* Tax Table */}
       <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4 shadow-xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
             Live Statutory Withholding & Tax Remittance Ledger
           </h2>
           <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
@@ -158,7 +158,7 @@ export default function AdminTaxReportsPage() {
                 <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">
                   ₹{totalFare.toLocaleString('en-IN')}
                 </td>
-                <td className="py-3.5 px-4 text-right font-mono font-black text-blue-700">
+                <td className="py-3.5 px-4 text-right font-mono font-bold text-blue-700">
                   ₹{totalGst.toLocaleString('en-IN')}
                 </td>
                 <td className="py-3.5 px-4 text-center">
@@ -176,7 +176,7 @@ export default function AdminTaxReportsPage() {
                 <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">
                   ₹{totalComm.toLocaleString('en-IN')}
                 </td>
-                <td className="py-3.5 px-4 text-right font-mono font-black text-amber-700">
+                <td className="py-3.5 px-4 text-right font-mono font-bold text-amber-700">
                   ₹{totalTcs.toLocaleString('en-IN')}
                 </td>
                 <td className="py-3.5 px-4 text-center">
@@ -187,18 +187,18 @@ export default function AdminTaxReportsPage() {
               </tr>
 
               <tr className="bg-slate-50/80 font-bold">
-                <td className="py-3.5 px-4 text-slate-900 font-black">
+                <td className="py-3.5 px-4 text-slate-900 font-bold">
                   Total Statutory Tax Obligation
                 </td>
                 <td className="py-3.5 px-4 text-slate-500">—</td>
                 <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-700">
                   ₹{totalFare.toLocaleString('en-IN')}
                 </td>
-                <td className="py-3.5 px-4 text-right font-mono font-black text-emerald-700 text-sm">
+                <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-700 text-sm">
                   ₹{(totalGst + totalTcs).toLocaleString('en-IN')}
                 </td>
                 <td className="py-3.5 px-4 text-center">
-                  <span className="text-[10px] font-black text-slate-500 uppercase">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">
                     FY 2026-27
                   </span>
                 </td>

@@ -52,7 +52,7 @@ export default function PaymentPage() {
     }
 
     // Keep active hold in localStorage for homepage banner
-    localStorage.setItem('rupadiya_active_hold', JSON.stringify({
+    sessionStorage.setItem('rupadiya_active_hold', JSON.stringify({
       holdId: data.holdId,
       holdToken: data.holdId,
       tripId: data.tripId,
@@ -70,7 +70,7 @@ export default function PaymentPage() {
         if (prev <= 1) {
           clearInterval(timer);
           addToast('Your 10-minute seat hold has expired. Please select your seats again.', 'warning', 'Hold Expired');
-          localStorage.removeItem('rupadiya_active_hold');
+          sessionStorage.removeItem('rupadiya_active_hold');
           sessionStorage.removeItem('rupadiya_checkout');
           router.push('/');
           return 0;
@@ -199,7 +199,7 @@ export default function PaymentPage() {
               }));
 
               // Clear active hold from storage
-              localStorage.removeItem('rupadiya_active_hold');
+              sessionStorage.removeItem('rupadiya_active_hold');
               sessionStorage.removeItem('rupadiya_checkout');
               sessionStorage.removeItem('rupadiya_booking_flow');
 
@@ -231,7 +231,7 @@ export default function PaymentPage() {
     try {
       await api.releaseHold(checkoutData.holdId);
     } catch (e) {}
-    localStorage.removeItem('rupadiya_active_hold');
+    sessionStorage.removeItem('rupadiya_active_hold');
     sessionStorage.removeItem('rupadiya_checkout');
     sessionStorage.removeItem('rupadiya_booking_flow');
     addToast('Reservation cancelled and seats released.', 'info', 'Seats Released');

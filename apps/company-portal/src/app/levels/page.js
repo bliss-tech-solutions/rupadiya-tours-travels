@@ -228,7 +228,7 @@ export default function CompanyLevelsPage() {
                 <span>{companyLevel.badge}</span>
               </span>
               <span className="text-xs font-bold text-blue-200 font-mono">
-                Company #{String(companyLevel.companyCode).padStart(2, '0')}
+                Franchise Carrier
               </span>
             </div>
 

@@ -11,7 +11,7 @@ const KycDocument = require('../kyc/kyc.model');
 const Booking = require('../bookings/booking.model');
 const WithdrawalRequest = require('../withdrawals/withdrawal.model');
 const { Wallet, WalletLedger } = require('../wallets/wallet.model');
-const { ROLES, WITHDRAWAL_STATUS, TRANSACTION_TYPES, normalizeCityId, isValidCorridor } = require('../../config/constants');
+const { ROLES, WITHDRAWAL_STATUS, TRANSACTION_TYPES, normalizeCityId, isValidCorridor, SPOKE_CITIES } = require('../../config/constants');
 const Trip = require('../trips/trip.model');
 const Route = require('../routes/route.model');
 const websocketService = require('../../services/websocket.service');
@@ -923,16 +923,22 @@ router.post('/trips', async (req, res, next) => {
       if (!route) {
         const fromName = origin.includes('Rupadiya') ? 'Rupadiya' : origin;
         const toName = destination.includes('Rupadiya') ? 'Rupadiya' : destination;
+        const matchedSpoke = SPOKE_CITIES.find(s => s.id === normFrom || s.id === normTo || s.name.toLowerCase() === fromName.toLowerCase() || s.name.toLowerCase() === toName.toLowerCase());
+        const distanceKm = matchedSpoke?.distanceKm || 1200;
+        const durationHours = matchedSpoke ? (parseFloat(matchedSpoke.duration) || 20) : 20;
+        const spokeState = matchedSpoke?.state || 'India';
+        const routeFare = Number(baseFare) || matchedSpoke?.baseFare || 1650;
+
         route = await Route.create({
           companyId: req.user.companyId || bus.companyId || null,
           companyCode: code,
-          fromCity: { id: normFrom, name: fromName, state: fromName === 'Rupadiya' ? 'Uttar Pradesh' : 'India' },
-          toCity: { id: normTo, name: toName, state: toName === 'Rupadiya' ? 'Uttar Pradesh' : 'India' },
-          distanceKm: 850,
-          estimatedDurationHours: 18,
-          baseFare: Number(baseFare) || 1650,
+          fromCity: { id: normFrom, name: fromName, state: fromName === 'Rupadiya' ? 'Uttar Pradesh' : spokeState },
+          toCity: { id: normTo, name: toName, state: toName === 'Rupadiya' ? 'Uttar Pradesh' : spokeState },
+          distanceKm,
+          estimatedDurationHours: durationHours,
+          baseFare: routeFare,
           boardingPoints: [{ id: `bp-${normFrom}-1`, name: `${fromName} Central Hub Terminal`, timeOffsetMinutes: 0 }],
-          droppingPoints: [{ id: `dp-${normTo}-1`, name: `${toName} Intercity Drop Point`, timeOffsetMinutes: 1080 }]
+          droppingPoints: [{ id: `dp-${normTo}-1`, name: `${toName} Intercity Drop Point`, timeOffsetMinutes: Math.round(durationHours * 60) }]
         });
       }
     }

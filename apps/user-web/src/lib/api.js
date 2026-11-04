@@ -1,3 +1,5 @@
+import { getGuestTabHeaders, ensureTabGuestToken } from './guestTab';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4500/api/v1';
 
 let isRefreshing = false;
@@ -18,7 +20,14 @@ async function request(endpoint, options = {}, isRetry = false) {
     try {
       token = localStorage.getItem('user_token');
     } catch {}
+
+    // Ensure tab-isolated guest token is initialized for unauthenticated visitor tabs
+    if (!endpoint.startsWith('/auth/guest-token')) {
+      await ensureTabGuestToken(API_BASE);
+    }
   }
+
+  const tabHeaders = typeof window !== 'undefined' ? getGuestTabHeaders() : {};
 
   const headers = {
     'Content-Type': 'application/json',
@@ -26,6 +35,7 @@ async function request(endpoint, options = {}, isRetry = false) {
     'Pragma': 'no-cache',
     'Expires': '0',
     'x-rupadiya-client': 'web-client',
+    ...tabHeaders,
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {})
   };
@@ -44,7 +54,7 @@ async function request(endpoint, options = {}, isRetry = false) {
     }
 
     // Handle 401 Unauthorized with automatic transparent 24hr silent token refresh
-    if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh') && !endpoint.startsWith('/auth/otp')) {
+    if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh') && !endpoint.startsWith('/auth/otp') && !endpoint.startsWith('/auth/guest-token')) {
       if (!isRefreshing) {
         isRefreshing = true;
         try {
@@ -56,6 +66,7 @@ async function request(endpoint, options = {}, isRetry = false) {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
               'Pragma': 'no-cache',
               'x-rupadiya-client': 'web-client',
+              ...tabHeaders,
               ...(token ? { Authorization: `Bearer ${token}` } : {})
             },
             credentials: 'include'
@@ -106,6 +117,9 @@ async function request(endpoint, options = {}, isRetry = false) {
 }
 
 export const api = {
+  // Tab-isolated guest session
+  initGuestTab: () => ensureTabGuestToken(API_BASE),
+
   // Trips
   searchTrips: (from, to, date) => request(`/trips?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`),
   getTrip: (id) => request(`/trips/${id}`),

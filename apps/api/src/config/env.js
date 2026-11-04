@@ -4,7 +4,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT, 10) || 4500,
-  MONGODB_URI: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/rupadiya_demo',
+  MONGODB_URI: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/rupadiya',
   MONGODB_DB: process.env.MONGODB_DB || 'rupadiya',
   REDIS_URL: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
   WEB_ORIGIN: process.env.WEB_ORIGIN || 'http://localhost:3000',

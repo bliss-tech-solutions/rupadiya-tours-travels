@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { api, isAgentSessionValid } from '../lib/api';
 
 const WalletContext = createContext({
@@ -15,6 +15,9 @@ const WalletContext = createContext({
   updateUser: () => {}
 });
 
+// Minimum gap between any wallet network requests to avoid rapid calls
+const MIN_WALLET_CALL_GAP_MS = 2500;
+
 export function WalletProvider({ children }) {
   const [balance, setBalance] = useState(null);
   const [reserved, setReserved] = useState(0);
@@ -22,15 +25,30 @@ export function WalletProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const refreshWallet = useCallback(async () => {
+  const isFetchingRef = useRef(false);
+  const lastFetchedRef = useRef(0);
+  const agentRef = useRef(null);
+
+  // Stable empty dependency array [] prevents infinite re-render loops
+  const refreshWallet = useCallback(async (force = false) => {
     if (typeof window === 'undefined') return;
     if (!isAgentSessionValid()) {
       setLoading(false);
       return;
     }
 
+    const now = Date.now();
+    // Guard: Prevent rapid multiple calls within MIN_WALLET_CALL_GAP_MS
+    if (now - lastFetchedRef.current < MIN_WALLET_CALL_GAP_MS) {
+      return;
+    }
+
+    // Prevent concurrent in-flight requests
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
-      // 1. Fetch live wallet balance from backend using httpOnly cookies
+      // 1. Fetch live wallet balance from backend
       let fetchedBal = null;
       try {
         const wRes = await api.getMyWallet();
@@ -39,43 +57,48 @@ export function WalletProvider({ children }) {
           if (wRes.wallet?.reservedBalance != null) setReserved(wRes.wallet.reservedBalance);
         }
       } catch (wErr) {
-        // Fallback to dashboard KPI endpoint
-      }
-
-      if (fetchedBal == null) {
-        const dRes = await api.getDashboard();
-        if (dRes?.success) {
-          const d = dRes.data || dRes;
-          fetchedBal = d.walletBalance ?? d.wallet?.availableBalance;
-          if (d.agent) {
-            setAgent(prev => {
-              const merged = { ...(prev || {}), ...d.agent };
-              try { localStorage.setItem('agent_user', JSON.stringify(merged)); } catch (e) {}
-              return merged;
-            });
+        // Fallback to dashboard KPI endpoint only if wallet endpoint fails
+        try {
+          const dRes = await api.getDashboard();
+          if (dRes?.success) {
+            const d = dRes.data || dRes;
+            fetchedBal = d.walletBalance ?? d.wallet?.availableBalance;
+            if (d.agent) {
+              agentRef.current = d.agent;
+              setAgent(prev => {
+                const merged = { ...(prev || {}), ...d.agent };
+                try { localStorage.setItem('agent_user', JSON.stringify(merged)); } catch (e) {}
+                return merged;
+              });
+            }
           }
-        }
+        } catch (dErr) {}
       }
 
       if (fetchedBal != null) {
         setBalance(Number(fetchedBal));
       }
 
-      // Always ensure profile info is synchronized
-      const meRes = await api.me().catch(() => null);
-      if (meRes?.user) {
-        setAgent(prev => {
-          const merged = { ...(prev || {}), ...meRes.user };
-          try { localStorage.setItem('agent_user', JSON.stringify(merged)); } catch (e) {}
-          return merged;
-        });
+      // Synchronize profile info only once on initial load
+      if (!agentRef.current) {
+        const meRes = await api.me().catch(() => null);
+        if (meRes?.user) {
+          agentRef.current = meRes.user;
+          setAgent(prev => {
+            const merged = { ...(prev || {}), ...meRes.user };
+            try { localStorage.setItem('agent_user', JSON.stringify(merged)); } catch (e) {}
+            return merged;
+          });
+        }
       }
 
+      lastFetchedRef.current = Date.now();
       setError(null);
     } catch (err) {
       console.warn('Wallet context refresh error:', err);
       setError(err.message);
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
     }
   }, []);
@@ -83,6 +106,7 @@ export function WalletProvider({ children }) {
   const updateUser = useCallback((partialUser) => {
     setAgent(prev => {
       const updated = { ...(prev || {}), ...partialUser };
+      agentRef.current = updated;
       try {
         localStorage.setItem('agent_user', JSON.stringify(updated));
       } catch (e) {}
@@ -92,39 +116,42 @@ export function WalletProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // Synchronize client-side cached agent profile after mounting to prevent SSR hydration mismatch
     try {
       const raw = localStorage.getItem('agent_user');
-      if (raw) setAgent(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setAgent(parsed);
+        agentRef.current = parsed;
+      }
     } catch (e) {}
 
-    refreshWallet();
+    // Initial fetch ONLY once when user mounts the app
+    refreshWallet(true);
 
-    const handleUpdate = () => refreshWallet();
+    // Subsequent updates happen strictly on explicit events (deposit, booking, etc.)
+    const handleUpdate = () => refreshWallet(true);
     const handleUserUpdate = () => {
       try {
         const raw = localStorage.getItem('agent_user');
-        if (raw) setAgent(JSON.parse(raw));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setAgent(parsed);
+          agentRef.current = parsed;
+        }
       } catch (e) {}
     };
 
     window.addEventListener('wallet-updated', handleUpdate);
     window.addEventListener('agent-user-updated', handleUserUpdate);
-    window.addEventListener('focus', handleUpdate);
-
-    const interval = setInterval(refreshWallet, 30000);
 
     return () => {
       window.removeEventListener('wallet-updated', handleUpdate);
       window.removeEventListener('agent-user-updated', handleUserUpdate);
-      window.removeEventListener('focus', handleUpdate);
-      clearInterval(interval);
     };
   }, [refreshWallet]);
 
   const setLocalBalance = useCallback((newBal) => {
     setBalance(Number(newBal));
-    window.dispatchEvent(new Event('wallet-updated'));
   }, []);
 
   return (
@@ -135,7 +162,7 @@ export function WalletProvider({ children }) {
       error,
       agent,
       user: agent,
-      refreshWallet,
+      refreshWallet: () => refreshWallet(true),
       setLocalBalance,
       updateUser
     }}>

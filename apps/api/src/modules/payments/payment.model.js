@@ -60,6 +60,12 @@ const paymentSchema = new mongoose.Schema({
     enum: ['UPI', 'CARD', 'NETBANKING', 'WALLET', 'RAZORPAY', 'UNKNOWN'],
     default: 'RAZORPAY'
   },
+  consumedByBooking: {
+    type: String,
+    default: null,
+    index: true,
+    sparse: true
+  },
   metadata: {
     type: mongoose.Schema.Types.Mixed,
     default: {}

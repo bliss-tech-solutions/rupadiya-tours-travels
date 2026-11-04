@@ -136,7 +136,7 @@ class PaymentService {
       throw new Error('Payment simulation rejected. Please use a live payment method.');
     }
 
-    // Cryptographic signature check
+    // Cryptographic signature check with timing-safe comparison to prevent timing attacks
     if (this.isConfigured() && !paymentId?.startsWith('pay_sim_') && !signature?.startsWith('sig_sim_')) {
       if (!signature) {
         throw new Error('Razorpay signature is required for verification.');
@@ -146,7 +146,11 @@ class PaymentService {
         .update(`${orderId}|${paymentId}`)
         .digest('hex');
 
-      if (expectedSignature !== signature) {
+      const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+      const receivedBuf = Buffer.from(signature, 'utf8');
+      const isMatch = expectedBuf.length === receivedBuf.length && crypto.timingSafeEqual(expectedBuf, receivedBuf);
+
+      if (!isMatch) {
         payment.status = 'FAILED';
         payment.failureReason = 'Cryptographic HMAC signature mismatch';
         await payment.save();
@@ -338,6 +342,8 @@ class PaymentService {
       };
 
       const bookingResult = await bookingService.confirmBooking(confirmPayload);
+      payment.consumedByBooking = bookingResult.bookingId || bookingResult.pnr || 'CONFIRMED';
+      await payment.save();
       fulfillmentResult = { bookingResult };
     }
 
@@ -421,7 +427,11 @@ class PaymentService {
         .update(rawBody)
         .digest('hex');
 
-      if (expectedSignature !== signature) {
+      const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+      const receivedBuf = Buffer.from(signature, 'utf8');
+      const isMatch = expectedBuf.length === receivedBuf.length && crypto.timingSafeEqual(expectedBuf, receivedBuf);
+
+      if (!isMatch) {
         throw new Error('Invalid Razorpay webhook signature');
       }
     }
@@ -473,4 +483,3 @@ class PaymentService {
 }
 
 module.exports = new PaymentService();
-

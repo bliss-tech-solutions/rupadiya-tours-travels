@@ -192,12 +192,12 @@ export default function AdminCompanyDetailPage() {
           className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 transition"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to 34 Companies Registry</span>
+          <span>Back to Companies Registry</span>
         </Link>
         <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold space-y-2">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-rose-600" />
-            <span className="text-sm font-black">Company Not Found</span>
+            <span className="text-sm font-bold">Company Not Found</span>
           </div>
           <p>{error || 'The requested company could not be found.'}</p>
         </div>
@@ -222,7 +222,7 @@ export default function AdminCompanyDetailPage() {
           className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-blue-700 transition"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to 34 Companies Registry (Passenger Ranking)</span>
+          <span>Back to Companies Registry</span>
         </Link>
       </div>
 
@@ -236,24 +236,26 @@ export default function AdminCompanyDetailPage() {
       {/* Top Company Header Card */}
       <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="flex items-start sm:items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-700 to-sky-600 text-white flex flex-col items-center justify-center font-black shadow-lg shadow-blue-600/20 shrink-0">
-            <span className="text-xs opacity-80 uppercase tracking-widest text-[9px]">Rank</span>
-            <span className="text-xl leading-none">#{rank}</span>
+          <div className="w-16 h-16 rounded-2xl bg-blue-600 text-white flex flex-col items-center justify-center font-bold shadow-md shadow-blue-500/20 shrink-0">
+            <span className="text-xs uppercase font-mono font-bold leading-none">{shortCode}</span>
+            <span className="text-[10px] font-medium opacity-90 mt-1 leading-none">Code {company.companyCode}</span>
           </div>
 
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {company.name}
-              </h1>
+              <div className="space-y-1">
+                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                  {company.name}
+                </h1>
+              </div>
 
               {/* Fixed Code Badge */}
-              <span className="px-3 py-1 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 font-mono font-black text-xs tracking-wider">
+              <span className="px-3 py-1 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 font-mono font-bold text-xs tracking-wider">
                 Code: {shortCode}
               </span>
 
               {/* Status Badge */}
-              <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+              <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider ${
                 company.status === 'ACTIVE'
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   : 'bg-rose-50 text-rose-700 border border-rose-200'
@@ -323,37 +325,37 @@ export default function AdminCompanyDetailPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Fleet Buses</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Fleet Buses</span>
             <Bus className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{buses.length} Coaches</div>
+          <div className="text-2xl font-bold text-slate-900">{buses.length} Coaches</div>
           <p className="text-[11px] text-slate-500">Standardized 36 sleeper & 40 seater</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Franchise Agents</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Franchise Agents</span>
             <Users className="w-4 h-4 text-sky-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{agents.length} Agents</div>
+          <div className="text-2xl font-bold text-slate-900">{agents.length} Agents</div>
           <p className="text-[11px] text-slate-500">Recruited under Franchise #{code}</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Passengers Carried</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Passengers Carried</span>
             <TrendingUp className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{totalPassengers.toLocaleString('en-IN')}</div>
+          <div className="text-2xl font-bold text-slate-900">{totalPassengers.toLocaleString('en-IN')}</div>
           <p className="text-[11px] text-emerald-600 font-bold">{progressPercent}% of annual target fulfilled</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Gross Bookings (GMV)</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Gross Bookings (GMV)</span>
             <FileSpreadsheet className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">₹{Number(totalGMV).toLocaleString('en-IN')}</div>
+          <div className="text-2xl font-bold text-slate-900">₹{Number(totalGMV).toLocaleString('en-IN')}</div>
           <p className="text-[11px] text-slate-500">Cumulative tickets volume</p>
         </div>
       </div>
@@ -363,11 +365,11 @@ export default function AdminCompanyDetailPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Target className="w-4 h-4 text-blue-700" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
               FY 2026-2027 Passenger Quota Fulfillment
             </h3>
           </div>
-          <span className="text-xs font-black text-blue-700">{totalPassengers} / {targetPassengers} pax ({progressPercent}%)</span>
+          <span className="text-xs font-bold text-blue-700">{totalPassengers} / {targetPassengers} pax ({progressPercent}%)</span>
         </div>
         <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-200/60">
           <div 
@@ -382,7 +384,7 @@ export default function AdminCompanyDetailPage() {
         {/* Left Column: Company Profile & Editable Settings */}
         <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
               <Building2 className="w-4 h-4 text-blue-600" />
               Franchise Profile & Contacts
             </h3>
@@ -399,8 +401,8 @@ export default function AdminCompanyDetailPage() {
             <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-100">
               <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">Passenger Ranking</span>
               <div className="flex items-center justify-between mt-1">
-                <span className="font-extrabold text-slate-900 text-sm">Rank #{rank}</span>
-                <span className="font-mono font-black text-blue-700 px-2.5 py-0.5 rounded-lg bg-white border border-blue-200 text-xs">
+                <span className="font-bold text-slate-900 text-sm">Rank #{rank}</span>
+                <span className="font-mono font-bold text-blue-700 px-2.5 py-0.5 rounded-lg bg-white border border-blue-200 text-xs">
                   Fixed Code: {shortCode}
                 </span>
               </div>
@@ -445,7 +447,7 @@ export default function AdminCompanyDetailPage() {
         {/* Center Column: Assigned Owner Details */}
         <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-emerald-600" />
               Company Owner
             </h3>
@@ -459,11 +461,11 @@ export default function AdminCompanyDetailPage() {
           {owner ? (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-800 font-black text-base flex items-center justify-center border border-blue-200">
+                <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-800 font-bold text-base flex items-center justify-center border border-blue-200">
                   {owner.name ? owner.name[0].toUpperCase() : 'O'}
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-slate-900">{owner.name}</h4>
+                  <h4 className="text-sm font-bold text-slate-900">{owner.name}</h4>
                   <p className="text-xs text-slate-500 font-medium">Franchise Administrator</p>
                 </div>
               </div>
@@ -495,7 +497,7 @@ export default function AdminCompanyDetailPage() {
             <div className="p-6 text-center space-y-3 bg-amber-50/50 rounded-2xl border border-amber-200/60">
               <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" />
               <div className="space-y-1">
-                <h4 className="text-xs font-black text-amber-900">No Owner Assigned</h4>
+                <h4 className="text-xs font-bold text-amber-900">No Owner Assigned</h4>
                 <p className="text-[11px] text-amber-700">
                   Assign a registered user as Company Owner to grant them administrative rights over this franchise.
                 </p>
@@ -513,7 +515,7 @@ export default function AdminCompanyDetailPage() {
         {/* Right Column: Fleet Buses Preview */}
         <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
               <Bus className="w-4 h-4 text-blue-600" />
               Fleet Coaches ({buses.length})
             </h3>
@@ -551,7 +553,7 @@ export default function AdminCompanyDetailPage() {
       {/* Agents Roster Table */}
       <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
             <Users className="w-4 h-4 text-blue-600" />
             Franchise Booking Agents ({agents.length} Agents)
           </h3>
@@ -581,7 +583,7 @@ export default function AdminCompanyDetailPage() {
                     <td className="py-2.5 px-3 font-bold text-slate-900">{agent.name}</td>
                     <td className="py-2.5 px-3 font-mono font-bold text-blue-700">{agent.referralCode || 'N/A'}</td>
                     <td className="py-2.5 px-3 text-slate-500">{agent.email} · {agent.phone}</td>
-                    <td className="py-2.5 px-3 text-right font-black text-slate-900">
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-900">
                       ₹{Number(agent.wallet?.availableBalance || 0).toLocaleString('en-IN')}
                     </td>
                     <td className="py-2.5 px-3 text-center">
@@ -614,7 +616,7 @@ export default function AdminCompanyDetailPage() {
           <div className="bg-white border border-slate-200 w-full max-w-lg rounded-3xl p-6 space-y-4 shadow-2xl my-8">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <Edit3 className="w-5 h-5 text-blue-600" />
                   <span>Edit Franchise Company Details</span>
                 </h3>
@@ -628,7 +630,7 @@ export default function AdminCompanyDetailPage() {
             {/* Fixed Ranking Banner */}
             <div className="p-3 bg-blue-50 border border-blue-200/80 rounded-2xl flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-lg bg-blue-700 text-white font-mono font-black text-sm">
+                <span className="px-2.5 py-1 rounded-lg bg-blue-700 text-white font-mono font-bold text-sm">
                   {shortCode}
                 </span>
                 <div>
@@ -843,7 +845,7 @@ export default function AdminCompanyDetailPage() {
                   required
                   value={targetQuota}
                   onChange={(e) => setTargetQuota(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-emerald-700 font-black text-lg focus:outline-none focus:border-blue-600"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-emerald-700 font-bold text-lg focus:outline-none focus:border-blue-600"
                 />
                 <div className="grid grid-cols-4 gap-2 mt-2">
                   {['5000', '10000', '12000', '20000'].map(p => (

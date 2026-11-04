@@ -106,7 +106,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-gradient-to-r from-blue-700 to-sky-600 hover:from-blue-800 hover:to-sky-700 text-white font-black rounded-2xl shadow-lg shadow-blue-500/25 transition active:scale-[0.99] flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
+            className="w-full py-3.5 bg-gradient-to-r from-blue-700 to-sky-600 hover:from-blue-800 hover:to-sky-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/25 transition active:scale-[0.99] flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
           >
             {loading ? (
               <span className="flex items-center gap-2">
@@ -134,11 +134,11 @@ export default function AdminLoginPage() {
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-700 to-sky-600 text-white flex items-center justify-center mx-auto shadow-xl shadow-blue-500/25 mb-4">
           <ShieldAlert className="w-7 h-7" />
         </div>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80 text-xs font-black uppercase tracking-wider mb-2">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80 text-xs font-bold uppercase tracking-wider mb-2">
           <ShieldCheck className="w-3.5 h-3.5" />
           <span>Platform Super Admin</span>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Rupadiya Platform HQ</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Rupadiya Platform HQ</h2>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">Universal Franchise Governance & Fleet Administration</p>
       </div>
 

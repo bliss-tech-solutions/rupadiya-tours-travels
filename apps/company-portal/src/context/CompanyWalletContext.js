@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { api, isOwnerSessionValid } from '../lib/api';
 
 const CompanyWalletContext = createContext({
@@ -15,6 +15,8 @@ const CompanyWalletContext = createContext({
   updateUser: () => {}
 });
 
+const MIN_WALLET_CALL_GAP_MS = 2500;
+
 export function CompanyWalletProvider({ children }) {
   const [balance, setBalance] = useState(null);
   const [companyInfo, setCompanyInfo] = useState(null);
@@ -23,12 +25,27 @@ export function CompanyWalletProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const refreshWallet = useCallback(async () => {
+  const isFetchingRef = useRef(false);
+  const lastFetchedRef = useRef(0);
+  const userRef = useRef(null);
+
+  // Stable empty dependency array [] prevents infinite re-render loops
+  const refreshWallet = useCallback(async (force = false) => {
     if (typeof window === 'undefined') return;
     if (!isOwnerSessionValid()) {
       setLoading(false);
       return;
     }
+
+    const now = Date.now();
+    // Guard: Prevent rapid multiple calls within MIN_WALLET_CALL_GAP_MS
+    if (now - lastFetchedRef.current < MIN_WALLET_CALL_GAP_MS) {
+      return;
+    }
+
+    // Prevent concurrent in-flight requests
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
 
     try {
       const res = await api.getDashboard();
@@ -39,29 +56,35 @@ export function CompanyWalletProvider({ children }) {
         setBalance(Number(bal));
       }
 
-      // Always ensure user profile is fresh
-      const meRes = await api.me().catch(() => null);
-      if (meRes?.user) {
-        setUser(prev => {
-          const merged = { ...(prev || {}), ...meRes.user };
-          try { localStorage.setItem('owner_user', JSON.stringify(merged)); } catch (e) {}
-          return merged;
-        });
-        if (meRes.user.companyCode) setCompanyCode(meRes.user.companyCode);
+      // Ensure user profile is fresh if not loaded yet
+      if (!userRef.current) {
+        const meRes = await api.me().catch(() => null);
+        if (meRes?.user) {
+          userRef.current = meRes.user;
+          setUser(prev => {
+            const merged = { ...(prev || {}), ...meRes.user };
+            try { localStorage.setItem('owner_user', JSON.stringify(merged)); } catch (e) {}
+            return merged;
+          });
+          if (meRes.user.companyCode) setCompanyCode(meRes.user.companyCode);
+        }
       }
 
+      lastFetchedRef.current = Date.now();
       setError(null);
     } catch (err) {
       console.warn('Company wallet refresh error:', err);
       setError(err.message);
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
     }
-  }, []);
+  }, []); // Stable empty dependency array
 
   const updateUser = useCallback((partialUser) => {
     setUser(prev => {
       const updated = { ...(prev || {}), ...partialUser };
+      userRef.current = updated;
       try {
         localStorage.setItem('owner_user', JSON.stringify(updated));
       } catch (e) {}
@@ -73,36 +96,40 @@ export function CompanyWalletProvider({ children }) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem('owner_user');
-      if (raw) setUser(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setUser(parsed);
+        userRef.current = parsed;
+      }
     } catch (e) {}
 
-    refreshWallet();
+    // Initial fetch ONLY once on mount / login
+    refreshWallet(true);
 
-    const handleUpdate = () => refreshWallet();
+    // Subsequent updates happen strictly on explicit events (funds added, etc.)
+    const handleUpdate = () => refreshWallet(true);
     const handleUserUpdate = () => {
       try {
         const raw = localStorage.getItem('owner_user');
-        if (raw) setUser(JSON.parse(raw));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setUser(parsed);
+          userRef.current = parsed;
+        }
       } catch (e) {}
     };
 
     window.addEventListener('company-wallet-updated', handleUpdate);
     window.addEventListener('company-user-updated', handleUserUpdate);
-    window.addEventListener('focus', handleUpdate);
-
-    const interval = setInterval(refreshWallet, 30000);
 
     return () => {
       window.removeEventListener('company-wallet-updated', handleUpdate);
       window.removeEventListener('company-user-updated', handleUserUpdate);
-      window.removeEventListener('focus', handleUpdate);
-      clearInterval(interval);
     };
   }, [refreshWallet]);
 
   const setLocalBalance = useCallback((newBal) => {
     setBalance(Number(newBal));
-    window.dispatchEvent(new Event('company-wallet-updated'));
   }, []);
 
   return (
@@ -113,7 +140,7 @@ export function CompanyWalletProvider({ children }) {
       user,
       loading,
       error,
-      refreshWallet,
+      refreshWallet: () => refreshWallet(true),
       setLocalBalance,
       updateUser
     }}>

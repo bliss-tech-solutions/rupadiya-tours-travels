@@ -63,13 +63,13 @@ export default function DocumentViewerModal({
         {/* Top Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/90 bg-slate-50/50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center border border-blue-200/60 font-black">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center border border-blue-200/60 font-bold">
               <FileText className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black text-slate-900">{getDocLabel(documentType)}</h3>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                <h3 className="text-sm font-bold text-slate-900">{getDocLabel(documentType)}</h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                   status === 'VERIFIED'
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                     : status === 'REJECTED'

@@ -88,14 +88,64 @@ const TOTAL_BUS_SEATS = 40;
 
 const HUB_CITY = { id: 'rupadiya', name: 'Rupadiya', state: 'Uttar Pradesh', code: 'RUP' };
 
-const SPOKE_CITIES = [
-  { id: 'ahmedabad', name: 'Ahmedabad', state: 'Gujarat', code: 'AMD' },
-  { id: 'vadodara', name: 'Vadodara', state: 'Gujarat', code: 'BDQ' },
-  { id: 'surat', name: 'Surat', state: 'Gujarat', code: 'ST' },
-  { id: 'bangalore', name: 'Bengaluru', state: 'Karnataka', code: 'BLR' },
-  { id: 'hyderabad', name: 'Hyderabad', state: 'Telangana', code: 'HYD' },
-  { id: 'mumbai', name: 'Mumbai', state: 'Maharashtra', code: 'BOM' }
+/**
+ * 4 Corridors & 16 Spoke Cities grouped by regional routes
+ */
+const ROUTE_GROUPS = [
+  {
+    id: 'route-1-gujarat',
+    name: 'Route 1 - Gujarat',
+    cities: [
+      { id: 'himatnagar', name: 'Himatnagar', state: 'Gujarat', code: 'HMT', baseFare: 1500, duration: '20h', distanceKm: 1150 },
+      { id: 'ahmedabad', name: 'Ahmedabad', state: 'Gujarat', code: 'AMD', baseFare: 1650, duration: '21h', distanceKm: 1250 },
+      { id: 'baroda', name: 'Baroda', alias: ['vadodara', 'bdq'], state: 'Gujarat', code: 'BDQ', baseFare: 1550, duration: '20h', distanceKm: 1180 },
+      { id: 'ankleshwar', name: 'Ankleshwar', state: 'Gujarat', code: 'AKV', baseFare: 1650, duration: '21h 30m', distanceKm: 1260 },
+      { id: 'surat', name: 'Surat', state: 'Gujarat', code: 'ST', baseFare: 1750, duration: '22h 30m', distanceKm: 1320 },
+      { id: 'vapi', name: 'Vapi', state: 'Gujarat', code: 'VAPI', baseFare: 1850, duration: '24h', distanceKm: 1420 }
+    ]
+  },
+  {
+    id: 'route-2-saurashtra',
+    name: 'Route 2 - Saurashtra',
+    cities: [
+      { id: 'ambli-bopal', name: 'Ambli Bopal', alias: ['ambli bopal', 'amblibopal', 'bopal'], state: 'Gujarat', code: 'BPL', baseFare: 1680, duration: '21h 15m', distanceKm: 1255 },
+      { id: 'chotila', name: 'Chotila', state: 'Gujarat', code: 'CTL', baseFare: 1800, duration: '23h', distanceKm: 1380 },
+      { id: 'rajkot', name: 'Rajkot', state: 'Gujarat', code: 'RJT', baseFare: 1900, duration: '24h 30m', distanceKm: 1440 },
+      { id: 'jamnagar', name: 'Jamnagar', state: 'Gujarat', code: 'JMN', baseFare: 2050, duration: '26h', distanceKm: 1520 }
+    ]
+  },
+  {
+    id: 'route-3-south',
+    name: 'Route 3 - South',
+    cities: [
+      { id: 'hyderabad', name: 'Hyderabad', state: 'Telangana', code: 'HYD', baseFare: 2150, duration: '28h', distanceKm: 1450 },
+      { id: 'bangalore', name: 'Bangalore', alias: ['bengaluru', 'blr'], state: 'Karnataka', code: 'BLR', baseFare: 2400, duration: '32h', distanceKm: 1820 }
+    ]
+  },
+  {
+    id: 'route-4-maharashtra-goa',
+    name: 'Route 4 - Maharashtra / Goa',
+    cities: [
+      { id: 'nashik', name: 'Nashik', state: 'Maharashtra', code: 'NSK', baseFare: 1800, duration: '22h', distanceKm: 1280 },
+      { id: 'mumbai', name: 'Mumbai', alias: ['bombay', 'bom'], state: 'Maharashtra', code: 'BOM', baseFare: 1950, duration: '25h', distanceKm: 1420 },
+      { id: 'pune', name: 'Pune', state: 'Maharashtra', code: 'PUN', baseFare: 2050, duration: '26h 30m', distanceKm: 1500 },
+      { id: 'goa', name: 'Goa', alias: ['panaji', 'madgaon'], state: 'Goa', code: 'GOA', baseFare: 2500, duration: '33h', distanceKm: 1890 }
+    ]
+  }
 ];
+
+// Flattened spoke cities list
+const SPOKE_CITIES = ROUTE_GROUPS.flatMap(g => g.cities.map(c => ({
+  id: c.id,
+  name: c.name,
+  state: c.state,
+  code: c.code,
+  baseFare: c.baseFare,
+  duration: c.duration,
+  distanceKm: c.distanceKm,
+  routeGroupId: g.id,
+  routeName: g.name
+})));
 
 const CITIES = [HUB_CITY, ...SPOKE_CITIES];
 
@@ -103,14 +153,35 @@ const SPOKE_IDS = SPOKE_CITIES.map(c => c.id);
 
 function normalizeCityId(input) {
   if (!input) return '';
-  const lower = input.toString().trim().toLowerCase();
-  if (lower === 'rupadiya' || lower === 'rup') return 'rupadiya';
-  if (lower === 'bengaluru' || lower === 'bangalore' || lower === 'blr') return 'bangalore';
+  const lower = input.toString().trim().toLowerCase().replace(/[()]/g, '').trim();
+
+  // Hub aliases
+  if (lower === 'rupadiya' || lower === 'rup' || lower.includes('rupadiya')) return 'rupadiya';
+
+  // Route 1 - Gujarat
+  if (lower === 'himatnagar' || lower === 'hmt') return 'himatnagar';
   if (lower === 'ahmedabad' || lower === 'amd') return 'ahmedabad';
-  if (lower === 'vadodara' || lower === 'baroda' || lower === 'bdq') return 'vadodara';
+  if (lower === 'baroda' || lower === 'vadodara' || lower === 'bdq') return 'baroda';
+  if (lower === 'ankleshwar' || lower === 'akv') return 'ankleshwar';
   if (lower === 'surat' || lower === 'st') return 'surat';
+  if (lower === 'vapi') return 'vapi';
+
+  // Route 2 - Saurashtra
+  if (lower === 'ambli bopal' || lower === 'ambli-bopal' || lower === 'amblibopal' || lower === 'bopal') return 'ambli-bopal';
+  if (lower === 'chotila' || lower === 'ctl') return 'chotila';
+  if (lower === 'rajkot' || lower === 'rjt') return 'rajkot';
+  if (lower === 'jamnagar' || lower === 'jmn') return 'jamnagar';
+
+  // Route 3 - South
   if (lower === 'hyderabad' || lower === 'hyd') return 'hyderabad';
+  if (lower === 'bengaluru' || lower === 'bangalore' || lower === 'blr') return 'bangalore';
+
+  // Route 4 - Maharashtra / Goa
+  if (lower === 'nashik' || lower === 'nsk') return 'nashik';
   if (lower === 'mumbai' || lower === 'bombay' || lower === 'bom') return 'mumbai';
+  if (lower === 'pune' || lower === 'pun') return 'pune';
+  if (lower === 'goa' || lower === 'panaji' || lower === 'madgaon') return 'goa';
+
   return lower;
 }
 
@@ -118,47 +189,48 @@ function isValidCorridor(fromId, toId) {
   if (!fromId || !toId) return false;
   const f = normalizeCityId(fromId);
   const t = normalizeCityId(toId);
-  if (f === 'rupadiya' && SPOKE_IDS.includes(t)) return true;
-  if (SPOKE_IDS.includes(f) && t === 'rupadiya') return true;
+  if (f === 'rupadiya' && (SPOKE_IDS.includes(t) || t === 'vadodara')) return true;
+  if ((SPOKE_IDS.includes(f) || f === 'vadodara') && t === 'rupadiya') return true;
   return false;
 }
 
-// Pre-defined 34 Fixed Passenger Ranking Franchise Companies (Ranks 1 to 34)
+// 35 Fixed Passenger Ranking Franchise Companies (Ranks 1 to 35) with Share Capital 
 const FIXED_COMPANY_SPECS = [
-  { rank: 1, code: 1, shortCode: 'Ntt', defaultName: 'Ntt Travels & Logistics', slug: 'ntt' },
-  { rank: 2, code: 2, shortCode: 'Stt', defaultName: 'Stt Express', slug: 'stt' },
-  { rank: 3, code: 3, shortCode: 'Mtt', defaultName: 'Mtt Transporters', slug: 'mtt' },
-  { rank: 4, code: 4, shortCode: 'Bdtt', defaultName: 'Bdtt Roadlines', slug: 'bdtt' },
-  { rank: 5, code: 5, shortCode: 'Jbltt', defaultName: 'Jbltt Travels', slug: 'jbltt' },
-  { rank: 6, code: 6, shortCode: 'Dtt', defaultName: 'Dtt Express', slug: 'dtt' },
-  { rank: 7, code: 7, shortCode: 'Ptt', defaultName: 'Ptt Transporters', slug: 'ptt' },
-  { rank: 8, code: 8, shortCode: 'Skt', defaultName: 'Skt Travels', slug: 'skt' },
-  { rank: 9, code: 9, shortCode: 'Mhtt', defaultName: 'Mhtt Roadlines', slug: 'mhtt' },
-  { rank: 10, code: 10, shortCode: 'Blt', defaultName: 'Blt Express', slug: 'blt' },
-  { rank: 11, code: 11, shortCode: 'Mkltt', defaultName: 'Mkltt Travels', slug: 'mkltt' },
-  { rank: 12, code: 12, shortCode: 'Srm', defaultName: 'Srm Transporters', slug: 'srm' },
-  { rank: 13, code: 13, shortCode: 'Slntt', defaultName: 'Slntt Roadlines', slug: 'slntt' },
-  { rank: 14, code: 14, shortCode: 'Up', defaultName: 'Up Express', slug: 'up' },
-  { rank: 15, code: 15, shortCode: 'Ram', defaultName: 'Ram Travels', slug: 'ram' },
-  { rank: 16, code: 16, shortCode: 'Sbltt', defaultName: 'Sbltt Roadlines', slug: 'sbltt' },
-  { rank: 17, code: 17, shortCode: 'Att', defaultName: 'Att Express', slug: 'att' },
-  { rank: 18, code: 18, shortCode: 'Manv', defaultName: 'Manv Travels', slug: 'manv' },
-  { rank: 19, code: 19, shortCode: 'Rstt', defaultName: 'Rstt Transporters', slug: 'rstt' },
-  { rank: 20, code: 20, shortCode: 'Vapi', defaultName: 'Vapi Express', slug: 'vapi' },
-  { rank: 21, code: 21, shortCode: 'Btt', defaultName: 'Btt Roadlines', slug: 'btt' },
-  { rank: 22, code: 22, shortCode: 'Rntt', defaultName: 'Rntt Travels', slug: 'rntt' },
-  { rank: 23, code: 23, shortCode: 'KKt', defaultName: 'KKt Express', slug: 'kkt' },
-  { rank: 24, code: 24, shortCode: 'Kgtt', defaultName: 'Kgtt Roadlines', slug: 'kgtt' },
-  { rank: 25, code: 25, shortCode: 'ASST', defaultName: 'ASST Travels', slug: 'asst' },
-  { rank: 26, code: 26, shortCode: 'Lord', defaultName: 'Lord Express', slug: 'lord' },
-  { rank: 27, code: 27, shortCode: 'BSST', defaultName: 'BSST Transporters', slug: 'bsst' },
-  { rank: 28, code: 28, shortCode: 'Jktt', defaultName: 'Jktt Roadlines', slug: 'jktt' },
-  { rank: 29, code: 29, shortCode: 'RRt', defaultName: 'RRt Travels', slug: 'rrt' },
-  { rank: 30, code: 30, shortCode: 'Msn', defaultName: 'Msn Express', slug: 'msn' },
-  { rank: 31, code: 31, shortCode: 'Hktt', defaultName: 'Hktt Roadlines', slug: 'hktt' },
-  { rank: 32, code: 32, shortCode: 'Jsrm', defaultName: 'Jsrm Travels', slug: 'jsrm' },
-  { rank: 33, code: 33, shortCode: 'Kltt', defaultName: 'Kltt Express', slug: 'kltt' },
-  { rank: 34, code: 34, shortCode: 'Ott', defaultName: 'Ott Roadlines', slug: 'ott' }
+  { rank: 1, code: 1, shortCode: 'BDTT', defaultName: 'Bageshwari Darshan Tours and Travels', shareCapital: 650000, slug: 'bdtt' },
+  { rank: 2, code: 2, shortCode: 'BTT', defaultName: 'Baijnath Tours and Travels', shareCapital: 215000, slug: 'btt' },
+  { rank: 3, code: 3, shortCode: 'PDTT', defaultName: 'Pashupati Darshan Tours and Travels', shareCapital: 650000, slug: 'pdtt' },
+  { rank: 4, code: 4, shortCode: 'JBLTT', defaultName: 'Jai Balaji Tours and Travels', shareCapital: 408000, slug: 'jbltt' },
+  { rank: 5, code: 5, shortCode: 'JKTT', defaultName: 'Jai Krishna Tours and Travels', shareCapital: 160000, slug: 'jktt' },
+  { rank: 6, code: 6, shortCode: 'KKTT', defaultName: 'Kalika Karnali Tours and Travels', shareCapital: 134250, slug: 'kktt' },
+  { rank: 7, code: 7, shortCode: 'LSTT', defaultName: 'Lord Siddhartha Tours and Travels', shareCapital: 172500, slug: 'lstt' },
+  { rank: 8, code: 8, shortCode: 'MNTT', defaultName: 'Manav Tours and Travels', shareCapital: 200000, slug: 'mntt' },
+  { rank: 9, code: 9, shortCode: 'MHTT', defaultName: 'Mahabu Tours and Travels', shareCapital: 212500, slug: 'mhtt' },
+  { rank: 10, code: 10, shortCode: 'MTR', defaultName: 'Malika Tours and Travels', shareCapital: 550000, slug: 'mtr' },
+  { rank: 11, code: 11, shortCode: 'NTT', defaultName: 'Nepalgunj Tours and Travels', shareCapital: 650000, slug: 'ntt' },
+  { rank: 12, code: 12, shortCode: 'PTT', defaultName: 'Panchakoshi Tours and Travels', shareCapital: 470000, slug: 'ptt' },
+  { rank: 13, code: 13, shortCode: 'DLTT', defaultName: 'Dailekhi Tours and Travels', shareCapital: 171000, slug: 'dltt' },
+  { rank: 14, code: 14, shortCode: 'SBLTT', defaultName: 'Shubha Bhagya Laxmi Tours and Travels', shareCapital: 153000, slug: 'sbltt' },
+  { rank: 15, code: 15, shortCode: 'SSTT', defaultName: 'Surkhet Tours and Travels', shareCapital: 500000, slug: 'sstt' },
+  { rank: 16, code: 16, shortCode: 'SRTT', defaultName: 'Shri Ram Tours and Travels', shareCapital: 190000, slug: 'srtt' },
+  { rank: 17, code: 17, shortCode: 'STT', defaultName: 'Simtali Tours and Travels', shareCapital: 650000, slug: 'stt' },
+  { rank: 18, code: 18, shortCode: 'VTT', defaultName: 'Vapi Tours and Travels', shareCapital: 250000, slug: 'vtt' },
+  { rank: 19, code: 19, shortCode: 'ATT', defaultName: 'Aman Tours and Travels', shareCapital: 300000, slug: 'att' },
+  { rank: 20, code: 20, shortCode: 'BLTT', defaultName: 'Bhagya Laxmi Tours and Travels', shareCapital: 340000, slug: 'bltt' },
+  { rank: 21, code: 21, shortCode: 'MKTT', defaultName: 'Mahakailash Tours and Travels', shareCapital: 421000, slug: 'mktt' },
+  { rank: 22, code: 22, shortCode: 'KGTT', defaultName: 'Karnali Gaurav Tours and Travels', shareCapital: 105500, slug: 'kgtt' },
+  { rank: 23, code: 23, shortCode: 'RRTT', defaultName: 'Radhe Radhe Tours and Travels', shareCapital: 64500, slug: 'rrtt' },
+  { rank: 24, code: 24, shortCode: 'RSTT', defaultName: 'Royal Simtali Tours and Travels', shareCapital: 200000, slug: 'rstt' },
+  { rank: 25, code: 25, shortCode: 'SLTT', defaultName: 'Salyani Tours and Travels', shareCapital: 250000, slug: 'sltt' },
+  { rank: 26, code: 26, shortCode: 'SSHKTT', defaultName: 'Shiva Shakti Tours and Travels', shareCapital: 390000, slug: 'sshkt' },
+  { rank: 27, code: 27, shortCode: 'HKTT', defaultName: 'Hamro Karnali Tours and Travels', shareCapital: 130000, slug: 'hktt' },
+  { rank: 28, code: 28, shortCode: 'OTT', defaultName: 'Omika Tours and Travels', shareCapital: 90000, slug: 'ott' },
+  { rank: 29, code: 29, shortCode: 'KDTT', defaultName: 'Kailash Darshan Tours and Travels', shareCapital: 75000, slug: 'kdtt' },
+  { rank: 30, code: 30, shortCode: 'RNTT', defaultName: 'Royal Naumule Tours and Travels', shareCapital: 252000, slug: 'rntt' },
+  { rank: 31, code: 31, shortCode: 'SRDTT', defaultName: 'Jai Shriram Darshan Tours and Travels', shareCapital: 30300, slug: 'srdtt' },
+  { rank: 32, code: 32, shortCode: 'NHS', defaultName: 'Mahasangh Transport', shareCapital: 140000, slug: 'nhs' },
+  { rank: 33, code: 33, shortCode: 'GENG', defaultName: 'Narayan Bhandari Logistics', shareCapital: 35000, slug: 'geng' },
+  { rank: 34, code: 34, shortCode: 'FTT', defaultName: 'Vishnu Sharma Travels', shareCapital: 30000, slug: 'ftt' },
+  { rank: 35, code: 35, shortCode: 'HBG', defaultName: 'Vishnu Khatri (HBG) Transport', shareCapital: 30000, slug: 'hbg' }
 ];
 
 const COMPANY_CODES = FIXED_COMPANY_SPECS.map(spec => ({
@@ -166,6 +238,7 @@ const COMPANY_CODES = FIXED_COMPANY_SPECS.map(spec => ({
   code: spec.code,
   shortCode: spec.shortCode,
   defaultName: spec.defaultName,
+  shareCapital: spec.shareCapital,
   slug: spec.slug
 }));
 
@@ -188,6 +261,7 @@ module.exports = {
   MINIMUM_DEPOSIT_AMOUNT,
   TOTAL_BUS_SEATS,
   HUB_CITY,
+  ROUTE_GROUPS,
   SPOKE_CITIES,
   SPOKE_IDS,
   CITIES,
@@ -196,4 +270,3 @@ module.exports = {
   COMPANY_CODES,
   FIXED_COMPANY_SPECS
 };
-
