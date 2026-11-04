@@ -28,16 +28,38 @@ router.get('/dashboard', async (req, res, next) => {
     const totalAgents = await User.countDocuments({ role: ROLES.AGENT });
     const totalBuses = await Bus.countDocuments({ status: 'ACTIVE' });
     const totalTrips = await Trip.countDocuments();
-    const confirmedBookings = await Booking.find({ status: 'CONFIRMED' });
+    const [bookingAgg] = await Booking.aggregate([
+      { $match: { status: 'CONFIRMED' } },
+      {
+        $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          totalSeatsBooked: { $sum: { $size: { $ifNull: ['$seatNumbers', []] } } },
+          totalGMV: { $sum: { $ifNull: ['$fareBreakdown.totalPayable', 0] } },
+          totalGSTCollected: { $sum: { $ifNull: ['$fareBreakdown.gstAmount', 0] } }
+        }
+      }
+    ]);
 
-    const totalGMV = confirmedBookings.reduce((sum, b) => sum + b.fareBreakdown.totalPayable, 0);
-    const totalSeatsBooked = confirmedBookings.reduce((sum, b) => sum + b.seatNumbers.length, 0);
-    const totalGSTCollected = confirmedBookings.reduce((sum, b) => sum + b.fareBreakdown.gstAmount, 0);
+    const totalBookings = bookingAgg ? bookingAgg.totalBookings : 0;
+    const totalSeatsBooked = bookingAgg ? bookingAgg.totalSeatsBooked : 0;
+    const totalGMV = bookingAgg ? bookingAgg.totalGMV : 0;
+    const totalGSTCollected = bookingAgg ? bookingAgg.totalGSTCollected : 0;
 
     const pendingKycCount = await KycDocument.countDocuments({ status: KYC_STATUS.PENDING });
-    const pendingRefunds = await Refund.find({ status: REFUND_STATUS.PENDING });
-    const pendingRefundsCount = pendingRefunds.length;
-    const pendingRefundsAmount = pendingRefunds.reduce((sum, r) => sum + (r.refundAmount || 0), 0);
+    const [refundAgg] = await Refund.aggregate([
+      { $match: { status: REFUND_STATUS.PENDING } },
+      {
+        $group: {
+          _id: null,
+          pendingRefundsCount: { $sum: 1 },
+          pendingRefundsAmount: { $sum: { $ifNull: ['$refundAmount', 0] } }
+        }
+      }
+    ]);
+
+    const pendingRefundsCount = refundAgg ? refundAgg.pendingRefundsCount : 0;
+    const pendingRefundsAmount = refundAgg ? refundAgg.pendingRefundsAmount : 0;
 
     res.json({
       success: true,
@@ -46,7 +68,7 @@ router.get('/dashboard', async (req, res, next) => {
         totalAgents,
         totalBuses,
         totalTrips,
-        totalBookings: confirmedBookings.length,
+        totalBookings,
         totalSeatsBooked,
         totalGMV,
         totalGSTCollected,

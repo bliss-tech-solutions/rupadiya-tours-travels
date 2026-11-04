@@ -34,9 +34,18 @@ router.get('/dashboard', async (req, res, next) => {
       status: WITHDRAWAL_STATUS.PENDING
     });
 
-    const bookings = await Booking.find({ companyCode: code, status: 'CONFIRMED' });
-    const totalPassengers = bookings.reduce((sum, b) => sum + b.seatNumbers.length, 0);
-    const totalRevenue = bookings.reduce((sum, b) => sum + b.fareBreakdown.totalPayable, 0);
+    const [bookingStats] = await Booking.aggregate([
+      { $match: { companyCode: code, status: 'CONFIRMED' } },
+      {
+        $group: {
+          _id: null,
+          totalPassengers: { $sum: { $size: { $ifNull: ['$seatNumbers', []] } } },
+          totalRevenue: { $sum: { $ifNull: ['$fareBreakdown.totalPayable', 0] } }
+        }
+      }
+    ]);
+    const totalPassengers = bookingStats ? bookingStats.totalPassengers : 0;
+    const totalRevenue = bookingStats ? bookingStats.totalRevenue : 0;
 
     // Company wallet
     let companyWallet = await Wallet.findOne({ companyCode: code, userId: req.user._id });
@@ -639,19 +648,35 @@ router.get('/withdrawals', async (req, res, next) => {
   try {
     const code = req.user.companyCode;
     const withdrawals = await WithdrawalRequest.find({ companyCode: code })
-      .populate('agentId', 'name email phone referralCode bankDetails')
+      .populate('agentId', 'name email phone referralCode bankDetails agencyName kycStatus')
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, count: withdrawals.length, withdrawals });
+    const pendingCount = withdrawals.filter(w => w.status === WITHDRAWAL_STATUS.PENDING).length;
+    const approvedCount = withdrawals.filter(w => w.status === WITHDRAWAL_STATUS.APPROVED).length;
+    const approvedSum = withdrawals
+      .filter(w => w.status === WITHDRAWAL_STATUS.APPROVED)
+      .reduce((sum, w) => sum + w.amount, 0);
+
+    res.json({
+      success: true,
+      count: withdrawals.length,
+      withdrawals,
+      stats: {
+        pendingCount,
+        approvedCount,
+        approvedSum
+      }
+    });
   } catch (err) {
     next(err);
   }
 });
 
-// Approve Withdrawal Request
+// Approve Withdrawal Request & Disburse to Agent's Bank Account
 router.post('/withdrawals/:id/approve', async (req, res, next) => {
   try {
     const code = req.user.companyCode;
+    const { utrNumber, notes } = req.body;
     const withdrawal = await WithdrawalRequest.findOne({ _id: req.params.id, companyCode: code });
 
     if (!withdrawal) {
@@ -660,6 +685,16 @@ router.post('/withdrawals/:id/approve', async (req, res, next) => {
     if (withdrawal.status !== WITHDRAWAL_STATUS.PENDING) {
       return res.status(400).json({ error: `Request cannot be approved; current status is ${withdrawal.status}` });
     }
+
+    // Generate or format unique banking UTR reference
+    const finalUtr = (utrNumber && utrNumber.trim()) 
+      ? utrNumber.trim().toUpperCase() 
+      : `UTR${Date.now()}${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const paymentRef = `PAY_DISB_${Date.now()}`;
+    const destinationDesc = withdrawal.payoutDetails?.method === 'upi'
+      ? `UPI ID ${withdrawal.payoutDetails.upiId}`
+      : `${withdrawal.payoutDetails?.bankName || 'Bank'} A/C ${withdrawal.payoutDetails?.accountNumberMasked || '****'}`;
 
     // Deduct from agent's reservedBalance
     const agentWallet = await Wallet.findOne({ userId: withdrawal.agentId });
@@ -679,19 +714,41 @@ router.post('/withdrawals/:id/approve', async (req, res, next) => {
         transactionType: TRANSACTION_TYPES.WITHDRAWAL_SETTLED,
         referenceType: 'WITHDRAWAL',
         referenceId: withdrawal._id.toString(),
-        description: `Withdrawal payout of ₹${withdrawal.amount} approved and settled by Company Owner`,
+        description: `Withdrawal payout of ₹${withdrawal.amount.toLocaleString('en-IN')} approved and disbursed to ${destinationDesc} (UTR: ${finalUtr})`,
         idempotencyKey
       });
     }
 
     withdrawal.status = WITHDRAWAL_STATUS.APPROVED;
+    withdrawal.utrNumber = finalUtr;
+    withdrawal.paymentReference = paymentRef;
+    withdrawal.disbursedAt = new Date();
     withdrawal.reviewedBy = req.user._id;
     withdrawal.reviewedAt = new Date();
+    withdrawal.notes = notes || 'Disbursed to agent bank account via IMPS/NEFT';
     await withdrawal.save();
+
+    // Broadcast Realtime WebSocket notification to agent & company
+    try {
+      websocketService.broadcast(`agent:${withdrawal.agentId}`, 'WITHDRAWAL_APPROVED', {
+        withdrawalId: withdrawal._id,
+        amount: withdrawal.amount,
+        utrNumber: finalUtr,
+        destination: destinationDesc,
+        approvedAt: withdrawal.reviewedAt
+      });
+      websocketService.broadcast(`company:${code}`, 'WITHDRAWAL_STATUS_CHANGED', {
+        withdrawalId: withdrawal._id,
+        status: WITHDRAWAL_STATUS.APPROVED,
+        amount: withdrawal.amount
+      });
+    } catch (wsErr) {
+      console.warn('[Withdrawal Approval WS Warning]', wsErr);
+    }
 
     res.json({
       success: true,
-      message: `Withdrawal request for ₹${withdrawal.amount} approved successfully.`,
+      message: `Withdrawal request for ₹${withdrawal.amount.toLocaleString('en-IN')} successfully approved. Payout disbursed to ${destinationDesc} (UTR: ${finalUtr}).`,
       withdrawal
     });
   } catch (err) {
@@ -699,7 +756,7 @@ router.post('/withdrawals/:id/approve', async (req, res, next) => {
   }
 });
 
-// Reject Withdrawal Request
+// Reject Withdrawal Request & Refund Escrowed Balance back to Agent
 router.post('/withdrawals/:id/reject', async (req, res, next) => {
   try {
     const code = req.user.companyCode;
@@ -712,6 +769,8 @@ router.post('/withdrawals/:id/reject', async (req, res, next) => {
     if (withdrawal.status !== WITHDRAWAL_STATUS.PENDING) {
       return res.status(400).json({ error: `Request cannot be rejected; current status is ${withdrawal.status}` });
     }
+
+    const rejectionReason = (reason && reason.trim()) ? reason.trim() : 'Bank details mismatched or pending compliance check';
 
     // Return funds from reservedBalance back to availableBalance
     const agentWallet = await Wallet.findOne({ userId: withdrawal.agentId });
@@ -731,16 +790,32 @@ router.post('/withdrawals/:id/reject', async (req, res, next) => {
         transactionType: TRANSACTION_TYPES.WITHDRAWAL_REJECTED_REFUND,
         referenceType: 'WITHDRAWAL',
         referenceId: withdrawal._id.toString(),
-        description: `Refund of ₹${withdrawal.amount} reserved balance due to rejection: ${reason || 'Details mismatched'}`,
+        description: `Refund of ₹${withdrawal.amount.toLocaleString('en-IN')} held funds due to rejection: ${rejectionReason}`,
         idempotencyKey
       });
     }
 
     withdrawal.status = WITHDRAWAL_STATUS.REJECTED;
-    withdrawal.rejectionReason = reason || 'Bank or KYC verification details mismatched';
+    withdrawal.rejectionReason = rejectionReason;
     withdrawal.reviewedBy = req.user._id;
     withdrawal.reviewedAt = new Date();
     await withdrawal.save();
+
+    // Broadcast Realtime WebSocket notification to agent & company
+    try {
+      websocketService.broadcast(`agent:${withdrawal.agentId}`, 'WITHDRAWAL_REJECTED', {
+        withdrawalId: withdrawal._id,
+        amount: withdrawal.amount,
+        reason: rejectionReason
+      });
+      websocketService.broadcast(`company:${code}`, 'WITHDRAWAL_STATUS_CHANGED', {
+        withdrawalId: withdrawal._id,
+        status: WITHDRAWAL_STATUS.REJECTED,
+        amount: withdrawal.amount
+      });
+    } catch (wsErr) {
+      console.warn('[Withdrawal Rejection WS Warning]', wsErr);
+    }
 
     res.json({
       success: true,

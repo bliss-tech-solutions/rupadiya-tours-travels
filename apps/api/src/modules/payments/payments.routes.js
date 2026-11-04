@@ -43,11 +43,48 @@ router.post('/create-order', paymentLimiter, async (req, res, next) => {
       notes = {}
     } = req.body;
 
-    const resolvedUserId = user?.id || user?._id || user?.userId || req.body.userId || metadata?.userId || null;
-    const resolvedCompanyCode = user?.companyCode || req.body.companyCode || metadata?.companyCode || 1;
+    // Security Gate 1: Wallet deposits strictly require authenticated session
+    if (purpose === 'WALLET_DEPOSIT' || purpose === 'COMPANY_WALLET_DEPOSIT') {
+      if (!user) {
+        return res.status(401).json({
+          error: 'Authentication required. Only authenticated agents or owners can create wallet reload orders.'
+        });
+      }
+    }
+
+    const resolvedUserId = user?.id || user?._id || user?.userId || null;
+    const resolvedCompanyCode = user?.companyCode || metadata?.companyCode || 1;
+
+    // Security Gate 2: Ignore client-supplied amount for ticket bookings if holdToken is provided;
+    // calculate exact server-side quote to prevent client price-tampering
+    let finalAmount = Number(amount);
+    if (purpose === 'TICKET_BOOKING' && (metadata?.holdToken || metadata?.holdId)) {
+      try {
+        const holdStore = require('../../config/holdStore');
+        const token = metadata.holdToken || metadata.holdId;
+        const hold = await holdStore.getHold(token);
+        if (hold && hold.tripId && hold.seatNumbers) {
+          const bookingService = require('../bookings/booking.service');
+          const quote = await bookingService.calculateQuote({
+            tripId: hold.tripId,
+            seatNumbers: hold.seatNumbers,
+            insuranceOpted: Boolean(metadata.insuranceOpted)
+          });
+          if (quote && quote.totalPayable) {
+            finalAmount = quote.totalPayable;
+          }
+        }
+      } catch (quoteErr) {
+        console.warn('[Server Quote Verification Note]', quoteErr.message);
+      }
+    }
+
+    if (!finalAmount || isNaN(finalAmount) || finalAmount < 1) {
+      return res.status(400).json({ error: 'Valid payment amount is required.' });
+    }
 
     const orderResult = await paymentService.createOrder({
-      amount,
+      amount: finalAmount,
       currency,
       purpose,
       userId: resolvedUserId,
@@ -94,14 +131,15 @@ router.post('/verify', paymentLimiter, async (req, res, next) => {
   }
 });
 
-// Webhook listener
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res, next) => {
+// Webhook listener - receives gateway callbacks with preserved raw buffer
+router.post('/webhook', async (req, res, next) => {
   try {
     const signature = req.headers['x-razorpay-signature'];
-    const result = await paymentService.handleWebhook(req.body, signature);
+    const rawBuffer = req.rawBody || req.body;
+    const result = await paymentService.handleWebhook(rawBuffer, signature, req.body);
     res.json(result);
   } catch (err) {
-    console.error('Razorpay Webhook Error:', err);
+    console.error('[Razorpay Webhook Security Error]:', err.message);
     res.status(400).json({ error: err.message });
   }
 });

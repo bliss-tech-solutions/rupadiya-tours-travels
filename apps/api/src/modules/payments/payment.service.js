@@ -146,7 +146,10 @@ class PaymentService {
         .update(`${orderId}|${paymentId}`)
         .digest('hex');
 
-      if (expectedSignature !== signature) {
+      const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+      const sigBuf = Buffer.from(signature, 'utf8');
+
+      if (expectedBuf.length !== sigBuf.length || !crypto.timingSafeEqual(expectedBuf, sigBuf)) {
         payment.status = 'FAILED';
         payment.failureReason = 'Cryptographic HMAC signature mismatch';
         await payment.save();
@@ -233,18 +236,10 @@ class PaymentService {
 
     // A. AGENT / USER WALLET DEPOSIT
     if (payment.purpose === 'WALLET_DEPOSIT') {
-      let targetUserId = payment.userId || userId || payment.metadata?.userId || payment.notes?.userId;
-      if (!targetUserId && payment.companyCode) {
-        const User = require('../users/user.model');
-        const fallbackUser = await User.findOne({ companyCode: payment.companyCode, role: { $in: ['AGENT', 'COMPANY_OWNER'] } });
-        if (fallbackUser) targetUserId = fallbackUser._id;
-      }
+      let targetUserId = payment.userId || userId;
       if (!targetUserId) {
-        const User = require('../users/user.model');
-        const defaultAgent = await User.findOne({ role: 'AGENT' });
-        if (defaultAgent) targetUserId = defaultAgent._id;
+        throw new Error('Authenticated User ID is strictly required to credit wallet deposit.');
       }
-      if (!targetUserId) throw new Error('User ID required to credit wallet deposit.');
 
       let wallet = await Wallet.findOne({ userId: targetUserId });
       if (!wallet) {
@@ -412,21 +407,47 @@ class PaymentService {
   }
 
   /**
-   * 3. Handle asynchronous Razorpay Webhook events
+   * 3. Handle asynchronous Razorpay Webhook events with persistent idempotency and strict signature verification
    */
-  async handleWebhook(rawBody, signature) {
-    if (this.webhookSecret && signature) {
+  async handleWebhook(rawBody, signature, parsedBody = null) {
+    if (env.NODE_ENV === 'production' && !this.webhookSecret) {
+      throw new Error('[SECURITY FATAL] Razorpay webhook secret is unconfigured in production.');
+    }
+
+    if (this.webhookSecret) {
+      if (!signature) {
+        throw new Error('Razorpay webhook signature is required in production.');
+      }
+      const rawString = Buffer.isBuffer(rawBody) 
+        ? rawBody.toString('utf8') 
+        : (typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody));
+
       const expectedSignature = crypto
         .createHmac('sha256', this.webhookSecret)
-        .update(rawBody)
+        .update(rawString)
         .digest('hex');
 
-      if (expectedSignature !== signature) {
+      const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+      const sigBuf = Buffer.from(signature, 'utf8');
+
+      if (expectedBuf.length !== sigBuf.length || !crypto.timingSafeEqual(expectedBuf, sigBuf)) {
         throw new Error('Invalid Razorpay webhook signature');
       }
     }
 
-    const event = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;
+    const event = parsedBody || (Buffer.isBuffer(rawBody) 
+      ? JSON.parse(rawBody.toString('utf8')) 
+      : (typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody));
+
+    const eventId = event.id || `evt_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const WebhookEvent = require('./webhookEvent.model');
+
+    // Durable idempotency check: never process duplicate webhook event
+    const existing = await WebhookEvent.findOne({ eventId });
+    if (existing) {
+      return { status: 'ok', event: event.event, alreadyProcessed: true };
+    }
+
     const { event: eventType, payload } = event;
 
     if (eventType === 'payment.captured' || eventType === 'order.paid') {
@@ -438,7 +459,8 @@ class PaymentService {
         await this.verifyAndFulfill({
           orderId,
           paymentId,
-          signature: 'WEBHOOK_VERIFIED'
+          signature: 'WEBHOOK_VERIFIED',
+          gatewayEntity: paymentEntity
         });
       }
     } else if (eventType === 'payment.failed') {
@@ -450,6 +472,20 @@ class PaymentService {
           { status: 'FAILED', failureReason: paymentEntity.error_description || 'Gateway Payment Failed' }
         );
       }
+    }
+
+    // Persist processed webhook event for audit trail and idempotency
+    try {
+      await WebhookEvent.create({
+        eventId,
+        eventType,
+        orderId: payload.payment?.entity?.order_id || null,
+        paymentId: payload.payment?.entity?.id || null,
+        processed: true,
+        processedAt: new Date()
+      });
+    } catch (e) {
+      console.warn('[Webhook Event Persistence Warning]', e.message);
     }
 
     return { status: 'ok', event: eventType };

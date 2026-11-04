@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   PlusCircle,
+  ArrowDownToLine,
   History,
   ReceiptText,
   Printer,
@@ -52,6 +53,7 @@ export default function AgentSidebar({ isOpen, onClose }) {
     { label: 'Dashboard', href: '/', icon: LayoutDashboard },
     { label: 'Make Deposit', href: '/deposit', icon: PlusCircle },
     { label: 'Deposit History', href: '/deposit-history', icon: History },
+    { label: 'Withdraw Money', href: '/withdrawals', icon: ArrowDownToLine },
     { label: 'Statement', href: '/statement', icon: ReceiptText },
     { label: 'Print Ticket', href: '/print-ticket', icon: Printer },
     { label: 'Cancel Ticket', href: '/cancel-ticket', icon: XCircle },

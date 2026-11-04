@@ -255,17 +255,21 @@ export default function CompanyWithdrawalsPage() {
               <tbody className="divide-y divide-slate-100">
                 {paginated.map((w) => {
                   const agent = w.agentId || {};
-                  const bank = agent.bankDetails || {};
+                  const bank = w.payoutDetails || agent.bankDetails || {};
+                  const isUpi = (w.payoutDetails?.method || w.method || '').toLowerCase() === 'upi';
                   return (
                     <tr key={w._id} className="hover:bg-slate-50/80 transition">
                       <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap">
-                        {new Date(w.createdAt).toLocaleDateString('en-IN', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
+                        <div className="font-bold text-slate-900">
+                          {new Date(w.createdAt).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-400">
+                          {new Date(w.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900">{agent.name || 'Agent'}</div>
@@ -273,13 +277,23 @@ export default function CompanyWithdrawalsPage() {
                       </td>
                       <td className="py-3.5 px-4 text-slate-600">
                         <div className="font-semibold text-slate-800">
-                          {w.method === 'UPI' ? 'UPI Payout' : 'Bank Transfer'}
+                          {isUpi ? 'UPI Payout' : 'Bank Transfer (IMPS)'}
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono">
-                          {w.method === 'UPI'
+                          {isUpi
                             ? (bank.upiId || 'Direct UPI')
                             : `${bank.bankName || 'Bank'} · A/C: ${bank.accountNumberMasked || '****'}`}
                         </div>
+                        {bank.ifscCode && (
+                          <div className="text-[10px] font-mono text-slate-400">
+                            IFSC: {bank.ifscCode}
+                          </div>
+                        )}
+                        {w.utrNumber && (
+                          <div className="text-[10px] font-mono text-emerald-700 font-bold">
+                            UTR: {w.utrNumber}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right font-bold text-slate-900 text-sm">
                         ₹{Number(w.amount).toLocaleString('en-IN')}
@@ -444,11 +458,11 @@ export default function CompanyWithdrawalsPage() {
           cancelText="Cancel"
           loading={actionLoading}
           details={[
-            { label: 'Agent Name', value: approveModalData.userId?.name || 'Agent', highlight: true },
-            { label: 'Agency Reference', value: approveModalData.userId?.agencyName || approveModalData.userId?.referralCode || 'Direct Agent' },
+            { label: 'Agent Name', value: approveModalData.agentId?.name || approveModalData.userId?.name || 'Agent', highlight: true },
+            { label: 'Agency Reference', value: approveModalData.agentId?.agencyName || approveModalData.agentId?.referralCode || 'Direct Agent' },
             { label: 'Settlement Amount', value: `₹${Number(approveModalData.amount).toLocaleString('en-IN')}`, variant: 'success', highlight: true },
-            { label: 'Beneficiary Bank', value: approveModalData.bankDetails?.bankName || 'Direct Payout' },
-            { label: 'Account / UPI', value: approveModalData.bankDetails?.accountNumber || approveModalData.bankDetails?.upiId || 'On Record' }
+            { label: 'Beneficiary Bank', value: approveModalData.payoutDetails?.bankName || approveModalData.bankDetails?.bankName || approveModalData.agentId?.bankDetails?.bankName || 'Direct Payout' },
+            { label: 'Account / UPI', value: approveModalData.payoutDetails?.accountNumberMasked || approveModalData.payoutDetails?.upiId || approveModalData.bankDetails?.accountNumber || approveModalData.bankDetails?.upiId || 'On Record' }
           ]}
         />
       )}

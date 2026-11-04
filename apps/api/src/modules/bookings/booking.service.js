@@ -16,6 +16,7 @@ const { TRANSACTION_TYPES, SEAT_STATUS, BOOKING_STATUS, PAYMENT_STATUS, REFUND_S
 const dummyPayment = require('../../providers/payments/DummyPaymentProvider');
 const razorpayPayment = require('../../providers/payments/RazorpayProvider');
 const env = require('../../config/env');
+const { withTransaction } = require('../../utils/transaction');
 
 class BookingService {
   /**
@@ -225,7 +226,6 @@ class BookingService {
 
     // Ensure valid passengerId without requiring user login
     if (!passengerId) {
-      const User = require('../users/user.model');
       const email = (contactEmail || 'guest@rupadiya.test').toLowerCase();
       const cleanPhone = contactPhone ? contactPhone.replace(/\D/g, '') : null;
       let guestUser = await User.findOne({
@@ -246,25 +246,37 @@ class BookingService {
       passengerId = guestUser._id;
     }
 
+    // Resolve referral agent if provided
+    let referralAgentId = null;
+    if (referralCode) {
+      const codeUpper = String(referralCode).toUpperCase().trim();
+      const expiredOwner = await User.findOne({ previousReferralCodes: codeUpper });
+      if (expiredOwner) {
+        throw new Error('This referral code has been refreshed and is no longer valid. Please obtain the new referral code from your sponsor.');
+      }
+      const agent = await User.findOne({ referralCode: codeUpper });
+      if (agent) referralAgentId = agent._id;
+    }
+
+    // Calculate final quote
+    const quote = await this.calculateQuote({
+      tripId: trip._id,
+      seatNumbers: hold.seatNumbers,
+      insuranceOpted
+    });
+
     // 2. Process or verify payment
     let paymentVerified = false;
     let paymentRef = '';
+    let agentUser = null;
 
     if (paymentProvider === 'agent_wallet') {
-      const { Wallet, WalletLedger } = require('../wallets/wallet.model');
-      const User = require('../users/user.model');
-      
       // Determine agent performing the wallet booking
-      let agentUser = null;
       if (passengerId) {
         agentUser = await User.findById(passengerId);
       }
       if (!agentUser && referralCode) {
         const codeUpper = String(referralCode).toUpperCase().trim();
-        const expiredOwner = await User.findOne({ previousReferralCodes: codeUpper });
-        if (expiredOwner) {
-          throw new Error('This referral code has been refreshed and is no longer valid.');
-        }
         agentUser = await User.findOne({ referralCode: codeUpper });
       }
 
@@ -273,37 +285,12 @@ class BookingService {
       }
 
       const agentWallet = await Wallet.findOne({ userId: agentUser._id });
-      const quoteCheck = await this.calculateQuote({
-        tripId: trip._id,
-        seatNumbers: hold.seatNumbers,
-        insuranceOpted
-      });
-
       const currentBal = agentWallet ? (agentWallet.availableBalance ?? agentWallet.balance ?? 0) : 0;
-      if (!agentWallet || currentBal < quoteCheck.totalPayable) {
-        throw new Error(`Insufficient agent wallet balance. Required: ₹${quoteCheck.totalPayable}, Available: ₹${currentBal}`);
+      if (!agentWallet || currentBal < quote.totalPayable) {
+        throw new Error(`Insufficient agent wallet balance. Required: ₹${quote.totalPayable}, Available: ₹${currentBal}`);
       }
 
-      // Atomically debit agent wallet
-      agentWallet.availableBalance = currentBal - quoteCheck.totalPayable;
-      if (agentWallet.balance !== undefined) agentWallet.balance = agentWallet.availableBalance;
-      await agentWallet.save();
-
       paymentRef = `WALLET_TXN_${Date.now()}`;
-      await WalletLedger.create({
-        walletId: agentWallet._id,
-        userId: agentUser._id,
-        companyCode: trip.companyCode || 1,
-        entryType: 'DEBIT',
-        amount: quoteCheck.totalPayable,
-        transactionType: TRANSACTION_TYPES.TICKET_PURCHASE,
-        referenceType: 'BOOKING',
-        referenceId: paymentRef,
-        description: `Customer Ticket Booking - Seats [${hold.seatNumbers.join(', ')}]`,
-        idempotencyKey: `WALLET_BOOKING_${paymentRef}`,
-        balanceAfter: agentWallet.availableBalance
-      });
-
       paymentVerified = true;
       if (!referralAgentId) referralAgentId = agentUser._id;
     } else if (paymentProvider === 'razorpay') {
@@ -354,43 +341,8 @@ class BookingService {
       paymentRef = dummyRes.transactionId;
     }
 
-    // 3. Mark seats as BOOKED on the Trip document atomically
-    for (const seatNum of hold.seatNumbers) {
-      const seat = trip.seats.find(s => s.seatNumber === seatNum.toString());
-      if (seat) {
-        seat.status = SEAT_STATUS.BOOKED;
-        const passInfo = (passengers || []).find(p => p.seatNumber === seatNum.toString()) || {};
-        seat.passenger = {
-          name: passInfo.name || 'Passenger',
-          age: passInfo.age || 25,
-          gender: passInfo.gender || 'other'
-        };
-      }
-    }
-    await trip.save();
-
-    // 4. Calculate final quote
-    const quote = await this.calculateQuote({
-      tripId: trip._id,
-      seatNumbers: hold.seatNumbers,
-      insuranceOpted
-    });
-
     const pnr = `RUP-${Math.floor(100000 + Math.random() * 900000)}`;
     const bookingId = `BK_${Date.now()}_${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-
-    // Resolve referral agent if provided
-    let referralAgentId = null;
-    if (referralCode) {
-      const User = require('../users/user.model');
-      const codeUpper = String(referralCode).toUpperCase().trim();
-      const expiredOwner = await User.findOne({ previousReferralCodes: codeUpper });
-      if (expiredOwner) {
-        throw new Error('This referral code has been refreshed and is no longer valid. Please obtain the new referral code from your sponsor.');
-      }
-      const agent = await User.findOne({ referralCode: codeUpper });
-      if (agent) referralAgentId = agent._id;
-    }
 
     // Safely resolve boarding and dropping point with fallback times
     const depTimeFormatted = new Date(trip.departureTime).toLocaleTimeString('en-IN', {
@@ -414,51 +366,99 @@ class BookingService {
       time: (droppingPoint && droppingPoint.time) || arrTimeFormatted
     };
 
-    // 5. Create Booking record
-    const booking = new Booking({
-      bookingId,
-      pnr,
-      passengerId,
-      contactDetails: {
-        email: contactEmail,
-        phone: contactPhone
-      },
-      tripId: trip._id,
-      routeId: trip.routeId._id,
-      busId: trip.busId._id,
-      companyId: trip.companyId || null,
-      companyCode: trip.companyCode,
-      referralAgentId,
-      seatNumbers: hold.seatNumbers,
-      passengers: (passengers || []).map(p => ({
-        seatNumber: p.seatNumber,
-        name: p.name,
-        age: p.age,
-        gender: p.gender,
-        fare: trip.baseFare
-      })),
-      boardingPoint: resolvedBoarding,
-      droppingPoint: resolvedDropping,
-      fareBreakdown: {
-        baseFare: quote.baseFare,
-        seatCount: quote.seatCount,
-        subtotal: quote.subtotal,
-        gstAmount: quote.gstAmount,
-        insuranceAmount: quote.insuranceAmount,
-        discountAmount: quote.discountAmount,
-        totalPayable: quote.totalPayable
-      },
-      insuranceOpted: quote.insuranceOpted,
-      insurancePremium: quote.insuranceAmount,
-      status: BOOKING_STATUS.CONFIRMED,
-      paymentStatus: PAYMENT_STATUS.SUCCESS,
-      paymentProvider,
-      paymentReference: paymentRef
+    // 3. Perform atomic booking state mutations within a transaction session
+    const booking = await withTransaction(async (session) => {
+      // A. If payment was via agent wallet, debit wallet and create ledger
+      if (paymentProvider === 'agent_wallet') {
+        const query = Wallet.findOne({ userId: agentUser._id });
+        if (session) query.session(session);
+        const agentWallet = await query;
+
+        const currentBal = agentWallet ? (agentWallet.availableBalance ?? agentWallet.balance ?? 0) : 0;
+        if (!agentWallet || currentBal < quote.totalPayable) {
+          throw new Error(`Insufficient agent wallet balance. Required: ₹${quote.totalPayable}, Available: ₹${currentBal}`);
+        }
+
+        agentWallet.availableBalance = currentBal - quote.totalPayable;
+        if (agentWallet.balance !== undefined) agentWallet.balance = agentWallet.availableBalance;
+        await agentWallet.save(session ? { session } : undefined);
+
+        await WalletLedger.create([{
+          walletId: agentWallet._id,
+          userId: agentUser._id,
+          companyCode: trip.companyCode || 1,
+          entryType: 'DEBIT',
+          amount: quote.totalPayable,
+          transactionType: TRANSACTION_TYPES.TICKET_PURCHASE,
+          referenceType: 'BOOKING',
+          referenceId: paymentRef,
+          description: `Customer Ticket Booking - Seats [${hold.seatNumbers.join(', ')}]`,
+          idempotencyKey: `WALLET_BOOKING_${paymentRef}`,
+          balanceAfter: agentWallet.availableBalance
+        }], session ? { session } : {});
+      }
+
+      // B. Mark seats as BOOKED on the Trip document atomically
+      for (const seatNum of hold.seatNumbers) {
+        const seat = trip.seats.find(s => s.seatNumber === seatNum.toString());
+        if (seat) {
+          seat.status = SEAT_STATUS.BOOKED;
+          const passInfo = (passengers || []).find(p => p.seatNumber === seatNum.toString()) || {};
+          seat.passenger = {
+            name: passInfo.name || 'Passenger',
+            age: passInfo.age || 25,
+            gender: passInfo.gender || 'other'
+          };
+        }
+      }
+      await trip.save(session ? { session } : undefined);
+
+      // C. Create Booking record
+      const [createdBooking] = await Booking.create([{
+        bookingId,
+        pnr,
+        passengerId,
+        contactDetails: {
+          email: contactEmail,
+          phone: contactPhone
+        },
+        tripId: trip._id,
+        routeId: trip.routeId._id,
+        busId: trip.busId._id,
+        companyId: trip.companyId || null,
+        companyCode: trip.companyCode,
+        referralAgentId,
+        seatNumbers: hold.seatNumbers,
+        passengers: (passengers || []).map(p => ({
+          seatNumber: p.seatNumber,
+          name: p.name,
+          age: p.age,
+          gender: p.gender,
+          fare: trip.baseFare
+        })),
+        boardingPoint: resolvedBoarding,
+        droppingPoint: resolvedDropping,
+        fareBreakdown: {
+          baseFare: quote.baseFare,
+          seatCount: quote.seatCount,
+          subtotal: quote.subtotal,
+          gstAmount: quote.gstAmount,
+          insuranceAmount: quote.insuranceAmount,
+          discountAmount: quote.discountAmount,
+          totalPayable: quote.totalPayable
+        },
+        insuranceOpted: quote.insuranceOpted,
+        insurancePremium: quote.insuranceAmount,
+        status: BOOKING_STATUS.CONFIRMED,
+        paymentStatus: PAYMENT_STATUS.SUCCESS,
+        paymentProvider,
+        paymentReference: paymentRef
+      }], session ? { session } : {});
+
+      return createdBooking;
     });
 
-    await booking.save();
-
-    // 6. Release lock from holdStore
+    // 4. Release lock from holdStore
     holdStore.releaseHold(holdToken);
 
     // Record 5% GST in tax_entries table per PDF specification
@@ -472,7 +472,7 @@ class BookingService {
       console.error('[TaxEngine GST Error]', taxErr);
     }
 
-    // 7. Calculate and distribute 5-level commissions if booked via an agent
+    // 5. Calculate and distribute 5-level commissions if booked via an agent
     if (referralAgentId) {
       try {
         const commRecords = await commissionService.distributeCommissions({

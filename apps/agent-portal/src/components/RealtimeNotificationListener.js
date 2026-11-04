@@ -69,8 +69,19 @@ export default function RealtimeAgentListener() {
               playChime();
               setActiveAlert({
                 type: 'WITHDRAWAL',
-                title: 'Withdrawal Approved!',
-                message: `Your withdrawal of ₹${msg.data?.amount} has been approved and paid via gateway.`,
+                title: 'Withdrawal Approved & Disbursed!',
+                message: `Your withdrawal of ₹${msg.data?.amount?.toLocaleString('en-IN')} has been approved and disbursed to ${msg.data?.destination || 'your bank account'} (UTR: ${msg.data?.utrNumber || 'CONFIRMED'}).`,
+                time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+              });
+              window.dispatchEvent(new Event('wallet-updated'));
+              if (timer) clearTimeout(timer);
+              timer = setTimeout(() => setActiveAlert(null), 8000);
+            } else if (msg.event === 'WITHDRAWAL_REJECTED') {
+              playChime();
+              setActiveAlert({
+                type: 'WARNING',
+                title: 'Withdrawal Request Rejected',
+                message: `Your request of ₹${msg.data?.amount?.toLocaleString('en-IN')} was rejected: ${msg.data?.reason || 'Details mismatched'}. Reserved balance has been refunded back to your wallet.`,
                 time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
               });
               window.dispatchEvent(new Event('wallet-updated'));

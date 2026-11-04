@@ -180,9 +180,6 @@ export default function AgentProfilePage() {
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
               <span>1. Editable Information</span>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                Operator Editable
-              </span>
             </h4>
 
             <div>
