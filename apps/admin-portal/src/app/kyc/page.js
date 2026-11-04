@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import DocumentViewerModal from '../../components/DocumentViewerModal';
+import ConfirmationModal from '../../components/ConfirmationModal';
 
 export default function AdminKycQueuePage() {
   const [documents, setDocuments] = useState([]);
@@ -26,6 +27,7 @@ export default function AdminKycQueuePage() {
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('PENDING'); // 'PENDING' | 'VERIFIED' | 'REJECTED' | 'ALL'
   const [searchTerm, setSearchTerm] = useState('');
+  const [approveDoc, setApproveDoc] = useState(null);
 
   // Document Viewer Modal
   const [selectedDoc, setSelectedDoc] = useState(null);
@@ -60,18 +62,25 @@ export default function AdminKycQueuePage() {
     fetchKycQueue();
   }, [statusFilter]);
 
-  const handleApprove = async (id) => {
-    if (!confirm('Approve this KYC document and grant verified status?')) return;
+  const handleOpenApprove = (doc) => {
+    setApproveDoc(doc);
+  };
+
+  const handleExecuteApprove = async () => {
+    if (!approveDoc) return;
     setActionLoading(true);
     try {
-      const res = await api.approveKyc(id, 'VERIFIED');
+      const res = await api.approveKyc(approveDoc._id, 'VERIFIED');
       if (res.success) {
         setActionSuccess('KYC document successfully verified!');
         setDocModalOpen(false);
+        setApproveDoc(null);
         setTimeout(() => {
           setActionSuccess('');
           fetchKycQueue();
         }, 1000);
+      } else {
+        alert(res?.error || 'Failed to approve KYC');
       }
     } catch (err) {
       alert(err.message || 'Failed to approve KYC');
@@ -278,7 +287,7 @@ export default function AdminKycQueuePage() {
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleApprove(doc._id)}
+                                onClick={() => handleOpenApprove(doc)}
                                 className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer shadow-xs"
                               >
                                 Approve
@@ -374,11 +383,33 @@ export default function AdminKycQueuePage() {
           status={selectedDoc.status}
           fileUrl={selectedDoc.fileUrl}
           fileUrlBack={selectedDoc.fileUrlBack}
-          onApprove={() => handleApprove(selectedDoc._id)}
+          onApprove={() => handleOpenApprove(selectedDoc)}
           onReject={() => {
             setDocToReject(selectedDoc);
             setRejectModalOpen(true);
           }}
+        />
+      )}
+
+      {/* KYC Approval Confirmation Modal */}
+      {approveDoc && (
+        <ConfirmationModal
+          isOpen={Boolean(approveDoc)}
+          onClose={() => !actionLoading && setApproveDoc(null)}
+          onConfirm={handleExecuteApprove}
+          variant="success"
+          icon={ShieldCheck}
+          title={`Verify ${approveDoc.documentType} for ${approveDoc.agentName || 'Agent'}`}
+          message="Confirming this document will mark the agent's KYC record as VERIFIED and authorize ticket issuance."
+          confirmText="Approve KYC & Grant Verified Status"
+          cancelText="Cancel"
+          loading={actionLoading}
+          details={[
+            { label: 'Document Type', value: approveDoc.documentType, highlight: true },
+            { label: 'Document Number', value: approveDoc.documentNumberMasked },
+            { label: 'Agent Name', value: approveDoc.agentName || 'Franchise Partner' },
+            { label: 'Franchise Company', value: `Company #${approveDoc.companyCode}` }
+          ]}
         />
       )}
 

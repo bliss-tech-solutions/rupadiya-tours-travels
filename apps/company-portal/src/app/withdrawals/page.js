@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import ConfirmationModal from '../../components/ConfirmationModal';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -28,6 +29,7 @@ export default function CompanyWithdrawalsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(1);
+  const [approveModalData, setApproveModalData] = useState(null);
 
   // Reject modal
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
@@ -57,18 +59,25 @@ export default function CompanyWithdrawalsPage() {
     fetchWithdrawals();
   }, []);
 
-  const handleApprove = async (id, amount) => {
-    if (!confirm(`Are you sure you want to approve and settle ₹${Number(amount).toLocaleString('en-IN')} for this agent?`)) return;
+  const handleOpenApproveModal = (w) => {
+    setApproveModalData(w);
+  };
+
+  const handleExecuteApprove = async () => {
+    if (!approveModalData) return;
     setActionLoading(true);
     setActionSuccess('');
     try {
-      const res = await api.approveWithdrawal(id);
+      const res = await api.approveWithdrawal(approveModalData._id);
       if (res.success) {
-        setActionSuccess(`Withdrawal of ₹${Number(amount).toLocaleString('en-IN')} successfully approved and settled.`);
+        setActionSuccess(`Withdrawal of ₹${Number(approveModalData.amount).toLocaleString('en-IN')} successfully approved and settled.`);
+        setApproveModalData(null);
         setTimeout(() => {
           setActionSuccess('');
           fetchWithdrawals();
         }, 1200);
+      } else {
+        alert(res?.error || 'Approval failed');
       }
     } catch (err) {
       alert(err.message || 'Approval failed');
@@ -291,7 +300,7 @@ export default function CompanyWithdrawalsPage() {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               disabled={actionLoading}
-                              onClick={() => handleApprove(w._id, w.amount)}
+                              onClick={() => handleOpenApproveModal(w)}
                               className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs transition cursor-pointer"
                             >
                               Approve
@@ -420,6 +429,28 @@ export default function CompanyWithdrawalsPage() {
             </form>
           </div>
         </div>
+      )}
+      {/* Approve Payout Confirmation Modal */}
+      {approveModalData && (
+        <ConfirmationModal
+          isOpen={Boolean(approveModalData)}
+          onClose={() => !actionLoading && setApproveModalData(null)}
+          onConfirm={handleExecuteApprove}
+          variant="success"
+          icon={CheckCircle2}
+          title={`Settle Payout of ₹${Number(approveModalData.amount).toLocaleString('en-IN')}`}
+          message="Confirm approval and disbursement of this agent withdrawal request. The payout will be settled and ledger status finalized."
+          confirmText={`Approve & Settle ₹${Number(approveModalData.amount).toLocaleString('en-IN')}`}
+          cancelText="Cancel"
+          loading={actionLoading}
+          details={[
+            { label: 'Agent Name', value: approveModalData.userId?.name || 'Agent', highlight: true },
+            { label: 'Agency Reference', value: approveModalData.userId?.agencyName || approveModalData.userId?.referralCode || 'Direct Agent' },
+            { label: 'Settlement Amount', value: `₹${Number(approveModalData.amount).toLocaleString('en-IN')}`, variant: 'success', highlight: true },
+            { label: 'Beneficiary Bank', value: approveModalData.bankDetails?.bankName || 'Direct Payout' },
+            { label: 'Account / UPI', value: approveModalData.bankDetails?.accountNumber || approveModalData.bankDetails?.upiId || 'On Record' }
+          ]}
+        />
       )}
     </div>
   );

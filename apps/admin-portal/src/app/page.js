@@ -17,6 +17,7 @@ import {
   UserCheck,
   RefreshCw,
   Clock,
+  RotateCcw,
   ShieldAlert
 } from 'lucide-react';
 import { api } from '../lib/api';
@@ -106,7 +107,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Quick Governance Links */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link
           href="/fleet"
           className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-blue-300 transition space-y-2 block"
@@ -114,11 +115,11 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
               <Bus className="w-4 h-4 text-blue-600" />
-              Fleet & Bus Management
+              Fleet Roster
             </span>
             <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">36 & 40</span>
           </div>
-          <p className="text-xs text-slate-500">Induct, configure, and manage sleepers (36 berths) and seaters (40 seats) with driver details.</p>
+          <p className="text-xs text-slate-500">Induct and manage sleepers (36 berths) and seaters (40 seats).</p>
         </Link>
 
         <Link
@@ -128,11 +129,33 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              Master Bookings & Insurance
+              Bookings & Ledger
             </span>
             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">₹5/pax</span>
           </div>
-          <p className="text-xs text-slate-500">Audit intercity bookings, insurance premium collections, and passenger manifests.</p>
+          <p className="text-xs text-slate-500">Audit intercity bookings, insurance premium collections, and manifests.</p>
+        </Link>
+
+        <Link
+          href="/refunds"
+          className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-rose-300 transition space-y-2 block"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
+              <RotateCcw className="w-4 h-4 text-rose-600" />
+              Refunds & Returns Desk
+            </span>
+            {data?.pendingRefundsCount > 0 ? (
+              <span className="text-[10px] font-black text-rose-800 bg-rose-100 px-2 py-0.5 rounded-full animate-pulse">
+                {data.pendingRefundsCount} Pending
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                0 Pending
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-500">Review and disburse customer ticket refund claims via Razorpay or manual UTR.</p>
         </Link>
 
         <Link
@@ -142,7 +165,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-sky-600" />
-              KYC Approvals Queue
+              KYC Queue
             </span>
             {data?.pendingKycCount > 0 && (
               <span className="text-[10px] font-black text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">

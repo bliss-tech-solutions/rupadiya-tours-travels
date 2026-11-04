@@ -4,17 +4,18 @@ const Route = require('../routes/route.model');
 const Bus = require('../fleet/bus.model');
 const User = require('../users/user.model');
 const Booking = require('./booking.model');
+const Company = require('../companies/company.model');
+const Refund = require('../payments/refund.model');
 const Offer = require('../offers/offer.model');
 const holdStore = require('../../config/holdStore');
 const commissionService = require('../commissions/commission.service');
 const taxService = require('../tax/tax.service');
 const websocketService = require('../../services/websocket.service');
 const { Wallet, WalletLedger } = require('../wallets/wallet.model');
-const { TRANSACTION_TYPES } = require('../../config/constants');
+const { TRANSACTION_TYPES, SEAT_STATUS, BOOKING_STATUS, PAYMENT_STATUS, REFUND_STATUS } = require('../../config/constants');
 const dummyPayment = require('../../providers/payments/DummyPaymentProvider');
 const razorpayPayment = require('../../providers/payments/RazorpayProvider');
 const env = require('../../config/env');
-const { SEAT_STATUS, BOOKING_STATUS, PAYMENT_STATUS } = require('../../config/constants');
 
 class BookingService {
   /**
@@ -520,7 +521,7 @@ class BookingService {
   }
 
   /**
-   * Cancel booking with refund calculation
+   * Cancel booking with RedBus-style refund calculation, operator fee credit, and gateway refund queuing
    */
   async cancelBooking({ bookingId, reason, cancelledByUserId }) {
     const booking = await Booking.findOne({ $or: [{ bookingId }, { pnr: bookingId }] })
@@ -544,35 +545,147 @@ class BookingService {
     await trip.save();
 
     const now = new Date();
-    const hoursToDep = (new Date(trip.departureTime) - now) / (1000 * 60 * 60);
+    const depTime = new Date(trip.departureTime || trip.departureDate || booking.createdAt);
+    const hoursToDep = (depTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     let refundPercent = 0.0;
     if (trip.chartPrepared) {
       // Post-chart manifest generation: 85% cancellation fee (15% refund only)
       refundPercent = 0.15;
     } else if (hoursToDep > 48) {
-      refundPercent = 0.90; // PDF rule 7: > 48h 90%
+      refundPercent = 0.90; // > 48h: 90% refund, 10% fee
     } else if (hoursToDep > 24) {
-      refundPercent = 0.75; // PDF rule 7: > 24h 75%
+      refundPercent = 0.75; // 24-48h: 75% refund, 25% fee
     } else if (hoursToDep > 12) {
-      refundPercent = 0.50; // PDF rule 7: > 12h 50%
+      refundPercent = 0.50; // 12-24h: 50% refund, 50% fee
     } else {
-      refundPercent = 0.0;  // PDF rule 7: < 12h none
+      refundPercent = 0.0;  // < 12h: non-refundable
     }
 
-    const paidTotal = booking.fareBreakdown.totalPayable;
+    const paidTotal = Number(booking.fareBreakdown?.totalPayable || booking.totalAmount || 0);
     const refundAmount = Math.round(paidTotal * refundPercent);
-    const cancellationFee = paidTotal - refundAmount;
+    const cancellationFee = Math.max(0, paidTotal - refundAmount);
 
+    let generatedRefundId = null;
+
+    // 1. Operator Share Settlement: Retained cancellation fee goes directly to Company Owner Wallet
+    if (cancellationFee > 0 && booking.companyCode) {
+      try {
+        const company = await Company.findOne({ $or: [{ companyCode: booking.companyCode }, { code: booking.companyCode }] });
+        let ownerUser = null;
+        if (company && company.ownerId) {
+          ownerUser = await User.findById(company.ownerId);
+        }
+        if (!ownerUser) {
+          ownerUser = await User.findOne({ role: 'COMPANY', companyCode: booking.companyCode });
+        }
+
+        if (ownerUser) {
+          let ownerWallet = await Wallet.findOne({ userId: ownerUser._id, companyCode: booking.companyCode });
+          if (!ownerWallet) {
+            ownerWallet = await Wallet.create({
+              userId: ownerUser._id,
+              companyCode: booking.companyCode,
+              balance: 0,
+              availableBalance: 0,
+              reservedBalance: 0
+            });
+          }
+
+          ownerWallet.availableBalance += cancellationFee;
+          ownerWallet.balance += cancellationFee;
+          await ownerWallet.save();
+
+          await WalletLedger.create({
+            walletId: ownerWallet._id,
+            userId: ownerUser._id,
+            companyCode: booking.companyCode,
+            entryType: 'CREDIT',
+            amount: cancellationFee,
+            balanceAfter: ownerWallet.availableBalance,
+            transactionType: TRANSACTION_TYPES.CANCELLATION_FEE_OPERATOR_CREDIT,
+            referenceType: 'BOOKING',
+            referenceId: booking.bookingId,
+            description: `Retained cancellation fee for PNR #${booking.pnr} (${Math.round((1 - refundPercent) * 100)}% fee)`,
+            idempotencyKey: `OP_CANC_${booking.bookingId}_${Date.now()}`
+          });
+        }
+      } catch (opErr) {
+        console.error('[Operator Cancellation Fee Credit Error]:', opErr);
+      }
+    }
+
+    // 2. Customer / Agent Refund Routing
+    const isAgentWallet = booking.paymentProvider === 'agent_wallet';
+    if (isAgentWallet && refundAmount > 0) {
+      try {
+        const wallet = await Wallet.findOne({ userId: booking.passengerId });
+        if (wallet) {
+          wallet.availableBalance += refundAmount;
+          wallet.balance += refundAmount;
+          await wallet.save();
+          await WalletLedger.create({
+            walletId: wallet._id,
+            userId: booking.passengerId,
+            companyCode: booking.companyCode,
+            entryType: 'CREDIT',
+            amount: refundAmount,
+            balanceAfter: wallet.availableBalance,
+            transactionType: TRANSACTION_TYPES.TICKET_CANCELLATION_REFUND,
+            referenceType: 'BOOKING',
+            referenceId: booking.bookingId,
+            description: `Cancellation refund (${Math.round(refundPercent * 100)}%) for PNR #${booking.pnr}`,
+            idempotencyKey: `REF_${booking.bookingId}_${Date.now()}`
+          });
+        }
+      } catch (walErr) {
+        console.error('[Wallet Refund Error]:', walErr);
+      }
+      booking.paymentStatus = PAYMENT_STATUS.REFUNDED;
+    } else if (!isAgentWallet && refundAmount > 0) {
+      // Online Payment Gateway: Queue formal Refund record for Super Admin review & payout
+      try {
+        const company = await Company.findOne({ $or: [{ companyCode: booking.companyCode }, { code: booking.companyCode }] });
+        const refId = `RFND-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+        generatedRefundId = refId;
+
+        await Refund.create({
+          refundId: refId,
+          bookingId: booking._id,
+          pnr: booking.pnr,
+          companyCode: booking.companyCode,
+          companyName: company?.name || `Franchise #${booking.companyCode}`,
+          customerName: booking.passengerDetails?.name || 'Customer',
+          customerPhone: booking.passengerDetails?.phone || '',
+          customerEmail: booking.passengerDetails?.email || '',
+          paymentId: booking.paymentReference || null,
+          paymentMethod: booking.paymentProvider === 'razorpay' ? 'RAZORPAY' : 'UPI',
+          totalFare: paidTotal,
+          cancellationFee,
+          refundAmount,
+          status: REFUND_STATUS.PENDING,
+          notes: `Customer cancelled ticket #${booking.pnr}. Reason: ${reason || 'Customer cancellation request'}`
+        });
+
+        booking.paymentStatus = PAYMENT_STATUS.REFUND_PENDING;
+      } catch (refErr) {
+        console.error('[Refund Record Queue Error]:', refErr);
+      }
+    }
+
+    // 3. Update Booking Model
     booking.status = BOOKING_STATUS.CANCELLED;
     booking.cancellationDetails = {
       cancelledAt: new Date(),
+      cancelledBy: cancelledByUserId || null,
       refundAmount,
       cancellationFee,
+      refundId: generatedRefundId,
       reason: reason || 'Customer requested cancellation'
     };
     await booking.save();
 
+    // 4. Reverse Multi-tier Commissions and GST Entries
     try {
       await commissionService.reverseCommissions(booking._id);
     } catch (commErr) {
@@ -585,42 +698,19 @@ class BookingService {
       console.error('[TaxEngine GST Reversal Error]', taxErr);
     }
 
+    // 5. Broadcast WebSocket Seat Released
     try {
       websocketService.broadcastSeatReleased(booking.tripId.toString(), booking.seatNumbers);
     } catch (e) {}
-
-    // Refund to agent wallet if booked via agent wallet
-    if (booking.paymentProvider === 'agent_wallet' && refundAmount > 0) {
-      try {
-        const wallet = await Wallet.findOne({ userId: booking.passengerId });
-        if (wallet) {
-          wallet.availableBalance += refundAmount;
-          await wallet.save();
-          await WalletLedger.create({
-            walletId: wallet._id,
-            userId: booking.passengerId,
-            companyCode: booking.companyCode,
-            entryType: 'CREDIT',
-            amount: refundAmount,
-            balanceAfter: wallet.availableBalance,
-            transactionType: TRANSACTION_TYPES.TICKET_CANCELLATION_REFUND,
-            referenceType: 'BOOKING',
-            referenceId: booking.bookingId,
-            description: 'Cancellation refund (' + Math.round(refundPercent * 100) + '%) for PNR ' + booking.pnr,
-            idempotencyKey: 'REF_' + booking.bookingId + '_' + Date.now()
-          });
-        }
-      } catch (walErr) {
-        console.error('[Wallet Refund Error]', walErr);
-      }
-    }
 
     return {
       success: true,
       booking,
       refundAmount,
       cancellationFee,
-      refundPercent: refundPercent * 100
+      refundPercent: refundPercent * 100,
+      refundId: generatedRefundId,
+      refundRouting: isAgentWallet ? 'AGENT_WALLET' : (refundAmount > 0 ? 'PENDING_ADMIN_APPROVAL' : 'NON_REFUNDABLE')
     };
   }
 }

@@ -107,8 +107,10 @@ const bookingSchema = new mongoose.Schema({
   },
   cancellationDetails: {
     cancelledAt: { type: Date, default: null },
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     refundAmount: { type: Number, default: 0 },
     cancellationFee: { type: Number, default: 0 },
+    refundId: { type: String, default: null },
     reason: { type: String, default: '' }
   }
 }, {

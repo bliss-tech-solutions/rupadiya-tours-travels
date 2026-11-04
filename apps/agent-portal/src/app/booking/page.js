@@ -1351,7 +1351,7 @@ export default function AgentBookingPage() {
               <span>Download PDF</span>
             </button>
             <Link
-              href={`/print-ticket`}
+              href={`/print-ticket?ticketId=${encodeURIComponent(confirmedBooking.pnr || confirmedBooking.bookingId || '')}&pnr=${encodeURIComponent(confirmedBooking.pnr || confirmedBooking.bookingId || '')}`}
               className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1.5"
             >
               <Printer className="w-4 h-4 text-slate-600" />

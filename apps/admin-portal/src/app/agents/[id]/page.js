@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../../lib/api';
 import DocumentViewerModal from '../../../components/DocumentViewerModal';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 export default function AdminAgentDetailPage() {
   const params = useParams();
@@ -37,6 +38,9 @@ export default function AdminAgentDetailPage() {
   const [agentData, setAgentData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [approveKycModalDoc, setApproveKycModalDoc] = useState(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(false);
 
   // Wallet adjustment modal
   const [walletModalOpen, setWalletModalOpen] = useState(false);
@@ -105,14 +109,21 @@ export default function AdminAgentDetailPage() {
     }
   };
 
-  const handleKycApprove = async (docId) => {
-    if (!confirm('Are you sure you want to approve this KYC document and verify the agent?')) return;
+  const handleOpenKycApprove = (doc) => {
+    setApproveKycModalDoc(doc);
+  };
+
+  const handleExecuteKycApprove = async () => {
+    if (!approveKycModalDoc) return;
     setActionLoading(true);
     try {
-      const res = await api.approveKyc(docId, 'VERIFIED');
+      const res = await api.approveKyc(approveKycModalDoc._id, 'VERIFIED');
       if (res.success) {
         setDocModalOpen(false);
+        setApproveKycModalDoc(null);
         fetchAgentDetails();
+      } else {
+        alert(res?.error || 'Failed to approve KYC');
       }
     } catch (err) {
       alert(err.message || 'Failed to approve KYC');
@@ -140,21 +151,26 @@ export default function AdminAgentDetailPage() {
     }
   };
 
-  const handleToggleStatus = async () => {
+  const handleToggleStatus = () => {
+    setShowStatusModal(true);
+  };
+
+  const handleExecuteToggleStatus = async () => {
     if (!agentData?.agent) return;
     const newStatus = !agentData.agent.isActive;
-    const confirmMsg = newStatus 
-      ? 'Re-activate this agent account?' 
-      : 'Suspend this agent? They will no longer be able to log in or issue tickets.';
-    if (!confirm(confirmMsg)) return;
-
+    setStatusLoading(true);
     try {
       const res = await api.toggleAgentStatus(id, newStatus);
       if (res.success) {
+        setShowStatusModal(false);
         fetchAgentDetails();
+      } else {
+        alert(res?.error || 'Failed to update agent status');
       }
     } catch (err) {
       alert(err.message || 'Failed to update agent status');
+    } finally {
+      setStatusLoading(false);
     }
   };
 
@@ -377,7 +393,7 @@ export default function AdminAgentDetailPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleKycApprove(doc._id)}
+                        onClick={() => handleOpenKycApprove(doc)}
                         className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer shadow-xs"
                       >
                         Approve
@@ -666,11 +682,57 @@ export default function AdminAgentDetailPage() {
           status={selectedDoc.status}
           fileUrl={selectedDoc.fileUrl}
           fileUrlBack={selectedDoc.fileUrlBack}
-          onApprove={() => handleKycApprove(selectedDoc._id)}
+          onApprove={() => handleOpenKycApprove(selectedDoc)}
           onReject={() => {
             setDocToReject(selectedDoc);
             setRejectModalOpen(true);
           }}
+        />
+      )}
+
+      {/* KYC Approval Confirmation Modal */}
+      {approveKycModalDoc && (
+        <ConfirmationModal
+          isOpen={Boolean(approveKycModalDoc)}
+          onClose={() => !actionLoading && setApproveKycModalDoc(null)}
+          onConfirm={handleExecuteKycApprove}
+          variant="success"
+          icon={ShieldCheck}
+          title={`Approve ${approveKycModalDoc.documentType} for ${agentData?.agent?.name || 'Agent'}`}
+          message="Confirming this document will verify the agent's identity and grant full booking permissions."
+          confirmText="Approve KYC Document"
+          cancelText="Cancel"
+          loading={actionLoading}
+          details={[
+            { label: 'Document Type', value: approveKycModalDoc.documentType, highlight: true },
+            { label: 'Document Number', value: approveKycModalDoc.documentNumberMasked },
+            { label: 'Agent Name', value: agentData?.agent?.name },
+            { label: 'Agency Franchise', value: `Company #${agentData?.agent?.companyCode}` }
+          ]}
+        />
+      )}
+
+      {/* Agent Account Status Toggle Modal */}
+      {agentData?.agent && (
+        <ConfirmationModal
+          isOpen={showStatusModal}
+          onClose={() => !statusLoading && setShowStatusModal(false)}
+          onConfirm={handleExecuteToggleStatus}
+          variant={agentData.agent.isActive ? 'warning' : 'success'}
+          icon={agentData.agent.isActive ? Lock : Unlock}
+          title={agentData.agent.isActive ? `Suspend Agent Account: ${agentData.agent.name}?` : `Re-activate Agent Account: ${agentData.agent.name}?`}
+          message={agentData.agent.isActive 
+            ? 'Suspending this agent will immediately lock out their portal access and block all booking capabilities.' 
+            : 'Re-activating this agent will restore their booking permissions and portal login access.'}
+          confirmText={agentData.agent.isActive ? 'Suspend Agent Account' : 'Re-activate Account'}
+          cancelText="Cancel"
+          loading={statusLoading}
+          details={[
+            { label: 'Agent Name', value: agentData.agent.name, highlight: true },
+            { label: 'Agency Code', value: agentData.agent.referralCode || 'AGT' },
+            { label: 'Franchise Code', value: `Company #${agentData.agent.companyCode}` },
+            { label: 'Registered Mobile', value: agentData.agent.phone }
+          ]}
         />
       )}
 

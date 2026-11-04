@@ -24,6 +24,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import ConfirmationModal from '../../components/ConfirmationModal';
 
 const BUS_LAYOUT_PRESETS = [
   {
@@ -934,36 +935,26 @@ export default function AdminFleetManagementPage() {
         </div>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* Standardized Delete Confirmation Modal */}
       {deleteModalOpen && selectedBus && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 space-y-4 shadow-2xl border border-slate-200 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-black text-slate-900">Decommission Coach?</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Are you sure you want to decommission coach <strong className="font-mono text-slate-900">{selectedBus.busNumber}</strong> from Company #{selectedBus.companyCode}? This will remove it from scheduling and ticketing.
-            </p>
-            <div className="pt-2 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setDeleteModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs hover:bg-slate-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteCoach}
-                disabled={submitting}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition"
-              >
-                {submitting ? 'Deleting...' : 'Confirm Decommission'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmationModal
+          isOpen={deleteModalOpen}
+          onClose={() => !submitting && setDeleteModalOpen(false)}
+          onConfirm={handleDeleteCoach}
+          variant="danger"
+          icon={Trash2}
+          title={`Decommission Coach ${selectedBus.busNumber}?`}
+          message={`Are you sure you want to decommission coach ${selectedBus.busNumber} from Company #${selectedBus.companyCode}? This will permanently remove it from route scheduling and passenger ticketing.`}
+          confirmText="Decommission Coach"
+          cancelText="Cancel"
+          loading={submitting}
+          details={[
+            { label: 'Bus Number', value: selectedBus.busNumber, highlight: true },
+            { label: 'Company Franchise', value: `Company #${selectedBus.companyCode}` },
+            { label: 'Coach Type', value: `${selectedBus.totalSeats || 36} Seats (${selectedBus.busType || 'Standard'})` },
+            { label: 'Driver Assigned', value: selectedBus.driverName || 'Unassigned' }
+          ]}
+        />
       )}
     </div>
   );

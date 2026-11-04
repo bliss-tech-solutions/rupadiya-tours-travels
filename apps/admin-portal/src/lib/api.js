@@ -288,4 +288,12 @@ export const api = {
   // Payment Methods Governance
   getPaymentMethodConfig: () => request('/payments/methods/config'),
   updatePaymentMethodConfig: (allowedMethods) => request('/payments/methods/config', { method: 'PUT', body: JSON.stringify({ allowedMethods }) }),
+
+  // Refunds & Returns Desk (Super Admin Exclusive)
+  getRefunds: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/admin/refunds?${q}`);
+  },
+  processRefund: (id, payload) => request(`/admin/refunds/${id}/process`, { method: 'POST', body: JSON.stringify(payload) }),
+  rejectRefund: (id, reason) => request(`/admin/refunds/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
 };

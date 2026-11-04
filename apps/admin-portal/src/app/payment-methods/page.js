@@ -366,12 +366,6 @@ export default function AdminPaymentMethodsPage() {
                   );
                 })}
               </div>
-
-              <div className="pt-2 text-center">
-                <span className="text-[10px] text-slate-400 font-mono">
-                  config.display.blocks.allowed.instruments
-                </span>
-              </div>
             </div>
 
             <div className="mt-4 p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200/80 text-xs text-blue-900">
