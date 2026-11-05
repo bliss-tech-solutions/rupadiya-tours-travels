@@ -25,6 +25,7 @@ import {
   SPOKE_CITIES,
   getAllowedDestinations,
   getAllowedOrigins,
+  normalizeCityId,
 } from "../lib/routes";
 import { useLanguage } from "../context/LanguageContext";
 import { getLocalDateString } from "../lib/dateUtils";
@@ -110,8 +111,9 @@ export default function HomePage() {
   const allowedTo = getAllowedDestinations(fromCity);
   const allowedFrom = getAllowedOrigins(toCity);
 
+  const isFromHub = normalizeCityId(fromCity) === 'rupaidiha' || normalizeCityId(fromCity) === 'rupadiya';
+
   const handleSwap = () => {
-    const isFromHub = normalizeCityId(fromCity) === 'rupaidiha' || normalizeCityId(fromCity) === 'rupadiya';
     if (isFromHub) {
       const targetSpoke = toCity && normalizeCityId(toCity) !== 'rupaidiha' && normalizeCityId(toCity) !== 'rupadiya' ? toCity : 'ahmedabad';
       setFromCity(targetSpoke);
@@ -227,23 +229,18 @@ export default function HomePage() {
                 </label>
                 <select
                   value={fromCity}
-                  onChange={(e) => {
-                    const newFrom = e.target.value;
-                    setFromCity(newFrom);
-                    if (newFrom !== "rupaidiha") {
-                      setToCity("rupaidiha");
-                    } else if (toCity === "rupaidiha") {
-                      setToCity("ahmedabad");
-                    }
-                  }}
+                  onChange={(e) => setFromCity(e.target.value)}
                   className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-base cursor-pointer"
                 >
-                  <option value="rupaidiha">Rupaidiha (Hub)</option>
-                  {SPOKE_CITIES.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
+                  {isFromHub ? (
+                    <option value="rupaidiha">Rupaidiha (Hub)</option>
+                  ) : (
+                    SPOKE_CITIES.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
               <MapPin className="w-5 h-5 text-slate-300" />
@@ -257,22 +254,18 @@ export default function HomePage() {
                 </label>
                 <select
                   value={toCity}
-                  onChange={(e) => {
-                    const newTo = e.target.value;
-                    setToCity(newTo);
-                    if (newTo !== "rupaidiha") {
-                      setFromCity("rupaidiha");
-                    } else if (fromCity === "rupaidiha") {
-                      setFromCity("ahmedabad");
-                    }
-                  }}
+                  onChange={(e) => setToCity(e.target.value)}
                   className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-base cursor-pointer"
                 >
-                  {allowedTo.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.id === "rupaidiha" || c.id === "rupadiya" ? "(Hub)" : ""}
-                    </option>
-                  ))}
+                  {isFromHub ? (
+                    SPOKE_CITIES.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="rupaidiha">Rupaidiha (Hub)</option>
+                  )}
                 </select>
               </div>
               <MapPin className="w-5 h-5 text-slate-300" />
@@ -570,23 +563,18 @@ export default function HomePage() {
                           <MapPin className="w-4 h-4 text-slate-400 flex-shrink-0" />
                           <select
                             value={fromCity}
-                            onChange={(e) => {
-                              const newFrom = e.target.value;
-                              setFromCity(newFrom);
-                              if (newFrom !== "rupaidiha") {
-                                setToCity("rupaidiha");
-                              } else if (toCity === "rupaidiha") {
-                                setToCity("ahmedabad");
-                              }
-                            }}
+                            onChange={(e) => setFromCity(e.target.value)}
                             className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-sm cursor-pointer"
                           >
-                            <option value="rupaidiha">Rupaidiha (Hub)</option>
-                            {SPOKE_CITIES.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
+                            {isFromHub ? (
+                              <option value="rupaidiha">Rupaidiha (Hub)</option>
+                            ) : (
+                              SPOKE_CITIES.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))
+                            )}
                           </select>
                         </div>
                       </div>
@@ -600,22 +588,18 @@ export default function HomePage() {
                           <MapPin className="w-4 h-4 text-slate-400 flex-shrink-0" />
                           <select
                             value={toCity}
-                            onChange={(e) => {
-                              const newTo = e.target.value;
-                              setToCity(newTo);
-                              if (newTo !== "rupaidiha") {
-                                setFromCity("rupaidiha");
-                              } else if (fromCity === "rupaidiha") {
-                                setFromCity("ahmedabad");
-                              }
-                            }}
+                            onChange={(e) => setToCity(e.target.value)}
                             className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-sm cursor-pointer"
                           >
-                            {allowedTo.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name} {c.id === "rupaidiha" || c.id === "rupadiya" ? "(Hub)" : ""}
-                              </option>
-                            ))}
+                            {isFromHub ? (
+                              SPOKE_CITIES.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="rupaidiha">Rupaidiha (Hub)</option>
+                            )}
                           </select>
                         </div>
                       </div>

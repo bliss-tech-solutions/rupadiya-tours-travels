@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: false,
   images: {
-    domains: ['images.unsplash.com', 'localhost', 'api.qrserver.com']
+    domains: ['images.unsplash.com', 'localhost', 'api.qrserver.com', 'scotland-archive-moved-molecules.trycloudflare.com']
   },
   async headers() {
     return [

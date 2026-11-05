@@ -32,21 +32,43 @@ const VALID_CLIENT_IDENTIFIERS = new Set([
   'test-runner'
 ]);
 
+function isPublicEndpoint(req) {
+  const p = (req.originalUrl || req.url || req.path || '').split('?')[0].replace(/\/$/, '');
+  if (p === '/health' || p === '/api/v1/health' || p === '/v1/health') return true;
+  if (p.startsWith('/api/v1/payments/webhook') || p.startsWith('/v1/payments/webhook')) return true;
+  if (p.startsWith('/api/v1/auth/guest-token') || p.startsWith('/v1/auth/guest-token')) return true;
+  if (p.startsWith('/uploads')) return true;
+
+  // Public search destination corridors (as explicitly specified by user)
+  if (req.method && req.method.toUpperCase() === 'GET') {
+    if (p === '/api/v1/routes' || p === '/api/v1/routes/cities' || p === '/v1/routes' || p === '/v1/routes/cities') return true;
+    if (p === '/api/v1/offers' || p === '/v1/offers') return true;
+    if (p === '/api/v1/trips' || p === '/api/v1/trips/search' || p === '/v1/trips' || p === '/v1/trips/search') return true;
+  }
+  return false;
+}
+
 function originGuard(req, res, next) {
-  // 1. Whitelist open public paths
-  const path = req.path || req.originalUrl || '';
-  if (
-    path === '/health' ||
-    path === '/api/v1/health' ||
-    path.startsWith('/api/v1/auth/guest-token') ||
-    path.startsWith('/api/v1/payments/webhook') ||
-    path.startsWith('/uploads')
-  ) {
+  // 1. Direct browser URL navigation protection
+  // Blocks direct address bar navigation to API endpoints in any browser tab
+  const secFetchDest = req.headers['sec-fetch-dest'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const isDirectBrowserNav = secFetchDest === 'document' || secFetchMode === 'navigate';
+  if (isDirectBrowserNav && !isPublicEndpoint(req)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Direct browser URL navigation to API endpoints is prohibited. Requests must originate from the verified Rupadiya platform interface.',
+      code: 'DIRECT_BROWSER_NAV_PROHIBITED'
+    });
+  }
+
+  // 2. Open public paths bypass further checks if safe
+  if (isPublicEndpoint(req) && !isDirectBrowserNav) {
     return next();
   }
 
   // Allow in automated test mode
-  if (env.NODE_ENV === 'test' && !req.headers.origin) {
+  if (env.NODE_ENV === 'test' && !req.headers.origin && req.method !== 'POST') {
     return next();
   }
 
@@ -67,7 +89,7 @@ function originGuard(req, res, next) {
     }
   }
 
-  // 2. Cross-site attack prevention
+  // 3. Cross-site attack prevention (Anti-CSRF)
   if (secFetchSite === 'cross-site' && effectiveOrigin && !allowedOrigins.includes(effectiveOrigin)) {
     return res.status(403).json({
       success: false,
@@ -75,7 +97,7 @@ function originGuard(req, res, next) {
     });
   }
 
-  // 3. If an Origin is present, verify against allowed list
+  // 4. If an Origin is present, verify against allowed list
   if (effectiveOrigin) {
     if (!allowedOrigins.includes(effectiveOrigin) && !allowedOrigins.includes('*')) {
       return res.status(403).json({
@@ -85,23 +107,19 @@ function originGuard(req, res, next) {
     }
   }
 
-  // 4. For state-mutating requests (POST, PUT, PATCH, DELETE), require client handshake
-  const isMutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method.toUpperCase());
-  if (isMutating) {
-    // If no origin, no referer, and no client header, this is an unverified direct external script/bot
-    if (!effectiveOrigin && !clientIdentifier) {
-      return res.status(403).json({
-        success: false,
-        error: 'Direct API invocation prohibited. Requests must originate from the verified Rupadiya platform interface.'
-      });
-    }
+  // 5. Client Signature / CSRF Token Verification on all non-public endpoints
+  if (!effectiveOrigin && !clientIdentifier) {
+    return res.status(403).json({
+      success: false,
+      error: 'Direct API invocation prohibited. Requests must originate from the verified Rupadiya platform interface.'
+    });
+  }
 
-    if (clientIdentifier && !VALID_CLIENT_IDENTIFIERS.has(clientIdentifier)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Invalid client application signature.'
-      });
-    }
+  if (clientIdentifier && !VALID_CLIENT_IDENTIFIERS.has(clientIdentifier)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Invalid client application signature.'
+    });
   }
 
   next();

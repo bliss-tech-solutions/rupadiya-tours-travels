@@ -12,8 +12,11 @@ function extractToken(req) {
     }
   }
 
-  // 2. Fall back to httpOnly cookie
-  if (req.cookies && req.cookies.rupadiya_access_token) {
+  // 2. Fall back to httpOnly cookie only when request is NOT a direct browser address bar navigation
+  const secFetchDest = req.headers['sec-fetch-dest'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const isDirectNav = secFetchDest === 'document' || secFetchMode === 'navigate';
+  if (!isDirectNav && req.cookies && req.cookies.rupadiya_access_token) {
     return req.cookies.rupadiya_access_token;
   }
 

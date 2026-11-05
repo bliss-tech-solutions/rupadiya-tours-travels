@@ -62,6 +62,43 @@ test('Security Engine - Origin Guard blocks unauthorized external websites', asy
 
   originGuard(rawBotReq, mockRes, () => { passed = true; });
   assert.strictEqual(statusSent, 403, 'Raw external mutating request without client signature must be rejected');
+
+  // Test 4: Block direct browser tab address bar navigation
+  passed = false;
+  statusSent = null;
+  const directNavReq = {
+    method: 'GET',
+    originalUrl: '/api/v1/agent/dashboard',
+    headers: {
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate'
+    }
+  };
+  originGuard(directNavReq, mockRes, () => { passed = true; });
+  assert.strictEqual(statusSent, 403, 'Direct browser address bar navigation must be blocked');
+  assert.strictEqual(jsonSent.code, 'DIRECT_BROWSER_NAV_PROHIBITED');
+
+  // Test 5: Allow public search destination endpoints without client signature
+  passed = false;
+  statusSent = null;
+  const publicSearchReq = {
+    method: 'GET',
+    originalUrl: '/api/v1/trips?from=rupaidiha&to=ahmedabad',
+    headers: {}
+  };
+  originGuard(publicSearchReq, mockRes, () => { passed = true; });
+  assert.strictEqual(passed, true, 'Public destination search should be allowed without client signature');
+
+  // Test 6: Block protected non-public GET endpoint when lacking client signature
+  passed = false;
+  statusSent = null;
+  const protectedGetReq = {
+    method: 'GET',
+    originalUrl: '/api/v1/admin/dashboard',
+    headers: {}
+  };
+  originGuard(protectedGetReq, mockRes, () => { passed = true; });
+  assert.strictEqual(statusSent, 403, 'Protected endpoint without client signature must be rejected');
 });
 
 test('Security Engine - Browser Session generates signed httpOnly cookie for unauthenticated visitors', async (t) => {

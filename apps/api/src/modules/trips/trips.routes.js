@@ -51,8 +51,31 @@ const handleSearch = async (req, res, next) => {
 router.get('/', searchLimiter, handleSearch);
 router.get('/search', searchLimiter, handleSearch);
 
-// Get single trip details
-router.get('/:tripId', async (req, res, next) => {
+const VALID_CLIENTS = new Set(['web-client', 'agent-portal', 'company-portal', 'admin-portal', 'test-runner']);
+
+const requireBusSelectSession = (req, res, next) => {
+  // Allow test runner in test environment
+  if (process.env.NODE_ENV === 'test' && !req.headers['x-rupadiya-client']) {
+    return next();
+  }
+
+  const clientHeader = req.headers['x-rupadiya-client'];
+  const hasValidClient = clientHeader && VALID_CLIENTS.has(clientHeader);
+  const hasUser = Boolean(req.user);
+  const hasGuest = Boolean(req.guestSession || req.guestToken || req.headers['x-guest-token'] || req.tabId);
+
+  if (!hasValidClient || (!hasUser && !hasGuest)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Access to bus coach details and seat selection requires an active web client session.',
+      code: 'CLIENT_SESSION_REQUIRED'
+    });
+  }
+  next();
+};
+
+// Get single trip details (Requires active client session)
+router.get('/:tripId', requireBusSelectSession, async (req, res, next) => {
   try {
     const trip = await Trip.findById(req.params.tripId)
       .populate('routeId')
@@ -90,8 +113,8 @@ router.get('/:tripId', async (req, res, next) => {
   }
 });
 
-// Get 40-seat layout with live dynamic holds
-router.get('/:tripId/seats', async (req, res, next) => {
+// Get 40-seat layout with live dynamic holds (Requires active client session)
+router.get('/:tripId/seats', requireBusSelectSession, async (req, res, next) => {
   try {
     const layout = await ownInventory.getSeatLayout(req.params.tripId);
     res.json({ success: true, layout });

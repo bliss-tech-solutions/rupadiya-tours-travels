@@ -639,14 +639,17 @@ export default function AgentBookingPage() {
                   onChange={(e) => handleSourceChange(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-emerald-500"
                 >
-                  <option value={HUB_CITY}>{HUB_CITY} (Hub)</option>
-                  {ROUTE_GROUPS.map(g => (
-                    <optgroup key={g.id} label={g.name}>
-                      {g.cities.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </optgroup>
-                  ))}
+                  {sourceCity === HUB_CITY ? (
+                    <option value={HUB_CITY}>{HUB_CITY} (Hub)</option>
+                  ) : (
+                    ROUTE_GROUPS.map(g => (
+                      <optgroup key={g.id} label={g.name}>
+                        {g.cities.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </optgroup>
+                    ))
+                  )}
                 </select>
               </div>
 
