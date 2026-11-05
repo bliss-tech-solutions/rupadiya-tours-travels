@@ -13,7 +13,8 @@ import {
   Sparkles,
   ChevronRight,
   Layers,
-  Check
+  Check,
+  Lock
 } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { formatDate, formatTime } from '../../../lib/dateUtils';
