@@ -2,10 +2,10 @@
  * Rupadiya Platform - Main Database Initialization Script
  * Bootstraps a fresh or existing database with:
  * 1. Root Super Admin Account
- * 2. All 33 Franchise Companies (Codes #01 to #33)
+ * 2. All 34 Franchise Companies (Ranks 1 to 34, #01 to #34)
  * 3. Standardized 6 Bidirectional Hub-and-Spoke Corridors (12 Routes)
  * 4. Standard Fleets (36 Berth Sleepers & 40 Passenger Seaters)
- * 5. Commission Tiers (1% to 10%)
+ * 5. Commission Tiers (5 Tiers L1 to L5)
  */
 
 const path = require('path');
@@ -64,20 +64,25 @@ async function initMainDb() {
       console.log(`ℹ️ Super Admin already exists: ${adminEmail}`);
     }
 
-    // 2. 33 Franchise Companies (#01 to #33)
-    console.log(`\n📦 Verifying 33 Franchise Companies Registry...`);
+    // 2. 34 Franchise Companies (#01 to #34, Ntt to Ott)
+    console.log(`\n📦 Verifying 34 Franchise Companies Registry...`);
     let companiesCreated = 0;
     for (const c of COMPANY_CODES) {
       const existing = await Company.findOne({ companyCode: c.code });
       if (!existing) {
         await Company.create({
           companyCode: c.code,
-          name: c.code === 1 ? 'Rupadiya Super Express Ltd.' : c.defaultName,
+          rank: c.rank,
+          shortCode: c.shortCode.toUpperCase(),
+          name: c.defaultName,
           slug: c.slug,
           ownerId: null,
           status: 'ACTIVE',
-          contactPhone: '+91 9876543210',
-          contactEmail: `contact@${c.slug}.rupadiya.test`,
+          contactPhone: '',
+          contactEmail: '',
+          address: '',
+          city: 'Rupadiya',
+          state: 'Uttar Pradesh',
           annualTarget: {
             targetPassengers: 12000,
             currentPassengers: 0,
@@ -85,9 +90,15 @@ async function initMainDb() {
           }
         });
         companiesCreated++;
+      } else {
+        existing.rank = c.rank;
+        existing.shortCode = c.shortCode.toUpperCase();
+        existing.name = c.defaultName;
+        existing.slug = c.slug;
+        await existing.save();
       }
     }
-    console.log(`✅ 33 Companies verified (${companiesCreated} newly created, ${33 - companiesCreated} already existed).`);
+    console.log(`✅ 34 Companies verified (${companiesCreated} newly created, ${COMPANY_CODES.length - companiesCreated} already existed/updated).`);
 
     // 3. 6 Hub-and-Spoke Corridors (Rupadiya <-> 6 Major Cities)
     console.log(`\n🛣️ Verifying Hub-and-Spoke Intercity Corridors...`);
@@ -174,7 +185,7 @@ async function initMainDb() {
     }
     console.log(`✅ Fleet verified (${busesCreated} initial coaches created).`);
 
-    // 5. Default Commission Tiers (1% to 10%)
+    // 5. Default Commission Tiers (5 Tiers L1 to L5)
     console.log(`\n💎 Verifying Commission Tiers...`);
     for (const tier of DEFAULT_COMMISSION_TIERS) {
       await CommissionTier.findOneAndUpdate(
@@ -187,8 +198,8 @@ async function initMainDb() {
 
     console.log(`\n====================================================`);
     console.log(`🎉 Database initialization complete and ready for production!`);
-    console.log(`   Super Admin: ${adminEmail} / ${adminPassword}`);
-    console.log(`   Companies: 33 Franchises Active`);
+    console.log(`   Super Admin: ${adminEmail}`);
+    console.log(`   Companies: 34 Franchises Active (#01 to #34, Ntt to Ott)`);
     console.log(`   Routes: 12 Hub-and-Spoke Corridors Configured`);
     console.log(`====================================================\n`);
 

@@ -4,6 +4,7 @@ const { Wallet, WalletLedger } = require('./wallet.model');
 const { authenticateToken } = require('../../middleware/auth.middleware');
 const { paymentLimiter } = require('../../middleware/rateLimit.middleware');
 const { TRANSACTION_TYPES } = require('../../config/constants');
+const paymentService = require('../payments/payment.service');
 
 // Get wallet balance
 router.get(['/', '/me'], authenticateToken, async (req, res, next) => {
@@ -63,51 +64,36 @@ router.get('/ledger', authenticateToken, async (req, res, next) => {
   }
 });
 
-// Deposit into wallet
+// Initiate deposit order via verified payment gateway
+// Direct balance modification is strictly blocked — wallet is only credited after verified payment capture
 router.post('/deposit', paymentLimiter, authenticateToken, async (req, res, next) => {
   try {
-    const { amount, paymentMethod } = req.body;
+    const { amount } = req.body;
     const numAmount = Number(amount);
-    if (!numAmount || numAmount < 100) {
+    if (!numAmount || isNaN(numAmount) || numAmount < 100) {
       return res.status(400).json({ error: 'Minimum deposit amount is ₹100' });
     }
 
-    let wallet = await Wallet.findOne({ userId: req.user._id });
-    if (!wallet) {
-      wallet = await Wallet.create({
-        userId: req.user._id,
-        companyCode: req.user.companyCode,
-        availableBalance: 0,
-        reservedBalance: 0
-      });
-    }
-
-    wallet.availableBalance += numAmount;
-    await wallet.save();
-
-    const idempotencyKey = `DEP_${req.user._id}_${Date.now()}`;
-    const ledger = await WalletLedger.create({
-      walletId: wallet._id,
-      userId: req.user._id,
-      companyCode: req.user.companyCode,
-      entryType: 'CREDIT',
+    // Direct manual balance credits without payment are blocked
+    const orderResult = await paymentService.createOrder({
       amount: numAmount,
-      balanceAfter: wallet.availableBalance,
-      transactionType: TRANSACTION_TYPES.WALLET_DEPOSIT,
-      referenceType: 'DEPOSIT',
-      referenceId: `DEP_${Date.now()}`,
-      description: `Wallet top-up via ${paymentMethod || 'Online Payment'}`,
-      idempotencyKey
+      currency: 'INR',
+      purpose: 'WALLET_DEPOSIT',
+      userId: req.user._id,
+      companyCode: req.user.companyCode || 1,
+      metadata: {
+        userId: req.user._id.toString(),
+        companyCode: req.user.companyCode || 1,
+        agentName: req.user.name,
+        initiatedFrom: 'wallet_deposit_api'
+      }
     });
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
-      message: `Successfully deposited ₹${numAmount} to wallet`,
-      wallet: {
-        availableBalance: wallet.availableBalance,
-        reservedBalance: wallet.reservedBalance
-      },
-      ledger
+      requiresPayment: true,
+      message: 'Payment order created. Complete payment via Razorpay to credit wallet balance.',
+      ...orderResult
     });
   } catch (err) {
     next(err);

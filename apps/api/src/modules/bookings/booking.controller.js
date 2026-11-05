@@ -1,5 +1,6 @@
 const bookingService = require('./booking.service');
 const Booking = require('./booking.model');
+const Offer = require('../offers/offer.model');
 const holdStore = require('../../config/holdStore');
 const { validateSeatHoldRequest } = require('../../config/validation');
 
@@ -151,14 +152,19 @@ class BookingController {
         insuranceAmount: req.body.insuranceAmount
       });
 
-      const cashbackCoupon = {
-        code: `NEXTTRIP${Math.floor(100 + Math.random() * 900)}`,
-        discountAmount: 150,
-        minBookingAmount: 500,
-        validDays: 30,
-        title: 'Next Journey Cashback',
-        description: 'Enjoy ₹150 instant cashback on your next intercity coach or tour booking!'
-      };
+      // Only return legitimate active promotional offer from database
+      const activeOffer = await Offer.findOne({
+        isActive: true,
+        validUntil: { $gte: new Date() }
+      }).lean();
+
+      const cashbackCoupon = activeOffer ? {
+        code: activeOffer.code,
+        discountAmount: activeOffer.maxDiscountAmount || 100,
+        minBookingAmount: activeOffer.minBookingAmount || 500,
+        title: activeOffer.title || 'Promotional Offer',
+        description: activeOffer.description || 'Special offer for your journey'
+      } : null;
 
       res.status(201).json({ success: true, booking, cashbackCoupon });
     } catch (err) {

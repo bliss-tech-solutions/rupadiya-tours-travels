@@ -6,7 +6,7 @@ const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const env = require('./config/env');
-const { connectDB, isDbConnected } = require('./config/db');
+const { isDbConnected, mongoose, connectDB } = require('./config/db');
 const { errorHandler } = require('./middleware/errorHandler.middleware');
 const { originGuard, getAllowedOrigins } = require('./middleware/originGuard.middleware');
 const { globalLimiter } = require('./middleware/rateLimit.middleware');
@@ -74,7 +74,16 @@ app.use(cors({
 
 app.use(cookieParser(env.COOKIE_SECRET));
 app.use(compression());
-app.use(express.json({ limit: '10mb' }));
+
+// Webhook raw-body preservation: Razorpay HMAC verification requires unparsed raw buffer
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    if (req.originalUrl && req.originalUrl.includes('/webhook')) {
+      req.rawBody = buf;
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Ensure API responses are never cached by client or proxy, and eliminate 304 Not Modified
@@ -110,25 +119,18 @@ app.use('/api', sanitizeInput);
 // Static uploads directory
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
-// Health Check endpoints (always accessible, reports live DB status)
-app.get('/api/v1/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    service: 'rupadiya-api',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    dbConnected: isDbConnected()
-  });
-});
-
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
+// Real Liveness & Readiness Health Check Endpoint
+app.get(['/api/v1/health', '/health'], (req, res) => {
+  const dbOk = isDbConnected();
+  const statusCode = dbOk || env.NODE_ENV === 'test' ? 200 : 503;
+  res.status(statusCode).json({
+    status: dbOk ? 'healthy' : (env.NODE_ENV === 'test' ? 'ok' : 'unhealthy'),
     service: 'rupadiya-api',
     version: '1.0.0',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    dbConnected: isDbConnected()
+    dbConnected: dbOk,
+    dbState: mongoose.connection ? mongoose.connection.readyState : 0
   });
 });
 

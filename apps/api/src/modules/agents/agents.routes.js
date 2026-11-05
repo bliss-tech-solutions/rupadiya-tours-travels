@@ -11,6 +11,7 @@ const taxService = require('../tax/tax.service');
 const websocketService = require('../../services/websocket.service');
 const WithdrawalRequest = require('../withdrawals/withdrawal.model');
 const Booking = require('../bookings/booking.model');
+const bookingService = require('../bookings/booking.service');
 const Trip = require('../trips/trip.model');
 const User = require('../users/user.model');
 const { ROLES, TRANSACTION_TYPES, SEAT_STATUS } = require('../../config/constants');
@@ -92,9 +93,17 @@ function buildLeanTicketDTO(bookingDoc) {
     boardingLocation: b.boardingPoint?.name || fromCity,
     droppingLocation: b.droppingPoint?.name || toCity,
     bus: {
-      name: bus.name || bus.operatorName || 'Rupadiya Intercity Bus',
-      busNumber: bus.busNumber || 'UP-40-BT-1001',
-      busType: bus.busType || 'AC Sleeper'
+      name: bus.name || bus.operatorName || 'Rupadiya Intercity Coach',
+      operatorName: bus.operatorName || 'Rupadiya Intercity Travels',
+      busNumber: bus.busNumber || 'UP-40-TC-1001',
+      busType: bus.busType || 'AC Sleeper (2+1)',
+      layoutType: bus.layoutType || '2+1',
+      totalSeats: bus.totalSeats || 36,
+      driverName: bus.driverDetails?.name || bus.driverName || 'Verified Pilot',
+      driverPhone: bus.driverDetails?.phone || bus.driverPhone || '+91 98765 43210',
+      amenities: bus.amenities && bus.amenities.length > 0 
+        ? bus.amenities 
+        : ['Charging Point', 'Night Reading Lamp', 'Water Bottle', 'AC', 'Blanket']
     },
     trip: {
       _id: trip._id,
@@ -683,89 +692,28 @@ router.post('/tickets/cancel', agentOnly, async (req, res, next) => {
       }
     }
 
-    // Two-factor passenger verification check
-    const contactPhone = booking.contactDetails?.phone?.replace(/\D/g, '');
-    if (contactPhone && contactPhone !== cleanMobile) {
-      return res.status(403).json({ error: 'Mobile number does not match the passenger record on this ticket.' });
-    }
-
     if (booking.status === 'CANCELLED') {
       return res.status(400).json({ error: 'This ticket has already been cancelled.' });
     }
 
-    // Departure Time policy calculation
-    const trip = await Trip.findById(booking.tripId);
-    const depTime = trip?.departureTime || booking.createdAt;
-    const hoursUntilDeparture = (new Date(depTime).getTime() - Date.now()) / (3600 * 1000);
+    // Process dual financial settlement via central BookingService engine
+    const result = await bookingService.cancelBooking({
+      bookingId: booking.pnr || booking.bookingId,
+      reason: reason || 'Agent requested cancellation',
+      cancelledByUserId: agentId
+    });
 
-    let feePercentage = 10; // Default >= 24h
-    if (hoursUntilDeparture < 4) {
-      feePercentage = 100; // Non-refundable
-    } else if (hoursUntilDeparture < 12) {
-      feePercentage = 50;
-    } else if (hoursUntilDeparture < 24) {
-      feePercentage = 25;
-    }
-
-    const totalFare = booking.fareBreakdown?.totalPayable || booking.totalAmount || 1000;
-    const cancellationFee = Math.round((totalFare * feePercentage) / 100);
-    const refundAmount = Math.max(0, totalFare - cancellationFee);
-
-    // Cancel booking status
-    booking.status = 'CANCELLED';
-    booking.cancellationDetails = {
-      cancelledAt: new Date(),
-      cancelledBy: agentId,
-      reason,
-      feePercentage,
-      cancellationFee,
-      refundAmount
-    };
-    await booking.save();
-
-    // Release seats in trip
-    if (trip) {
-      const seatsToFree = seatNumbers || booking.seatNumbers || [];
-      trip.seats.forEach(s => {
-        if (seatsToFree.includes(s.seatNumber)) {
-          s.status = SEAT_STATUS.AVAILABLE;
-          s.passenger = null;
-        }
-      });
-      await trip.save();
-    }
-
-    // Credit refund to agent wallet if refund > 0
-    let balanceAfter = 0;
-    if (refundAmount > 0) {
-      const wallet = await getOrCreateAgentWallet(agentId, req.user.companyCode);
-      wallet.availableBalance += refundAmount;
-      await wallet.save();
-      balanceAfter = wallet.availableBalance;
-
-      const cancellationRef = `CANC_${booking.bookingId}_${Date.now()}`;
-      await WalletLedger.create({
-        walletId: wallet._id,
-        userId: agentId,
-        companyCode: req.user.companyCode || 1,
-        entryType: 'CREDIT',
-        amount: refundAmount,
-        balanceAfter,
-        transactionType: TRANSACTION_TYPES.TICKET_CANCELLATION_REFUND,
-        referenceType: 'BOOKING',
-        referenceId: booking.bookingId,
-        description: `Refund for Cancelled Ticket #${booking.bookingId} (${100 - feePercentage}% refund, Fee: ₹${cancellationFee})`,
-        idempotencyKey: `IDEM_${cancellationRef}`
-      });
-    }
+    const agentWallet = await Wallet.findOne({ userId: agentId });
+    const balanceAfter = agentWallet ? agentWallet.availableBalance : 0;
 
     res.json({
       success: true,
-      message: `Ticket #${booking.bookingId} cancelled successfully.`,
-      cancellationReference: `CNX_${booking.bookingId}`,
-      cancellationFee,
-      feePercentage,
-      refundAmount,
+      message: `Ticket #${booking.pnr || booking.bookingId} cancelled successfully.`,
+      cancellationReference: `CNX_${booking.pnr || booking.bookingId}`,
+      cancellationFee: result.cancellationFee,
+      feePercentage: Math.round(100 - result.refundPercent),
+      refundAmount: result.refundAmount,
+      refundRouting: result.refundRouting,
       balanceAfter
     });
   } catch (err) {

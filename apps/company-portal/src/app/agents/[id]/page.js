@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../../lib/api';
 import DocumentViewerModal from '../../../components/DocumentViewerModal';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 export default function CompanyAgentDetailPage() {
   const params = useParams();
@@ -34,6 +35,8 @@ export default function CompanyAgentDetailPage() {
   const [agentData, setAgentData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(false);
 
   // Wallet top-up modal
   const [topupModalOpen, setTopupModalOpen] = useState(false);
@@ -90,21 +93,26 @@ export default function CompanyAgentDetailPage() {
     }
   };
 
-  const handleToggleStatus = async () => {
+  const handleToggleStatus = () => {
+    setShowStatusModal(true);
+  };
+
+  const handleExecuteToggleStatus = async () => {
     if (!agentData?.agent) return;
     const newStatus = !agentData.agent.isActive;
-    const confirmMsg = newStatus 
-      ? 'Activate this franchise agent?' 
-      : 'Suspend this agent? They will no longer be able to log in or issue tickets.';
-    if (!confirm(confirmMsg)) return;
-
+    setStatusLoading(true);
     try {
       const res = await api.toggleAgentStatus(id, newStatus);
       if (res.success) {
+        setShowStatusModal(false);
         fetchAgentDetails();
+      } else {
+        alert(res?.error || 'Failed to update agent status');
       }
     } catch (err) {
       alert(err.message || 'Failed to update agent status');
+    } finally {
+      setStatusLoading(false);
     }
   };
 
@@ -518,6 +526,30 @@ export default function CompanyAgentDetailPage() {
           status={selectedDoc.status}
           fileUrl={selectedDoc.fileUrl}
           fileUrlBack={selectedDoc.fileUrlBack}
+        />
+      )}
+
+      {/* Agent Status Confirmation Modal */}
+      {agentData?.agent && (
+        <ConfirmationModal
+          isOpen={showStatusModal}
+          onClose={() => !statusLoading && setShowStatusModal(false)}
+          onConfirm={handleExecuteToggleStatus}
+          variant={agentData.agent.isActive ? 'warning' : 'success'}
+          icon={agentData.agent.isActive ? Lock : Unlock}
+          title={agentData.agent.isActive ? `Suspend Agent ${agentData.agent.name}?` : `Activate Agent ${agentData.agent.name}?`}
+          message={agentData.agent.isActive 
+            ? 'Suspending this agent will immediately revoke ticket booking capabilities and lock agent portal access.' 
+            : 'Activating this agent will grant them full booking authority and access to the franchise portal.'}
+          confirmText={agentData.agent.isActive ? 'Suspend Agent' : 'Activate Agent'}
+          cancelText="Cancel"
+          loading={statusLoading}
+          details={[
+            { label: 'Agent Name', value: agentData.agent.name, highlight: true },
+            { label: 'Agency Code', value: agentData.agent.referralCode || 'AGT' },
+            { label: 'Phone', value: agentData.agent.phone },
+            { label: 'Current Status', value: agentData.agent.isActive ? 'Active' : 'Suspended' }
+          ]}
         />
       )}
 

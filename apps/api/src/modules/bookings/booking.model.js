@@ -90,16 +90,17 @@ const bookingSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: Object.values(BOOKING_STATUS),
-    default: BOOKING_STATUS.CONFIRMED
+    default: BOOKING_STATUS.PENDING_PAYMENT
   },
   paymentStatus: {
     type: String,
     enum: Object.values(PAYMENT_STATUS),
-    default: PAYMENT_STATUS.SUCCESS
+    default: PAYMENT_STATUS.PENDING
   },
   paymentProvider: {
     type: String,
-    default: 'dummy'
+    enum: ['RAZORPAY', 'AGENT_WALLET', 'dummy', 'razorpay'],
+    default: 'RAZORPAY'
   },
   paymentReference: {
     type: String,
@@ -107,8 +108,10 @@ const bookingSchema = new mongoose.Schema({
   },
   cancellationDetails: {
     cancelledAt: { type: Date, default: null },
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     refundAmount: { type: Number, default: 0 },
     cancellationFee: { type: Number, default: 0 },
+    refundId: { type: String, default: null },
     reason: { type: String, default: '' }
   }
 }, {

@@ -12,6 +12,7 @@ function getMongoUri() {
 
 let isConnecting = false;
 let reconnectTimer = null;
+let isConnected = false;
 
 function isDbConnected() {
   return mongoose.connection.readyState === 1;
@@ -19,13 +20,17 @@ function isDbConnected() {
 
 async function connectDB(retries = 5, delayMs = 1500) {
   if (isDbConnected()) {
+    isConnected = true;
     return mongoose.connection;
   }
 
   if (isConnecting) {
     // Wait for in-flight connection attempt
     for (let i = 0; i < 20; i++) {
-      if (isDbConnected()) return mongoose.connection;
+      if (isDbConnected()) {
+        isConnected = true;
+        return mongoose.connection;
+      }
       await new Promise(r => setTimeout(r, 200));
     }
   }
@@ -45,6 +50,7 @@ async function connectDB(retries = 5, delayMs = 1500) {
         dbName: env.MONGODB_DB || 'rupadiya'
       });
       isConnecting = false;
+      isConnected = true;
       console.log(`[DB] Connected to MongoDB: ${conn.connection.host}/${conn.connection.name}`);
       return conn.connection;
     } catch (err) {
@@ -57,6 +63,14 @@ async function connectDB(retries = 5, delayMs = 1500) {
   }
 
   isConnecting = false;
+  isConnected = false;
+
+  // Fail-closed in production: Never allow payment & booking server to run in degraded DB state
+  if (env.NODE_ENV === 'production') {
+    console.error(`[FATAL] Exiting process due to database connection failure in production.`);
+    process.exit(1);
+  }
+
   console.warn(`[DB Warning] Running without active DB connection. Background auto-reconnect active.`);
   scheduleAutoReconnect();
   return null;
@@ -73,17 +87,24 @@ function scheduleAutoReconnect() {
   }, 4000);
 }
 
+mongoose.connection.on('connected', () => {
+  isConnected = true;
+});
+
 mongoose.connection.on('disconnected', () => {
+  isConnected = false;
   console.warn('[DB] MongoDB disconnected. Scheduling automatic reconnection...');
   scheduleAutoReconnect();
 });
 
 mongoose.connection.on('error', (err) => {
+  isConnected = false;
   console.error('[DB] MongoDB connection error:', err.message);
   scheduleAutoReconnect();
 });
 
 mongoose.connection.on('reconnected', () => {
+  isConnected = true;
   console.log('[DB] MongoDB successfully reconnected.');
 });
 

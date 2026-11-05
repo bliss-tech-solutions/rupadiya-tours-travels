@@ -25,6 +25,7 @@ import {
   Eye
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import ConfirmationModal from '../../components/ConfirmationModal';
 import { formatDate, formatDateTime } from '../../lib/dateUtils';
 
 const BUS_LAYOUT_OPTIONS = [
@@ -98,6 +99,8 @@ export default function CompanyFleetPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBusId, setEditingBusId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [busToDelete, setBusToDelete] = useState(null);
+  const [deletingBus, setDeletingBus] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -254,18 +257,28 @@ export default function CompanyFleetPage() {
     }
   };
 
-  const handleDeleteBus = async (bus) => {
-    if (!confirm(`Are you sure you want to remove bus ${bus.busNumber} (${bus.name}) from your active fleet?`)) return;
+  const handleDeleteBus = (bus) => {
+    setBusToDelete(bus);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!busToDelete) return;
+    setDeletingBus(true);
     try {
-      const res = await api.deleteBus(bus._id || bus.id);
+      const res = await api.deleteBus(busToDelete._id || busToDelete.id);
       if (res?.success) {
-        setActionSuccess(`Bus ${bus.busNumber} removed.`);
+        setActionSuccess(`Coach ${busToDelete.busNumber} removed from company fleet.`);
+        setBusToDelete(null);
         fetchFleet();
       } else {
         setError(res?.error || 'Failed to delete bus');
+        setBusToDelete(null);
       }
     } catch (err) {
       setError(err.message || 'Error deleting bus');
+      setBusToDelete(null);
+    } finally {
+      setDeletingBus(false);
     }
   };
 
@@ -743,6 +756,27 @@ export default function CompanyFleetPage() {
             </form>
           </div>
         </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {busToDelete && (
+        <ConfirmationModal
+          isOpen={Boolean(busToDelete)}
+          onClose={() => !deletingBus && setBusToDelete(null)}
+          onConfirm={handleConfirmDelete}
+          variant="danger"
+          icon={Trash2}
+          title={`Remove Coach ${busToDelete.busNumber}?`}
+          message="Are you sure you want to remove this bus from your active fleet? This will prevent it from being assigned to any new routes or daily trip schedules."
+          confirmText="Delete Coach"
+          cancelText="Keep Coach"
+          loading={deletingBus}
+          details={[
+            { label: 'Bus Number', value: busToDelete.busNumber, highlight: true },
+            { label: 'Coach Model', value: busToDelete.name || 'Standard Coach' },
+            { label: 'Seating Configuration', value: `${busToDelete.totalSeats || 36} Seats (${busToDelete.busType || 'Sleeper'})` },
+            { label: 'Assigned Driver', value: busToDelete.driverName || 'Unassigned' }
+          ]}
+        />
       )}
     </div>
   );

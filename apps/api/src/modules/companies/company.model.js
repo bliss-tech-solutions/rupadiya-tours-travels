@@ -16,6 +16,7 @@ const companySchema = new mongoose.Schema({
   },
   shortCode: {
     type: String,
+    uppercase: true,
     trim: true,
     index: true
   },
@@ -28,11 +29,11 @@ const companySchema = new mongoose.Schema({
     default: null,
     index: true
   },
-  contactPhone: { type: String, default: '+91 9876543210' },
+  contactPhone: { type: String, default: '' },
   contactEmail: { type: String, default: '' },
   city: { type: String, default: 'Rupadiya' },
   state: { type: String, default: 'Uttar Pradesh' },
-  address: { type: String, default: 'Transport Nagar, Rupadiya, Uttar Pradesh' },
+  address: { type: String, default: '' },
   status: {
     type: String,
     enum: ['ACTIVE', 'SUSPENDED'],

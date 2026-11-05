@@ -15,6 +15,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import ConfirmationModal from '../../components/ConfirmationModal';
 
 function CancelTicketContent() {
   const searchParams = useSearchParams();
@@ -28,6 +29,8 @@ function CancelTicketContent() {
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [cancellationResult, setCancellationResult] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('Customer requested cancellation');
 
   const handleSearch = async (e) => {
     if (e) e.preventDefault();
@@ -91,11 +94,7 @@ function CancelTicketContent() {
   const cancellationFee = Math.round((originalFare * policy.feePercent) / 100);
   const netRefund = Math.max(0, originalFare - cancellationFee);
 
-  const handleConfirmCancel = async () => {
-    if (!confirm(`Confirm cancellation of ticket #${ticket.pnr}? Refund of ₹${netRefund} will be credited to your agent wallet.`)) {
-      return;
-    }
-
+  const handleExecuteCancellation = async () => {
     setCancelling(true);
     setError('');
 
@@ -103,24 +102,27 @@ function CancelTicketContent() {
       const res = await api.cancelTicket({
         bookingId: ticket.pnr,
         pnr: ticket.pnr,
-        reason: 'Customer requested cancellation'
+        reason: cancelReason.trim() || 'Customer requested cancellation'
       });
 
       if (res.success) {
+        setShowConfirmModal(false);
         setCancellationResult(res.data || res);
         window.dispatchEvent(new Event('wallet-updated'));
       } else {
         setError(res.error || 'Cancellation request failed');
+        setShowConfirmModal(false);
       }
     } catch (err) {
       setError(err.message || 'Error processing ticket cancellation');
+      setShowConfirmModal(false);
     } finally {
       setCancelling(false);
     }
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
         <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 block mb-1">
@@ -306,22 +308,49 @@ function CancelTicketContent() {
                   <button
                     type="button"
                     disabled={cancelling}
-                    onClick={handleConfirmCancel}
-                    className="w-full py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition active:scale-98 flex items-center justify-center gap-2 shadow-xs"
+                    onClick={() => setShowConfirmModal(true)}
+                    className="w-full py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition active:scale-98 flex items-center justify-center gap-2 shadow-xs cursor-pointer"
                   >
-                    {cancelling ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" /> Processing Cancellation...
-                      </>
-                    ) : (
-                      <>Confirm Cancellation & Refund ₹{netRefund.toLocaleString('en-IN')} to Wallet →</>
-                    )}
+                    Cancel Ticket & Refund ₹{netRefund.toLocaleString('en-IN')} to Wallet →
                   </button>
                 </>
               )}
             </div>
           )}
         </>
+      )}
+
+      {/* Confirmation Modal */}
+      {ticket && (
+        <ConfirmationModal
+          isOpen={showConfirmModal}
+          onClose={() => !cancelling && setShowConfirmModal(false)}
+          onConfirm={handleExecuteCancellation}
+          variant="danger"
+          icon={XCircle}
+          title={`Confirm Cancellation for Ticket #${ticket.pnr}`}
+          message="Are you sure you want to cancel this booking? The seat will be released immediately back to the trip inventory, and the refundable balance will be credited to your agent wallet."
+          confirmText={`Cancel Ticket & Refund ₹${netRefund}`}
+          cancelText="Keep Ticket"
+          loading={cancelling}
+          details={[
+            { label: 'Ticket PNR', value: `#${ticket.pnr}`, highlight: true },
+            { label: 'Policy Window', value: policy.tier },
+            { label: 'Operator Cancellation Fee', value: `₹${cancellationFee} (${policy.feePercent}%)`, variant: 'danger' },
+            { label: 'Net Refund to Agent Wallet', value: `₹${netRefund} (${policy.refundPercent}%)`, variant: 'success', highlight: true }
+          ]}
+        >
+          <div className="space-y-1.5 pt-1">
+            <label className="text-xs font-bold text-slate-700">Cancellation Reason</label>
+            <input
+              type="text"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. Passenger requested change of travel date"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:border-rose-500 focus:bg-white"
+            />
+          </div>
+        </ConfirmationModal>
       )}
     </div>
   );

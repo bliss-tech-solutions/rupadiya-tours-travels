@@ -332,7 +332,13 @@ export const api = {
   uploadKyc: (payload) => request('/kyc/upload', { method: 'POST', body: JSON.stringify(payload) }),
   submitKyc: (payload) => request('/kyc/upload', { method: 'POST', body: JSON.stringify(payload) }),
 
-  // Legacy Withdrawals (if needed)
-  requestWithdrawal: (amount, bankDetails) => request('/withdrawals/request', { method: 'POST', body: JSON.stringify({ amount, bankDetails }) }),
-  getMyWithdrawals: () => request('/withdrawals/me'),
+  // Agent Earnings Withdrawals & Bank Transfers
+  requestWithdrawal: (payload, legacyDetails) => {
+    const body = (typeof payload === 'object' && payload !== null)
+      ? payload
+      : { amount: payload, payoutDetails: legacyDetails };
+    return request('/withdrawals', { method: 'POST', body: JSON.stringify(body) });
+  },
+  getMyWithdrawals: () => request('/withdrawals/mine'),
+  getWithdrawalSummary: () => request('/withdrawals/mine'),
 };

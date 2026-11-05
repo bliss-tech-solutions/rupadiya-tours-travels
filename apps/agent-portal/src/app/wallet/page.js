@@ -26,15 +26,21 @@ export default function AgentWalletLedgerPage() {
 
   const loadData = async () => {
     try {
-      const [wRes, lRes] = await Promise.allSettled([
+      const [wRes, lRes, wdRes] = await Promise.allSettled([
         api.getMyWallet(),
-        api.getLedger()
+        api.getLedger(),
+        api.getMyWithdrawals()
       ]);
+      let wData = {};
       if (wRes.status === 'fulfilled') {
         const val = wRes.value;
-        const wData = val?.data || val?.wallet || { availableBalance: val?.balance || 0, balance: val?.balance || 0 };
-        setWallet(wData);
+        wData = val?.data || val?.wallet || { availableBalance: val?.balance || 0, balance: val?.balance || 0 };
       }
+      if (wdRes.status === 'fulfilled' && wdRes.value?.summary) {
+        wData.withdrawableBalance = wdRes.value.summary.eligibleToWithdraw;
+        wData.totalEarnings = wdRes.value.summary.totalEarnings;
+      }
+      setWallet(wData);
       if (lRes.status === 'fulfilled') {
         const val = lRes.value;
         setLedger(val?.ledger || val?.data || []);

@@ -7,13 +7,16 @@ const Bus = require('../fleet/bus.model');
 const Route = require('../routes/route.model');
 const Trip = require('../trips/trip.model');
 const Booking = require('../bookings/booking.model');
+const Refund = require('../payments/refund.model');
+const Payment = require('../payments/payment.model');
+const paymentService = require('../payments/payment.service');
 const User = require('../users/user.model');
 const KycDocument = require('../kyc/kyc.model');
 const { Wallet, WalletLedger } = require('../wallets/wallet.model');
 const { CommissionTier, CommissionRecord } = require('../commissions/commission.model');
 const AuditLog = require('../audit/audit.model');
 const bcrypt = require('bcryptjs');
-const { ROLES, KYC_STATUS, COMPANY_CODES, DEFAULT_COMMISSION_TIERS, TRANSACTION_TYPES } = require('../../config/constants');
+const { ROLES, KYC_STATUS, COMPANY_CODES, DEFAULT_COMMISSION_TIERS, TRANSACTION_TYPES, PAYMENT_STATUS, REFUND_STATUS } = require('../../config/constants');
 
 router.use(authenticateToken);
 router.use(authorizeRoles(ROLES.SUPER_ADMIN));
@@ -25,13 +28,38 @@ router.get('/dashboard', async (req, res, next) => {
     const totalAgents = await User.countDocuments({ role: ROLES.AGENT });
     const totalBuses = await Bus.countDocuments({ status: 'ACTIVE' });
     const totalTrips = await Trip.countDocuments();
-    const confirmedBookings = await Booking.find({ status: 'CONFIRMED' });
+    const [bookingAgg] = await Booking.aggregate([
+      { $match: { status: 'CONFIRMED' } },
+      {
+        $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          totalSeatsBooked: { $sum: { $size: { $ifNull: ['$seatNumbers', []] } } },
+          totalGMV: { $sum: { $ifNull: ['$fareBreakdown.totalPayable', 0] } },
+          totalGSTCollected: { $sum: { $ifNull: ['$fareBreakdown.gstAmount', 0] } }
+        }
+      }
+    ]);
 
-    const totalGMV = confirmedBookings.reduce((sum, b) => sum + b.fareBreakdown.totalPayable, 0);
-    const totalSeatsBooked = confirmedBookings.reduce((sum, b) => sum + b.seatNumbers.length, 0);
-    const totalGSTCollected = confirmedBookings.reduce((sum, b) => sum + b.fareBreakdown.gstAmount, 0);
+    const totalBookings = bookingAgg ? bookingAgg.totalBookings : 0;
+    const totalSeatsBooked = bookingAgg ? bookingAgg.totalSeatsBooked : 0;
+    const totalGMV = bookingAgg ? bookingAgg.totalGMV : 0;
+    const totalGSTCollected = bookingAgg ? bookingAgg.totalGSTCollected : 0;
 
     const pendingKycCount = await KycDocument.countDocuments({ status: KYC_STATUS.PENDING });
+    const [refundAgg] = await Refund.aggregate([
+      { $match: { status: REFUND_STATUS.PENDING } },
+      {
+        $group: {
+          _id: null,
+          pendingRefundsCount: { $sum: 1 },
+          pendingRefundsAmount: { $sum: { $ifNull: ['$refundAmount', 0] } }
+        }
+      }
+    ]);
+
+    const pendingRefundsCount = refundAgg ? refundAgg.pendingRefundsCount : 0;
+    const pendingRefundsAmount = refundAgg ? refundAgg.pendingRefundsAmount : 0;
 
     res.json({
       success: true,
@@ -40,11 +68,13 @@ router.get('/dashboard', async (req, res, next) => {
         totalAgents,
         totalBuses,
         totalTrips,
-        totalBookings: confirmedBookings.length,
+        totalBookings,
         totalSeatsBooked,
         totalGMV,
         totalGSTCollected,
-        pendingKycCount
+        pendingKycCount,
+        pendingRefundsCount,
+        pendingRefundsAmount
       }
     });
   } catch (err) {
@@ -1182,6 +1212,202 @@ router.get('/bookings', async (req, res, next) => {
         status: b.status,
         date: b.createdAt ? new Date(b.createdAt).toISOString() : new Date().toISOString()
       }))
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================
+// Refunds & Returns Desk (Super Admin Exclusive)
+// ==========================================
+
+router.get('/refunds', async (req, res, next) => {
+  try {
+    const { status, companyCode, search, page = 1, limit = 50 } = req.query;
+
+    const filter = {};
+    if (status && status !== 'ALL') {
+      filter.status = status.toUpperCase();
+    }
+    if (companyCode) {
+      filter.companyCode = Number(companyCode);
+    }
+    if (search && search.trim()) {
+      const q = search.trim();
+      filter.$or = [
+        { pnr: { $regex: q, $options: 'i' } },
+        { refundId: { $regex: q, $options: 'i' } },
+        { customerName: { $regex: q, $options: 'i' } },
+        { customerPhone: { $regex: q, $options: 'i' } }
+      ];
+    }
+
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [refunds, totalCount] = await Promise.all([
+      Refund.find(filter)
+        .populate('processedBy', 'name email role')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      Refund.countDocuments(filter)
+    ]);
+
+    // Summary metrics across collection
+    const allPending = await Refund.find({ status: REFUND_STATUS.PENDING });
+    const allProcessed = await Refund.find({ status: REFUND_STATUS.PROCESSED });
+    const allRefunds = await Refund.find();
+
+    const pendingCount = allPending.length;
+    const pendingAmount = allPending.reduce((sum, r) => sum + (r.refundAmount || 0), 0);
+    const processedCount = allProcessed.length;
+    const processedAmount = allProcessed.reduce((sum, r) => sum + (r.refundAmount || 0), 0);
+    const retainedOperatorFees = allRefunds.reduce((sum, r) => sum + (r.cancellationFee || 0), 0);
+
+    res.json({
+      success: true,
+      refunds,
+      pagination: {
+        total: totalCount,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(totalCount / limitNum) || 1
+      },
+      stats: {
+        pendingCount,
+        pendingAmount,
+        processedCount,
+        processedAmount,
+        retainedOperatorFees
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/refunds/:id/process', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { mode = 'GATEWAY', utrNumber, notes } = req.body;
+
+    const refund = await Refund.findOne({
+      $or: [{ _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }, { refundId: id }]
+    });
+
+    if (!refund) {
+      return res.status(404).json({ error: 'Refund record not found.' });
+    }
+
+    if (refund.status === REFUND_STATUS.PROCESSED) {
+      return res.status(400).json({ error: 'This refund has already been processed and settled.' });
+    }
+
+    let gatewayRefundId = null;
+    let finalUtr = utrNumber ? String(utrNumber).trim() : null;
+
+    if (mode === 'GATEWAY') {
+      try {
+        const pResult = await paymentService.processRefund({
+          paymentId: refund.paymentId || `pay_${refund.pnr}`,
+          amount: refund.refundAmount,
+          notes: {
+            pnr: refund.pnr,
+            refundId: refund.refundId,
+            adminUserId: req.user._id.toString()
+          }
+        });
+        gatewayRefundId = pResult.refundId;
+      } catch (gateErr) {
+        return res.status(502).json({ error: `Gateway refund disbursement failed: ${gateErr.message}` });
+      }
+    } else {
+      // Manual bank transfer / UPI settlement
+      if (!finalUtr) {
+        return res.status(400).json({ error: 'UTR or Bank Transaction Reference number is required for manual settlement.' });
+      }
+    }
+
+    refund.status = REFUND_STATUS.PROCESSED;
+    refund.refundMode = mode === 'GATEWAY' ? 'GATEWAY' : 'MANUAL_BANK_TRANSFER';
+    refund.processedAt = new Date();
+    refund.processedBy = req.user._id;
+    if (gatewayRefundId) refund.gatewayRefundId = gatewayRefundId;
+    if (finalUtr) refund.utrNumber = finalUtr;
+    if (notes) refund.notes = notes;
+    await refund.save();
+
+    // Update Booking payment status
+    try {
+      await Booking.findByIdAndUpdate(refund.bookingId, {
+        paymentStatus: PAYMENT_STATUS.REFUNDED
+      });
+    } catch (bErr) {
+      console.warn('[Booking Payment Status Update Warning]:', bErr.message);
+    }
+
+    // Record audit log
+    try {
+      await AuditLog.create({
+        action: 'SUPER_ADMIN_REFUND_PROCESSED',
+        performedBy: req.user._id,
+        targetType: 'REFUND',
+        targetId: refund._id.toString(),
+        metadata: {
+          refundId: refund.refundId,
+          pnr: refund.pnr,
+          amount: refund.refundAmount,
+          mode,
+          gatewayRefundId,
+          utrNumber: finalUtr
+        }
+      });
+    } catch (audErr) {}
+
+    res.json({
+      success: true,
+      message: `Refund of ₹${refund.refundAmount} for PNR #${refund.pnr} successfully processed and marked settled.`,
+      refund
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/refunds/:id/reject', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'A valid reason is required to reject a refund request.' });
+    }
+
+    const refund = await Refund.findOne({
+      $or: [{ _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }, { refundId: id }]
+    });
+
+    if (!refund) {
+      return res.status(404).json({ error: 'Refund record not found.' });
+    }
+
+    if (refund.status === REFUND_STATUS.PROCESSED) {
+      return res.status(400).json({ error: 'Cannot reject a refund that has already been processed.' });
+    }
+
+    refund.status = REFUND_STATUS.REJECTED;
+    refund.rejectionReason = reason.trim();
+    refund.processedAt = new Date();
+    refund.processedBy = req.user._id;
+    await refund.save();
+
+    res.json({
+      success: true,
+      message: `Refund request for PNR #${refund.pnr} has been marked as rejected.`,
+      refund
     });
   } catch (err) {
     next(err);

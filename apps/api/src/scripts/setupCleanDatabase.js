@@ -2,7 +2,7 @@
  * Rupadiya Platform - Clean Database Setup Script
  * Sets up a production-ready relational database with:
  * 1. Root Super Admin account
- * 2. 33 Franchise Companies (#01 to #33) with real Owner accounts & Company Wallets
+ * 2. 34 Franchise Companies (#01 to #33) with real Owner accounts & Company Wallets
  * 3. 5-Tier Agent referral network with real hierarchy (L1 -> L2 -> L3 -> L4 -> L5)
  * 4. Compliant Fleet (36 Berth Sleeper & 40 Passenger Seater) with valid papers
  * 5. Hub-and-Spoke Intercity Corridors (Rupadiya <-> Lucknow, Delhi, Varanasi, etc.)
@@ -72,8 +72,8 @@ async function setupCleanDatabase() {
       console.log(`   Super Admin verified: ${adminEmail}`);
     }
 
-    // 2. 33 Franchise Companies & Dedicated Company Owners
-    console.log('\n🏢 2. Initializing 33 Franchise Companies and Owner Accounts...');
+    // 2. 34 Franchise Companies & Dedicated Company Owners
+    console.log('\n🏢 2. Initializing 34 Franchise Companies and Owner Accounts...');
     const createdCompanies = [];
     for (const c of COMPANY_CODES) {
       let company = await Company.findOne({ companyCode: c.code });
@@ -96,13 +96,15 @@ async function setupCleanDatabase() {
       if (!company) {
         company = await Company.create({
           companyCode: c.code,
-          name: c.code === 1 ? 'Rupadiya Super Express Ltd.' : c.defaultName,
+          rank: c.rank,
+          shortCode: c.shortCode.toUpperCase(),
+          name: c.defaultName,
           slug: c.slug,
           ownerId: owner._id,
           status: 'ACTIVE',
           contactPhone: `+91 98${String(c.code).padStart(2, '0')}000001`,
           contactEmail: `contact@${c.slug}.rupadiya.test`,
-          address: `Transport Nagar, Hub Terminal #${c.code}, Rupadiya, UP`,
+          address: `Hub Terminal #${c.code}, Rupadiya, UP`,
           annualTarget: {
             targetPassengers: 12000,
             currentPassengers: 0,
@@ -111,6 +113,9 @@ async function setupCleanDatabase() {
         });
       } else {
         company.ownerId = owner._id;
+        company.rank = c.rank;
+        company.shortCode = c.shortCode.toUpperCase();
+        company.name = c.defaultName;
         await company.save();
       }
 
@@ -137,7 +142,7 @@ async function setupCleanDatabase() {
 
       createdCompanies.push(company);
     }
-    console.log(`   33 Companies & Owners verified with relational companyId.`);
+    console.log(`   34 Companies & Owners verified with relational companyId.`);
 
     const comp1 = createdCompanies[0];
     const comp2 = createdCompanies[1];

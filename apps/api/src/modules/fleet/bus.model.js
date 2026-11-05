@@ -68,35 +68,35 @@ const busSchema = new mongoose.Schema({
   },
   amenities: [{ type: String }],
   driverDetails: {
-    name: { type: String, default: 'Dinesh Kumar' },
-    phone: { type: String, default: '+91 9876543210' },
-    licenseNumber: { type: String, default: 'DL-UP40-201800123' },
-    alternatePhone: { type: String, default: '+91 9876543211' }
+    name: { type: String, default: '' },
+    phone: { type: String, default: '' },
+    licenseNumber: { type: String, default: '' },
+    alternatePhone: { type: String, default: '' }
   },
   managerContact: {
-    name: { type: String, default: 'Fleet Manager' },
-    phone: { type: String, default: '+91 9876543210' }
+    name: { type: String, default: '' },
+    phone: { type: String, default: '' }
   },
   images: {
     type: [String],
     default: () => DEFAULT_BUS_IMAGES
   },
   documents: {
-    rcNumber: { type: String, default: 'RC-UP40-TEMP' },
-    rcExpiry: { type: Date, default: () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+    rcNumber: { type: String, default: '' },
+    rcExpiry: { type: Date, default: null },
     rcFileUrl: { type: String, default: '' },
-    insurancePolicy: { type: String, default: 'INS-ORIENTAL-2026' },
-    insuranceExpiry: { type: Date, default: () => new Date(Date.now() + 180 * 24 * 60 * 60 * 1000) },
+    insurancePolicy: { type: String, default: '' },
+    insuranceExpiry: { type: Date, default: null },
     insuranceFileUrl: { type: String, default: '' },
-    fitnessCert: { type: Date, default: () => new Date(Date.now() + 240 * 24 * 60 * 60 * 1000) },
+    fitnessCert: { type: Date, default: null },
     fitnessFileUrl: { type: String, default: '' },
-    permitExpiry: { type: Date, default: () => new Date(Date.now() + 300 * 24 * 60 * 60 * 1000) },
+    permitExpiry: { type: Date, default: null },
     permitFileUrl: { type: String, default: '' },
-    pucExpiry: { type: Date, default: () => new Date(Date.now() + 180 * 24 * 60 * 60 * 1000) },
+    pucExpiry: { type: Date, default: null },
     pucFileUrl: { type: String, default: '' },
-    roadTaxExpiry: { type: Date, default: () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+    roadTaxExpiry: { type: Date, default: null },
     roadTaxFileUrl: { type: String, default: '' },
-    driverLicenseExpiry: { type: Date, default: () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+    driverLicenseExpiry: { type: Date, default: null },
     driverLicenseFileUrl: { type: String, default: '' }
   },
   status: {

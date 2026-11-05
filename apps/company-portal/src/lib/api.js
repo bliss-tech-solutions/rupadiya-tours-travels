@@ -288,7 +288,7 @@ export const api = {
 
   // Agent Withdrawals Queue
   getWithdrawals: () => request('/owner/withdrawals'),
-  approveWithdrawal: (id) => request(`/owner/withdrawals/${id}/approve`, { method: 'POST' }),
+  approveWithdrawal: (id, payload) => request(`/owner/withdrawals/${id}/approve`, { method: 'POST', body: payload ? JSON.stringify(payload) : undefined }),
   rejectWithdrawal: (id, reason) => request(`/owner/withdrawals/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
 
   // Reports & Network

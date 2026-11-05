@@ -314,11 +314,6 @@ export default function MakeDepositPage() {
             </div>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-200/60 flex justify-between items-center text-xs">
-            <span className="text-slate-700 font-semibold">Total Deposit Amount:</span>
-            <span className="text-xl font-black text-emerald-700">₹{Number(amount || 0).toLocaleString('en-IN')}</span>
-          </div>
-
           <button
             type="button"
             disabled={submitting || !Number(amount) || Number(amount) < 100}

@@ -1,10 +1,14 @@
+const crypto = require('crypto');
+const net = require('net');
+const tls = require('tls');
+const env = require('./env');
+
 /**
  * Hold Store - Manages 10-minute temporary seat reservations with atomic consistency
  * and Tab-Isolated ownership.
  * Uses an in-memory TTL map with sub-millisecond precision, designed to be swapped
  * with Redis for multi-node deployments.
  */
-
 class HoldStore {
   constructor() {
     // Map key: `${tripId}:${seatNumber}` -> { holdToken, expiresAt, tabId, passengerId }
@@ -12,36 +16,65 @@ class HoldStore {
     // Map key: holdToken -> { holdToken, tripId, seatNumbers, passengerDetails, tabId, passengerId, createdAt, expiresAt }
     this.holdRecords = new Map();
 
-    // Auto-clean expired holds every 10 seconds
-    this.cleanupInterval = setInterval(() => this.cleanupExpiredHolds(), 10000);
+    // Auto-clean expired holds every 5 seconds
+    this.cleanupInterval = setInterval(() => this.cleanupExpiredHolds(), 5000);
     if (this.cleanupInterval.unref) this.cleanupInterval.unref();
   }
 
   /**
-   * Atomically hold multiple seats for a trip bound to a specific browser tab or user session
+   * Generates a cryptographically strong, unguessable 48-character token
+   */
+  generateToken() {
+    return crypto.randomBytes(24).toString('hex');
+  }
+
+  /**
+   * Atomically hold multiple seats for a trip bound to a specific browser tab or user session.
    * All-or-nothing: If any single seat is held by another active session, the entire batch fails.
    */
   async holdSeats({
     tripId,
     seatNumbers,
-    passengerDetails,
-    holdToken,
+    passengerDetails = {},
+    holdToken = null,
     tabId = null,
     passengerId = null,
     ttlSeconds = 600
   }) {
     this.cleanupExpiredHolds();
 
+    if (!tripId) {
+      return { success: false, message: 'Trip ID is required for seat hold.' };
+    }
+
+    if (!seatNumbers || !Array.isArray(seatNumbers) || seatNumbers.length === 0) {
+      return { success: false, message: 'At least one seat must be selected.' };
+    }
+
+    // 1. Reject duplicate seat numbers in single request
+    const normalizedSeats = seatNumbers.map(s => String(s).trim());
+    const uniqueSeats = new Set(normalizedSeats);
+    if (uniqueSeats.size !== normalizedSeats.length) {
+      return {
+        success: false,
+        conflict: true,
+        message: 'Duplicate seat numbers detected in the same hold request.'
+      };
+    }
+
+    const token = holdToken || this.generateToken();
     const now = Date.now();
     const expiresAt = now + (ttlSeconds * 1000);
 
-    // 1. Conflict detection
+    // 2. Pre-check conflict for all requested seats
     const conflicts = [];
-    for (const seat of seatNumbers) {
+    for (const seat of normalizedSeats) {
       const lockKey = `${tripId}:${seat}`;
       const existing = this.seatLocks.get(lockKey);
-      if (existing && existing.expiresAt > now && existing.holdToken !== holdToken) {
-        conflicts.push(seat);
+      if (existing) {
+        if (existing.expiresAt > now && existing.holdToken !== token) {
+          conflicts.push(seat);
+        }
       }
     }
 
@@ -49,16 +82,16 @@ class HoldStore {
       return {
         success: false,
         conflict: true,
-        conflictingSeats: conflicts,
-        message: `Seats [${conflicts.join(', ')}] are already being held by another passenger.`
+        message: `Seats [${conflicts.join(', ')}] are already held by another user.`,
+        conflictedSeats: conflicts
       };
     }
 
-    // 2. Atomic allocation
-    for (const seat of seatNumbers) {
+    // 3. Atomic allocation
+    for (const seat of normalizedSeats) {
       const lockKey = `${tripId}:${seat}`;
       this.seatLocks.set(lockKey, {
-        holdToken,
+        holdToken: token,
         tripId,
         seat,
         tabId,
@@ -68,9 +101,9 @@ class HoldStore {
     }
 
     const holdData = {
-      holdToken,
-      tripId,
-      seatNumbers: [...seatNumbers],
+      holdToken: token,
+      tripId: String(tripId),
+      seatNumbers: normalizedSeats,
       passengerDetails,
       tabId,
       passengerId,
@@ -79,23 +112,23 @@ class HoldStore {
       ttlSeconds
     };
 
-    this.holdRecords.set(holdToken, holdData);
+    this.holdRecords.set(token, holdData);
 
     return {
       success: true,
-      holdToken,
+      holdToken: token,
       tabId,
       expiresAt: new Date(expiresAt),
       ttlRemainingSeconds: ttlSeconds,
-      seatNumbers
+      seatNumbers: normalizedSeats
     };
   }
 
   /**
-   * Retrieve active hold record
+   * Retrieves active hold record by token
    */
-  getHold(holdToken) {
-    this.cleanupExpiredHolds();
+  async getHold(holdToken) {
+    if (!holdToken) return null;
     const record = this.holdRecords.get(holdToken);
     if (!record) return null;
 
@@ -109,9 +142,46 @@ class HoldStore {
   }
 
   /**
-   * Release hold upon cancellation or expiration, enforcing tab or user ownership
+   * Validates hold ownership before payment or booking confirmation
    */
-  releaseHold(holdToken, { tabId = null, passengerId = null, isForce = false } = {}) {
+  async validateHoldOwnership(holdToken, { passengerId = null, phone = null, email = null, tabId = null } = {}) {
+    const hold = await this.getHold(holdToken);
+    if (!hold) return { valid: false, reason: 'Hold expired or not found' };
+
+    const details = hold.passengerDetails || {};
+    if (passengerId && (details.passengerId || hold.passengerId)) {
+      const storedId = String(details.passengerId || hold.passengerId);
+      if (storedId !== String(passengerId)) {
+        return { valid: false, reason: 'Hold owner passenger ID mismatch' };
+      }
+    }
+
+    if (tabId && hold.tabId && hold.tabId !== tabId) {
+      if (!passengerId || String(hold.passengerId) !== String(passengerId)) {
+        return { valid: false, reason: 'Hold belongs to another browser tab' };
+      }
+    }
+
+    if (phone && details.phone) {
+      const clean1 = String(phone).replace(/\D/g, '').slice(-10);
+      const clean2 = String(details.phone).replace(/\D/g, '').slice(-10);
+      if (clean1 && clean2 && clean1 !== clean2) {
+        return { valid: false, reason: 'Hold contact phone mismatch' };
+      }
+    }
+
+    return { valid: true, hold };
+  }
+
+  /**
+   * Release hold upon booking completion, cancellation, or expiration, enforcing tab or user ownership
+   */
+  releaseHold(holdToken, options = {}) {
+    if (!holdToken) return false;
+    const isForce = typeof options === 'boolean' ? options : Boolean(options.isForce);
+    const tabId = typeof options === 'object' && options ? options.tabId : null;
+    const passengerId = typeof options === 'object' && options ? options.passengerId : null;
+
     const record = this.holdRecords.get(holdToken);
     if (!record) return false;
 
@@ -119,7 +189,7 @@ class HoldStore {
     if (!isForce) {
       const hasTabOwnership = tabId && record.tabId && record.tabId === tabId;
       const hasUserOwnership = passengerId && record.passengerId && record.passengerId.toString() === passengerId.toString();
-      
+
       // If the hold was bound to a tab and caller presents an unequal tab without matching user
       if (record.tabId && tabId && !hasTabOwnership && !hasUserOwnership) {
         return false;
@@ -147,7 +217,7 @@ class HoldStore {
     const held = [];
 
     for (const [key, lock] of this.seatLocks.entries()) {
-      if (lock.tripId === tripId && lock.expiresAt > now) {
+      if (String(lock.tripId) === String(tripId) && lock.expiresAt > now) {
         held.push(lock.seat);
       }
     }
@@ -170,4 +240,5 @@ class HoldStore {
 }
 
 const holdStore = new HoldStore();
+
 module.exports = holdStore;

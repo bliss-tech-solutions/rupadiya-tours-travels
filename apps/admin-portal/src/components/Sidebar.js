@@ -13,6 +13,7 @@ import {
   UserCheck, 
   Receipt, 
   CreditCard,
+  RotateCcw,
   LayoutDashboard,
   ChevronRight
 } from 'lucide-react';
@@ -21,13 +22,15 @@ import { api } from '../lib/api';
 export default function AdminSidebar() {
   const pathname = usePathname();
   const [pendingKyc, setPendingKyc] = useState(0);
+  const [pendingRefunds, setPendingRefunds] = useState(0);
 
   useEffect(() => {
     async function loadDash() {
       try {
         const res = await api.getDashboard();
-        if (res?.success && res.stats?.pendingKycCount != null) {
-          setPendingKyc(res.stats.pendingKycCount);
+        if (res?.success) {
+          if (res.stats?.pendingKycCount != null) setPendingKyc(res.stats.pendingKycCount);
+          if (res.stats?.pendingRefundsCount != null) setPendingRefunds(res.stats.pendingRefundsCount);
         }
       } catch (e) {}
     }
@@ -42,6 +45,7 @@ export default function AdminSidebar() {
     { label: 'Corridors & Fares', href: '/routes', icon: Route },
     { label: 'Tour Packages Manager', href: '/tours', icon: Compass },
     { label: 'Master Bookings Ledger', href: '/bookings', icon: FileSpreadsheet },
+    { label: 'Refunds & Returns Desk', href: '/refunds', icon: RotateCcw, badge: pendingRefunds > 0 ? pendingRefunds : null },
     { label: 'KYC Approvals Queue', href: '/kyc', icon: UserCheck, badge: pendingKyc > 0 ? pendingKyc : null },
     { label: 'GST & TCS Tax Reports', href: '/tax', icon: Receipt },
     { label: 'Payment Gateway Rules', href: '/payment-methods', icon: CreditCard },

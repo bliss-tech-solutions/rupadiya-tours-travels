@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Compass, Plus, Trash2, MapPin, CheckCircle2, Clock, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '../../lib/api';
+import ConfirmationModal from '../../components/ConfirmationModal';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -12,6 +13,8 @@ export default function AdminToursPage() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
+  const [tourToDelete, setTourToDelete] = useState(null);
+  const [deletingTour, setDeletingTour] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDestination, setNewDestination] = useState('');
   const [newState, setNewState] = useState('');
@@ -82,13 +85,22 @@ export default function AdminToursPage() {
   const totalPages = Math.ceil(tours.length / ITEMS_PER_PAGE) || 1;
   const paginatedTours = tours.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to deactivate this tour package?')) return;
+  const handleDelete = (tour) => {
+    setTourToDelete(tour);
+  };
+
+  const handleConfirmDeleteTour = async () => {
+    if (!tourToDelete) return;
+    setDeletingTour(true);
     try {
-      await api.deleteTour(id);
+      await api.deleteTour(tourToDelete._id || tourToDelete.tourId);
+      setTourToDelete(null);
       fetchTours();
     } catch (err) {
       alert(err.message || 'Failed to deactivate tour');
+      setTourToDelete(null);
+    } finally {
+      setDeletingTour(false);
     }
   };
 
@@ -151,7 +163,7 @@ export default function AdminToursPage() {
                     </div>
 
                     <button
-                      onClick={() => handleDelete(tour._id || tour.tourId)}
+                      onClick={() => handleDelete(tour)}
                       title="Deactivate Tour"
                       className="p-2 rounded-xl text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition cursor-pointer"
                     >
@@ -356,6 +368,27 @@ export default function AdminToursPage() {
             </form>
           </div>
         </div>
+      )}
+      {/* Delete Tour Confirmation Modal */}
+      {tourToDelete && (
+        <ConfirmationModal
+          isOpen={Boolean(tourToDelete)}
+          onClose={() => !deletingTour && setTourToDelete(null)}
+          onConfirm={handleConfirmDeleteTour}
+          variant="danger"
+          icon={Trash2}
+          title={`Deactivate Tour "${tourToDelete.title}"?`}
+          message="Are you sure you want to deactivate this holiday tour package? It will no longer be visible to agents or travelers on booking portals."
+          confirmText="Deactivate Package"
+          cancelText="Keep Tour"
+          loading={deletingTour}
+          details={[
+            { label: 'Tour Title', value: tourToDelete.title, highlight: true },
+            { label: 'Destination', value: `${tourToDelete.destination}, ${tourToDelete.state || ''}` },
+            { label: 'Duration', value: `${tourToDelete.durationDays} Days / ${tourToDelete.durationNights || tourToDelete.durationDays - 1} Nights` },
+            { label: 'Package Fare', value: `₹${Number(tourToDelete.price || 0).toLocaleString('en-IN')}` }
+          ]}
+        />
       )}
     </div>
   );

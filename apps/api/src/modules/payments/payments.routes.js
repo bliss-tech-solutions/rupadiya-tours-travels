@@ -45,14 +45,25 @@ router.post('/create-order', paymentLimiter, async (req, res, next) => {
       notes = {}
     } = req.body;
 
-    let verifiedAmount = Number(amount);
+    // Security Gate 1: Wallet deposits strictly require authenticated session
+    if (purpose === 'WALLET_DEPOSIT' || purpose === 'COMPANY_WALLET_DEPOSIT') {
+      if (!user) {
+        return res.status(401).json({
+          error: 'Authentication required. Only authenticated agents or owners can create wallet reload orders.'
+        });
+      }
+    }
 
-    // High-End Payment Security: Tamper-proof amount validation for ticket bookings
-    if (purpose === 'TICKET_BOOKING') {
-      const holdToken = metadata?.holdToken || metadata?.holdId || req.body?.holdToken || req.body?.holdId;
-      if (holdToken) {
-        const activeHold = holdStore.getHold(holdToken);
-        if (activeHold) {
+    const resolvedUserId = user?.id || user?._id || user?.userId || req.body?.userId || metadata?.userId || null;
+    const resolvedCompanyCode = user?.companyCode || req.body?.companyCode || metadata?.companyCode || 1;
+
+    // Security Gate 2: Server-side validation against price tampering for ticket bookings
+    let finalAmount = Number(amount);
+    const holdToken = metadata?.holdToken || metadata?.holdId || req.body?.holdToken || req.body?.holdId;
+    if (purpose === 'TICKET_BOOKING' && holdToken) {
+      try {
+        const activeHold = await holdStore.getHold(holdToken);
+        if (activeHold && activeHold.tripId && activeHold.seatNumbers) {
           const quote = await bookingService.calculateQuote({
             tripId: activeHold.tripId,
             seatNumbers: activeHold.seatNumbers,
@@ -60,24 +71,29 @@ router.post('/create-order', paymentLimiter, async (req, res, next) => {
             insuranceOpted: Boolean(metadata.insuranceOpted)
           });
 
-          // If client supplied an amount and it deviates from the server-calculated quote, block tampering
-          if (amount !== undefined && amount !== null && Math.abs(Number(amount) - quote.totalPayable) > 1) {
-            return res.status(400).json({
-              success: false,
-              error: `Payment Security Violation: Amount tampering detected. Expected ₹${quote.totalPayable}, but client requested ₹${amount}.`,
-              code: 'AMOUNT_TAMPERING_DETECTED'
-            });
+          if (quote && quote.totalPayable) {
+            // If client supplied an amount and it deviates by > 1, block tampering
+            if (amount !== undefined && amount !== null && Math.abs(Number(amount) - quote.totalPayable) > 1) {
+              return res.status(400).json({
+                success: false,
+                error: `Payment Security Violation: Amount tampering detected. Expected ₹${quote.totalPayable}, but client requested ₹${amount}.`,
+                code: 'AMOUNT_TAMPERING_DETECTED'
+              });
+            }
+            finalAmount = quote.totalPayable;
           }
-          verifiedAmount = quote.totalPayable;
         }
+      } catch (quoteErr) {
+        console.warn('[Server Quote Verification Note]', quoteErr.message);
       }
     }
 
-    const resolvedUserId = user?.id || user?._id || user?.userId || req.body.userId || metadata?.userId || null;
-    const resolvedCompanyCode = user?.companyCode || req.body.companyCode || metadata?.companyCode || 1;
+    if (!finalAmount || isNaN(finalAmount) || finalAmount < 1) {
+      return res.status(400).json({ error: 'Valid payment amount is required.' });
+    }
 
     const orderResult = await paymentService.createOrder({
-      amount: verifiedAmount,
+      amount: finalAmount,
       currency,
       purpose,
       userId: resolvedUserId,
@@ -125,14 +141,15 @@ router.post('/verify', paymentLimiter, async (req, res, next) => {
   }
 });
 
-// Webhook listener
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res, next) => {
+// Webhook listener - receives gateway callbacks with preserved raw buffer
+router.post('/webhook', async (req, res, next) => {
   try {
     const signature = req.headers['x-razorpay-signature'];
-    const result = await paymentService.handleWebhook(req.body, signature);
+    const rawBuffer = req.rawBody || req.body;
+    const result = await paymentService.handleWebhook(rawBuffer, signature, req.body);
     res.json(result);
   } catch (err) {
-    console.error('Razorpay Webhook Error:', err);
+    console.error('[Razorpay Webhook Security Error]:', err.message);
     res.status(400).json({ error: err.message });
   }
 });

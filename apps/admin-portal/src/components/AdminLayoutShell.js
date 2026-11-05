@@ -32,7 +32,7 @@ export default function AdminLayoutShell({ children }) {
       try {
         const res = await api.me();
         if (res?.user) {
-          if (res.user.role !== 'SUPER_ADMIN') {
+          if (res.user.role !== "SUPER_ADMIN") {
             try {
               localStorage.removeItem("admin_token");
               localStorage.removeItem("admin_user");
@@ -89,111 +89,111 @@ export default function AdminLayoutShell({ children }) {
   return (
     <AdminProvider>
       <div className="h-screen w-full bg-[#F8FAFC] flex flex-col overflow-hidden">
-      {/* Top Header */}
-      <header className="shrink-0 bg-white border-b border-slate-200/90 z-30 shadow-xs">
-        <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-              aria-label="Toggle navigation menu"
-            >
-              {mobileMenuOpen ? (
-                <X className="w-5 h-5" />
-              ) : (
-                <Menu className="w-5 h-5" />
-              )}
-            </button>
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-700 to-sky-600 text-white flex items-center justify-center font-bold shadow-sm shadow-blue-500/20 shrink-0">
-                <ShieldAlert className="w-5 h-5" />
+        {/* Top Header */}
+        <header className="shrink-0 bg-white border-b border-slate-200/90 z-30 shadow-xs">
+          <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                aria-label="Toggle navigation menu"
+              >
+                {mobileMenuOpen ? (
+                  <X className="w-5 h-5" />
+                ) : (
+                  <Menu className="w-5 h-5" />
+                )}
+              </button>
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-700 to-sky-600 text-white flex items-center justify-center font-bold shadow-md shadow-blue-500/20 shrink-0">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/60">
+                      Super Admin
+                    </span>
+                    <span className="text-xs font-medium text-slate-400 hidden sm:inline">
+                      · Rupadiya Platform
+                    </span>
+                  </div>
+                  <h1 className="text-sm font-bold text-slate-900 leading-tight">
+                    Universal Governance Center
+                  </h1>
+                </div>
               </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/60">
-                    Super Admin
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 pl-2">
+                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center border border-blue-300 shrink-0">
+                  {admin?.name ? admin.name[0].toUpperCase() : "A"}
+                </div>
+                <div className="hidden md:block text-left">
+                  <span className="text-xs font-bold text-slate-900 block leading-none">
+                    {admin?.name || "Super Admin"}
                   </span>
-                  <span className="text-xs font-medium text-slate-400 hidden sm:inline">
-                    · Rupadiya Platform
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    Root Access (34 Companies)
                   </span>
                 </div>
-                <h1 className="text-sm font-bold text-slate-900 leading-tight">
-                  Universal Governance Center
-                </h1>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 pl-2">
-              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center border border-blue-300 shrink-0">
-                {admin?.name ? admin.name[0].toUpperCase() : "A"}
-              </div>
-              <div className="hidden md:block text-left">
-                <span className="text-xs font-semibold text-slate-900 block leading-none">
-                  {admin?.name || "Super Admin"}
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium">
-                  Root Governance Access
-                </span>
-              </div>
-              <button
-                onClick={handleLogout}
-                title="Sign Out"
-                className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer ml-1"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Container with Sidebar + Content */}
-      <div className="flex-1 flex w-full overflow-hidden">
-        {/* Desktop Sidebar (Stable width, independently scrollable) */}
-        <div className="hidden lg:flex flex-col w-64 xl:w-72 shrink-0 h-full overflow-y-auto border-r border-slate-200/90 bg-white">
-          <AdminSidebar />
-        </div>
-
-        {/* Mobile Slide-out Sidebar */}
-        {mobileMenuOpen && (
-          <div className="fixed inset-0 z-40 lg:hidden">
-            <div
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
-              onClick={() => setMobileMenuOpen(false)}
-            />
-            <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-slate-200 shadow-2xl z-50 flex flex-col">
-              <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase text-blue-700">
-                  Navigation
-                </span>
                 <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+                  onClick={handleLogout}
+                  title="Sign Out"
+                  className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer ml-1"
                 >
-                  <X className="w-4 h-4" />
+                  <LogOut className="w-4 h-4" />
                 </button>
               </div>
-              <div
-                className="flex-1 overflow-y-auto"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <AdminSidebar />
-              </div>
             </div>
           </div>
-        )}
+        </header>
 
-        {/* Right Scrollable Content div with responsive padding for md, lg, xl */}
-        <main className="flex-1 h-full p-3 sm:p-5 md:p-6 lg:p-8 xl:p-10 min-w-0 overflow-y-auto">
-          <div className="w-full max-w-[1720px] mx-auto space-y-6">
-            {children}
+        {/* Main Container with Sidebar + Content */}
+        <div className="flex-1 flex w-full overflow-hidden">
+          {/* Desktop Sidebar (Exact device height below header, independently scrollable) */}
+          <div className="hidden lg:flex flex-col w-64 xl:w-72 shrink-0 h-full overflow-y-auto border-r border-slate-200/90 bg-white">
+            <AdminSidebar />
           </div>
-        </main>
+
+          {/* Mobile Slide-out Sidebar */}
+          {mobileMenuOpen && (
+            <div className="fixed inset-0 z-40 lg:hidden">
+              <div
+                className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
+                onClick={() => setMobileMenuOpen(false)}
+              />
+              <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-slate-200 shadow-2xl z-50 flex flex-col">
+                <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase text-blue-700">
+                    Navigation
+                  </span>
+                  <button
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div
+                  className="flex-1 overflow-y-auto"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <AdminSidebar />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Right Scrollable Content div with responsive padding for md, lg, xl */}
+          <main className="flex-1 h-full p-4 sm:p-6 lg:p-8 min-w-0 overflow-y-auto">
+            <div className="w-full max-w-[1720px] mx-auto px-1 sm:px-2 lg:px-4 space-y-6">
+              {children}
+            </div>
+          </main>
+        </div>
+        <RealtimeNotificationListener />
       </div>
-      <RealtimeNotificationListener />
-    </div>
     </AdminProvider>
   );
 }
