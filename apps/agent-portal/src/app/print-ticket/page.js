@@ -299,7 +299,7 @@ function PrintTicketContent() {
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Origin City</span>
               <div className="text-base font-bold text-slate-900 mt-0.5">
-                {ticket.fromCity || trip.sourceCity || route.fromCity?.name || 'Rupadiya'}
+                {ticket.fromCity || trip.sourceCity || route.fromCity?.name || 'Rupaidiha'}
               </div>
               <div className="text-xs text-emerald-800 font-semibold mt-0.5">
                 {ticket.boardingPoint?.name || ticket.boardingLocation || 'Main Hub Terminal'}

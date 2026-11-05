@@ -23,7 +23,9 @@ export function downloadTicketPdf(input = {}) {
     : 'AC, USB Charging, Reading Lamp, Water Bottle, First Aid';
 
   // Journey & Corridor
-  const fromCity = input.fromCity || input.sourceCity || 'Rupadiya';
+  let rawFrom = input.fromCity || input.sourceCity || 'Rupaidiha';
+  if (rawFrom.toLowerCase() === 'rupadiya') rawFrom = 'Rupaidiha';
+  const fromCity = rawFrom;
   const toCity = input.toCity || input.destinationCity || 'Destination';
   const dateStr = input.dateStr || input.travelDate || input.departureDate || 'Scheduled Date';
   const timeStr = input.timeStr || input.departureTime || '05:30 PM';

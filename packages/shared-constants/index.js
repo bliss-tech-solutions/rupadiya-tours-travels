@@ -101,7 +101,7 @@ const MINIMUM_DEPOSIT_AMOUNT = 100;
 
 const TOTAL_BUS_SEATS = 40;
 
-const HUB_CITY = { id: 'rupadiya', name: 'Rupadiya', state: 'Uttar Pradesh', code: 'RUP' };
+const HUB_CITY = { id: 'rupaidiha', name: 'Rupaidiha', alias: ['rupadiya', 'rup'], state: 'Uttar Pradesh', code: 'RUP' };
 
 /**
  * 4 Corridors & 16 Spoke Cities grouped by regional routes
@@ -171,7 +171,7 @@ function normalizeCityId(input) {
   const lower = input.toString().trim().toLowerCase().replace(/[()]/g, '').trim();
 
   // Hub aliases
-  if (lower === 'rupadiya' || lower === 'rup' || lower.includes('rupadiya')) return 'rupadiya';
+  if (lower === 'rupaidiha' || lower.includes('rupaidiha') || lower === 'rupadiya' || lower === 'rup' || lower.includes('rupadiya')) return 'rupaidiha';
 
   // Route 1 - Gujarat
   if (lower === 'himatnagar' || lower === 'hmt') return 'himatnagar';
@@ -204,8 +204,10 @@ function isValidCorridor(fromId, toId) {
   if (!fromId || !toId) return false;
   const f = normalizeCityId(fromId);
   const t = normalizeCityId(toId);
-  if (f === 'rupadiya' && (SPOKE_IDS.includes(t) || t === 'vadodara')) return true;
-  if ((SPOKE_IDS.includes(f) || f === 'vadodara') && t === 'rupadiya') return true;
+  const isFHub = f === 'rupaidiha' || f === 'rupadiya';
+  const isTHub = t === 'rupaidiha' || t === 'rupadiya';
+  if (isFHub && (SPOKE_IDS.includes(t) || t === 'vadodara')) return true;
+  if ((SPOKE_IDS.includes(f) || f === 'vadodara') && isTHub) return true;
   return false;
 }
 

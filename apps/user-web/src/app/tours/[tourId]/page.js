@@ -132,7 +132,7 @@ export default function TourDetailPage() {
             bus: { name: tour.title, busType: `${tour.durationDays} Days / ${location}` },
             departureTime: selectedDepartureDate,
           },
-          boardingPoint: { name: `Rupadiya Hub (Tour Express Terminal)`, time: selectedDepartureDate },
+          boardingPoint: { name: `Rupaidiha Hub (Tour Express Terminal)`, time: selectedDepartureDate },
           seats: [{ seatNumber: `${travelersCount} Travelers (All In)` }],
           passengers: [{ name: leadName }],
         },

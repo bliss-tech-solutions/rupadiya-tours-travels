@@ -59,7 +59,7 @@ export default function PaymentPage() {
       selectedSeats: data.selectedSeats,
       totalPrice: data.totalPrice,
       expiresAt: data.expiresAt || new Date(Date.now() + 600 * 1000).toISOString(),
-      routeLabel: `${data.trip?.route?.fromCity?.name || 'Rupadiya'} → ${data.trip?.route?.toCity?.name || 'Ahmedabad'}`
+      routeLabel: `${data.trip?.route?.fromCity?.name || 'Rupaidiha'} → ${data.trip?.route?.toCity?.name || 'Ahmedabad'}`
     }));
   }, [router]);
 
@@ -447,7 +447,7 @@ export default function PaymentPage() {
                     Confirmed Corridor
                   </span>
                   <h3 className="text-base font-bold text-slate-900 mt-2">
-                    {checkoutData.trip?.route?.fromCity?.name || 'Rupadiya'} → {checkoutData.trip?.route?.toCity?.name || 'Ahmedabad'}
+                    {checkoutData.trip?.route?.fromCity?.name || 'Rupaidiha'} → {checkoutData.trip?.route?.toCity?.name || 'Ahmedabad'}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {checkoutData.trip?.bus?.name || 'Rupadiya Intercity Bus'}

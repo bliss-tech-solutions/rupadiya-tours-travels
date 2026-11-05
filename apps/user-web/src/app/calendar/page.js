@@ -351,7 +351,7 @@ export default function UserTravelCalendarPage() {
                             <span>·</span>
                             <span className="flex items-center gap-1 truncate max-w-full">
                               <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                              <span className="truncate">{item.boardingPoint?.name || 'Rupadiya Border Main Stand'}</span>
+                              <span className="truncate">{item.boardingPoint?.name || 'Rupaidiha Border Main Stand'}</span>
                             </span>
                             <span>·</span>
                             <span className="font-bold text-slate-800">

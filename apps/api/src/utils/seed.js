@@ -196,8 +196,8 @@ async function seed() {
     });
   }
 
-  console.log('[Seed] Seeding Strict Hub-and-Spoke Intercity Corridors (Rupadiya <-> 6 Spokes)...');
-  const hubCity = { id: 'rupadiya', name: 'Rupadiya', state: 'Uttar Pradesh' };
+  console.log('[Seed] Seeding Strict Hub-and-Spoke Intercity Corridors (Rupaidiha <-> 6 Spokes)...');
+  const hubCity = { id: 'rupaidiha', name: 'Rupaidiha', state: 'Uttar Pradesh' };
   
   const spokeDefinitions = [
     {
@@ -208,7 +208,7 @@ async function seed() {
       durationHours: 21.0,
       fare: 1650,
       hubBoarding: [
-        { id: 'bp-rup-main', name: 'Rupadiya Border Main Stand', landmark: 'Platform 1', timeOffsetMinutes: 0 },
+        { id: 'bp-rup-main', name: 'Rupaidiha Border Main Stand', landmark: 'Platform 1', timeOffsetMinutes: 0 },
         { id: 'bp-rup-bypass', name: 'Nanpara Road Bypass', landmark: 'HP Petrol Pump', timeOffsetMinutes: 25 }
       ],
       spokeDropping: [
@@ -224,7 +224,7 @@ async function seed() {
       durationHours: 20.0,
       fare: 1550,
       hubBoarding: [
-        { id: 'bp-rup-main', name: 'Rupadiya Border Main Stand', landmark: 'Platform 1', timeOffsetMinutes: 0 }
+        { id: 'bp-rup-main', name: 'Rupaidiha Border Main Stand', landmark: 'Platform 1', timeOffsetMinutes: 0 }
       ],
       spokeDropping: [
         { id: 'dp-bdq-central', name: 'Vadodara Central Bus Station', landmark: 'Opposite Railway Station', timeOffsetMinutes: 0 },
@@ -239,7 +239,7 @@ async function seed() {
       durationHours: 22.5,
       fare: 1750,
       hubBoarding: [
-        { id: 'bp-rup-main', name: 'Rupadiya Border Main Stand', landmark: 'Platform 2', timeOffsetMinutes: 0 }
+        { id: 'bp-rup-main', name: 'Rupaidiha Border Main Stand', landmark: 'Platform 2', timeOffsetMinutes: 0 }
       ],
       spokeDropping: [
         { id: 'dp-sur-kamrej', name: 'Kamrej Char Rasta', landmark: 'Flyover Toll', timeOffsetMinutes: 0 },
@@ -254,7 +254,7 @@ async function seed() {
       durationHours: 32.0,
       fare: 2400,
       hubBoarding: [
-        { id: 'bp-rup-main', name: 'Rupadiya Border Main Stand', landmark: 'Platform 3', timeOffsetMinutes: 0 }
+        { id: 'bp-rup-main', name: 'Rupaidiha Border Main Stand', landmark: 'Platform 3', timeOffsetMinutes: 0 }
       ],
       spokeDropping: [
         { id: 'dp-blr-majestic', name: 'Majestic Bus Stand', landmark: 'KSRTC Platform 5', timeOffsetMinutes: 0 },
@@ -269,7 +269,7 @@ async function seed() {
       durationHours: 24.5,
       fare: 1850,
       hubBoarding: [
-        { id: 'bp-rup-main', name: 'Rupadiya Border Terminal', landmark: 'Platform 3', timeOffsetMinutes: 0 }
+        { id: 'bp-rup-main', name: 'Rupaidiha Border Terminal', landmark: 'Platform 3', timeOffsetMinutes: 0 }
       ],
       spokeDropping: [
         { id: 'dp-hyd-mgbs', name: 'Mahatma Gandhi Bus Station (MGBS)', landmark: 'Bay 18', timeOffsetMinutes: 0 },
@@ -284,7 +284,7 @@ async function seed() {
       durationHours: 24.0,
       fare: 1950,
       hubBoarding: [
-        { id: 'bp-rup-main', name: 'Rupadiya Border Main Stand', landmark: 'Platform 4', timeOffsetMinutes: 0 }
+        { id: 'bp-rup-main', name: 'Rupaidiha Border Main Stand', landmark: 'Platform 4', timeOffsetMinutes: 0 }
       ],
       spokeDropping: [
         { id: 'dp-bom-borivali', name: 'Borivali East', landmark: 'National Park Gate', timeOffsetMinutes: 0 },
@@ -511,7 +511,7 @@ async function seed() {
     seatNumbers: seatNumbers1,
     passengers: passengers1,
     boardingPoint: {
-      name: 'Rupadiya Border Main Stand',
+      name: 'Rupaidiha Border Main Stand',
       time: '05:30 PM'
     },
     droppingPoint: {

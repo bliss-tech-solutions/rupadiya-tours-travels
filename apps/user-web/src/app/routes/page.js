@@ -30,7 +30,7 @@ export default function RoutePage() {
   const [travelDate, setTravelDate] = useState(todayIso);
 
   const handleCitySelect = (cityId) => {
-    router.push(`/search?from=rupadiya&to=${cityId}&date=${travelDate}`);
+    router.push(`/search?from=rupaidiha&to=${cityId}&date=${travelDate}`);
   };
 
   const handleDropdownChange = (e) => {
@@ -40,7 +40,7 @@ export default function RoutePage() {
       setSelectedRouteFilter(val.replace('group:', ''));
     } else {
       setSelectedCityId(val);
-      router.push(`/search?from=rupadiya&to=${val}&date=${travelDate}`);
+      router.push(`/search?from=rupaidiha&to=${val}&date=${travelDate}`);
     }
   };
 
@@ -64,15 +64,15 @@ export default function RoutePage() {
                 Route Network & Destinations
               </h1>
               <p className="text-sm sm:text-base text-slate-600 mt-2 max-w-2xl">
-                Fixed hub-and-spoke corridor services connecting <strong>Rupadiya Central Hub</strong> to 16 major economic hubs across Gujarat, Saurashtra, South India, and Maharashtra / Goa.
+                Fixed hub-and-spoke corridor services connecting <strong>Rupaidiha Central Hub</strong> to 16 major economic hubs across Gujarat, Saurashtra, South India, and Maharashtra / Goa.
               </p>
             </div>
 
-            {/* SCREEN 2: "Rupadiya to (drop-down button)" */}
+            {/* SCREEN 2: "Rupaidiha to (drop-down button)" */}
             <div className="w-full md:w-auto bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-sky-600" />
-                <span>Rupadiya to (drop-down button)</span>
+                <span>Rupaidiha to (drop-down button)</span>
               </label>
 
               <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
@@ -82,7 +82,7 @@ export default function RoutePage() {
                     onChange={handleDropdownChange}
                     className="w-full appearance-none px-4 py-2.5 pr-10 rounded-xl bg-white border border-slate-300 text-slate-800 font-bold text-sm shadow-xs focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 cursor-pointer"
                   >
-                    <option value="">Rupadiya to: Select Destination...</option>
+                    <option value="">Rupaidiha to: Select Destination...</option>
                     
                     <optgroup label="── Filter By Region ──">
                       <option value="group:ALL">All Routes (16 Cities)</option>
@@ -171,7 +171,7 @@ export default function RoutePage() {
                     {group.name}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                    Central Corridor from Rupadiya Hub
+                    Central Corridor from Rupaidiha Hub
                   </p>
                 </div>
                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60">
@@ -248,7 +248,7 @@ export default function RoutePage() {
               <div>
                 <h4 className="text-sm font-bold text-slate-900">Official Hub-and-Spoke</h4>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Direct connections strictly between Rupadiya and authorized spoke terminals with verified fleet buses.
+                  Direct connections strictly between Rupaidiha and authorized spoke terminals with verified fleet buses.
                 </p>
               </div>
             </div>

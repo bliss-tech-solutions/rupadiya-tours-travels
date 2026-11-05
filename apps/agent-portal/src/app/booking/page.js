@@ -27,7 +27,7 @@ import { api } from '../../lib/api';
 import { downloadTicketPdf } from '../../lib/pdfGenerator';
 import { openRazorpayCheckout } from '../../lib/razorpay';
 
-const HUB_CITY = 'Rupadiya';
+const HUB_CITY = 'Rupaidiha';
 
 const ROUTE_GROUPS = [
   {
@@ -60,7 +60,7 @@ export default function AgentBookingPage() {
   const [step, setStep] = useState(1);
 
   // Search parameters
-  const [sourceCity, setSourceCity] = useState('Rupadiya');
+  const [sourceCity, setSourceCity] = useState('Rupaidiha');
   const [destinationCity, setDestinationCity] = useState('Ahmedabad');
   const [travelDate, setTravelDate] = useState(() => {
     const today = new Date();
@@ -148,6 +148,12 @@ export default function AgentBookingPage() {
     });
   }, [selectedSeats]);
 
+  const isHub = (city) => {
+    if (!city) return false;
+    const l = city.toLowerCase().trim();
+    return l === 'rupaidiha' || l.includes('rupaidiha') || l === 'rupadiya' || l.includes('rupadiya');
+  };
+
   const handleSourceChange = (newSrc) => {
     setSourceCity(newSrc);
     if (newSrc === HUB_CITY) {
@@ -161,14 +167,24 @@ export default function AgentBookingPage() {
 
   const handleDestinationChange = (newDst) => {
     setDestinationCity(newDst);
-    if (newDst !== HUB_CITY && sourceCity !== HUB_CITY) {
+    if (newDst === HUB_CITY) {
+      if (sourceCity === HUB_CITY) {
+        setSourceCity(SPOKE_CITIES[0]);
+      }
+    } else {
       setSourceCity(HUB_CITY);
     }
   };
 
   const handleSwapCities = () => {
-    const nextSrc = destinationCity;
-    const nextDst = sourceCity;
+    let nextSrc, nextDst;
+    if (isHub(sourceCity)) {
+      nextSrc = isHub(destinationCity) ? SPOKE_CITIES[0] : destinationCity;
+      nextDst = HUB_CITY;
+    } else {
+      nextDst = isHub(sourceCity) ? SPOKE_CITIES[0] : sourceCity;
+      nextSrc = HUB_CITY;
+    }
     setSourceCity(nextSrc);
     setDestinationCity(nextDst);
     handleSearch(null, { sourceCity: nextSrc, destinationCity: nextDst, travelDate });
@@ -634,15 +650,16 @@ export default function AgentBookingPage() {
                 </select>
               </div>
 
-              {/* Swap Button (Desktop) */}
-              <div className="hidden sm:flex sm:col-span-1 justify-center pb-2">
+              {/* Swap Button (Responsive: Desktop & Mobile) */}
+              <div className="sm:col-span-1 flex justify-center pb-1 sm:pb-2">
                 <button
                   type="button"
                   onClick={handleSwapCities}
                   title="Swap Origin and Destination"
-                  className="p-2 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-500 transition border border-slate-200 active:scale-95"
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-500 transition border border-slate-200 active:scale-95 flex items-center justify-center gap-1.5 w-full sm:w-auto"
                 >
                   <ArrowLeftRight className="w-4 h-4" />
+                  <span className="sm:hidden text-xs font-semibold">Swap Cities</span>
                 </button>
               </div>
 

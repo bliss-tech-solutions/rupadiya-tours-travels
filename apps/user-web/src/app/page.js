@@ -39,8 +39,8 @@ export default function HomePage() {
   const [activeHold, setActiveHold] = useState(null);
   const [holdTimeLeft, setHoldTimeLeft] = useState(0);
 
-  // Search state: default Rupadiya -> Ahmedabad
-  const [fromCity, setFromCity] = useState("rupadiya");
+  // Search state: default Rupaidiha -> Ahmedabad
+  const [fromCity, setFromCity] = useState("rupaidiha");
   const [toCity, setToCity] = useState("ahmedabad");
   const [selectedRegion, setSelectedRegion] = useState("All");
   const [departureDate, setDepartureDate] = useState(() => {
@@ -111,10 +111,16 @@ export default function HomePage() {
   const allowedFrom = getAllowedOrigins(toCity);
 
   const handleSwap = () => {
-    const prevFrom = fromCity;
-    const prevTo = toCity;
-    setFromCity(prevTo);
-    setToCity(prevFrom);
+    const isFromHub = normalizeCityId(fromCity) === 'rupaidiha' || normalizeCityId(fromCity) === 'rupadiya';
+    if (isFromHub) {
+      const targetSpoke = toCity && normalizeCityId(toCity) !== 'rupaidiha' && normalizeCityId(toCity) !== 'rupadiya' ? toCity : 'ahmedabad';
+      setFromCity(targetSpoke);
+      setToCity('rupaidiha');
+    } else {
+      const targetSpoke = fromCity && normalizeCityId(fromCity) !== 'rupaidiha' && normalizeCityId(fromCity) !== 'rupadiya' ? fromCity : 'ahmedabad';
+      setFromCity('rupaidiha');
+      setToCity(targetSpoke);
+    }
   };
 
   const handleSearch = (e) => {
@@ -224,15 +230,15 @@ export default function HomePage() {
                   onChange={(e) => {
                     const newFrom = e.target.value;
                     setFromCity(newFrom);
-                    if (newFrom !== "rupadiya") {
-                      setToCity("rupadiya");
-                    } else if (toCity === "rupadiya") {
+                    if (newFrom !== "rupaidiha") {
+                      setToCity("rupaidiha");
+                    } else if (toCity === "rupaidiha") {
                       setToCity("ahmedabad");
                     }
                   }}
                   className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-base cursor-pointer"
                 >
-                  <option value="rupadiya">Rupadiya (Hub)</option>
+                  <option value="rupaidiha">Rupaidiha (Hub)</option>
                   {SPOKE_CITIES.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -251,12 +257,20 @@ export default function HomePage() {
                 </label>
                 <select
                   value={toCity}
-                  onChange={(e) => setToCity(e.target.value)}
+                  onChange={(e) => {
+                    const newTo = e.target.value;
+                    setToCity(newTo);
+                    if (newTo !== "rupaidiha") {
+                      setFromCity("rupaidiha");
+                    } else if (fromCity === "rupaidiha") {
+                      setFromCity("ahmedabad");
+                    }
+                  }}
                   className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-base cursor-pointer"
                 >
                   {allowedTo.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} {c.id === "rupadiya" ? "(Hub)" : ""}
+                      {c.name} {c.id === "rupaidiha" || c.id === "rupadiya" ? "(Hub)" : ""}
                     </option>
                   ))}
                 </select>
@@ -536,7 +550,7 @@ export default function HomePage() {
                         Choose your bus route
                       </h2>
                       <p className="text-xs text-slate-500 mt-1 leading-snug">
-                        Rupadiya ↔ Ahmedabad · Surat · Vadodara · Bengaluru ·
+                        Rupaidiha ↔ Ahmedabad · Surat · Vadodara · Bengaluru ·
                         Hyderabad · Mumbai
                       </p>
                     </div>
@@ -559,15 +573,15 @@ export default function HomePage() {
                             onChange={(e) => {
                               const newFrom = e.target.value;
                               setFromCity(newFrom);
-                              if (newFrom !== "rupadiya") {
-                                setToCity("rupadiya");
-                              } else if (toCity === "rupadiya") {
+                              if (newFrom !== "rupaidiha") {
+                                setToCity("rupaidiha");
+                              } else if (toCity === "rupaidiha") {
                                 setToCity("ahmedabad");
                               }
                             }}
                             className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-sm cursor-pointer"
                           >
-                            <option value="rupadiya">Rupadiya (Hub)</option>
+                            <option value="rupaidiha">Rupaidiha (Hub)</option>
                             {SPOKE_CITIES.map((s) => (
                               <option key={s.id} value={s.id}>
                                 {s.name}
@@ -586,12 +600,20 @@ export default function HomePage() {
                           <MapPin className="w-4 h-4 text-slate-400 flex-shrink-0" />
                           <select
                             value={toCity}
-                            onChange={(e) => setToCity(e.target.value)}
+                            onChange={(e) => {
+                              const newTo = e.target.value;
+                              setToCity(newTo);
+                              if (newTo !== "rupaidiha") {
+                                setFromCity("rupaidiha");
+                              } else if (fromCity === "rupaidiha") {
+                                setFromCity("ahmedabad");
+                              }
+                            }}
                             className="w-full font-bold text-slate-800 bg-transparent focus:outline-none text-sm cursor-pointer"
                           >
                             {allowedTo.map((c) => (
                               <option key={c.id} value={c.id}>
-                                {c.name} {c.id === "rupadiya" ? "(Hub)" : ""}
+                                {c.name} {c.id === "rupaidiha" || c.id === "rupadiya" ? "(Hub)" : ""}
                               </option>
                             ))}
                           </select>

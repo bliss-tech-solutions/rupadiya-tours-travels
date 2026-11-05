@@ -200,7 +200,7 @@ function TrackBusContent() {
             <div>
               <span className="text-[10px] text-slate-500 uppercase block font-semibold">Boarding Stand</span>
               <div className="text-sm font-bold text-slate-900 mt-0.5">
-                {trackedTicket.trip?.sourceCity || trackedTicket.tripId?.sourceCity || trackedTicket.tripId?.fromCity?.name || 'Rupadiya'}
+                {trackedTicket.trip?.sourceCity || trackedTicket.tripId?.sourceCity || trackedTicket.tripId?.fromCity?.name || 'Rupaidiha'}
               </div>
               <div className="text-emerald-700 font-medium">
                 {trackedTicket.boardingPoint?.name || trackedTicket.boardingPoint?.location || trackedTicket.boardingLocation || 'Main Stand'}

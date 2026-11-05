@@ -29,7 +29,7 @@ const TRANSLATIONS = {
     trustedOperators: 'Trusted operators',
     easyBooking: 'Easy booking',
     chooseBusRoute: 'Choose your bus route',
-    corridorNote: 'Rupadiya ↔ Ahmedabad · Surat · Vadodara · Bengaluru · Hyderabad · Mumbai',
+    corridorNote: 'Rupaidiha ↔ Ahmedabad · Surat · Vadodara · Bengaluru · Hyderabad · Mumbai',
     from: 'From',
     to: 'To',
     departureDate: 'Departure Date',

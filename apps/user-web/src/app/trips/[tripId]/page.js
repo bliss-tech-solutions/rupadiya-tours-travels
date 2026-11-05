@@ -229,7 +229,7 @@ export default function TripSeatSelectionPage() {
       selectedSeats,
       baseFare,
       totalPrice: selectedSeats.length * baseFare,
-      routeLabel: `${trip.route?.fromCity?.name || 'Rupadiya'} → ${trip.route?.toCity?.name || 'Ahmedabad'}`
+      routeLabel: `${trip.route?.fromCity?.name || 'Rupaidiha'} → ${trip.route?.toCity?.name || 'Ahmedabad'}`
     };
 
     sessionStorage.setItem('rupadiya_booking_flow', JSON.stringify(flowData));
@@ -674,7 +674,7 @@ export default function TripSeatSelectionPage() {
                   Step 1 of 4
                 </span>
                 <h3 className="text-base font-bold text-slate-900 mt-2">
-                  {trip.route?.fromCity?.name || 'Rupadiya'} → {trip.route?.toCity?.name || 'Ahmedabad'}
+                  {trip.route?.fromCity?.name || 'Rupaidiha'} → {trip.route?.toCity?.name || 'Ahmedabad'}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {trip.bus?.name || 'Rupadiya Intercity Bus'} · {trip.bus?.busType || 'AC Sleeper'}

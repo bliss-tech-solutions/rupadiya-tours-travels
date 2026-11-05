@@ -1,4 +1,4 @@
-export const HUB_CITY = { id: 'rupadiya', name: 'Rupadiya', state: 'Uttar Pradesh' };
+export const HUB_CITY = { id: 'rupaidiha', name: 'Rupaidiha', alias: ['rupadiya'], state: 'Uttar Pradesh' };
 
 export const ROUTE_GROUPS = [
   {
@@ -55,7 +55,7 @@ export const ALL_CITIES = [HUB_CITY, ...SPOKE_CITIES];
 export function normalizeCityId(input) {
   if (!input) return '';
   const lower = input.toString().trim().toLowerCase().replace(/[()]/g, '').trim();
-  if (lower === 'rupadiya' || lower.includes('rupadiya')) return 'rupadiya';
+  if (lower === 'rupaidiha' || lower.includes('rupaidiha') || lower === 'rupadiya' || lower.includes('rupadiya')) return 'rupaidiha';
   if (lower === 'baroda' || lower === 'vadodara') return 'baroda';
   if (lower === 'ambli bopal' || lower === 'ambli-bopal' || lower === 'bopal') return 'ambli-bopal';
   if (lower === 'bangalore' || lower === 'bengaluru') return 'bangalore';
@@ -66,17 +66,17 @@ export function normalizeCityId(input) {
 // Get allowed destination cities based on origin
 export function getAllowedDestinations(fromId) {
   const norm = normalizeCityId(fromId);
-  if (norm === 'rupadiya') {
+  if (norm === 'rupaidiha' || norm === 'rupadiya') {
     return SPOKE_CITIES;
   }
-  // If origin is any spoke, destination MUST be Rupadiya
+  // If origin is any spoke, destination MUST be Rupaidiha
   return [HUB_CITY];
 }
 
 // Get allowed origins based on destination
 export function getAllowedOrigins(toId) {
   const norm = normalizeCityId(toId);
-  if (norm === 'rupadiya') {
+  if (norm === 'rupaidiha' || norm === 'rupadiya') {
     return SPOKE_CITIES;
   }
   return [HUB_CITY];
@@ -88,6 +88,8 @@ export function isValidCorridor(fromId, toId) {
   const f = normalizeCityId(fromId);
   const t = normalizeCityId(toId);
   if (f === t) return false;
-  return (f === 'rupadiya' && SPOKE_CITIES.some(s => s.id === t || s.alias?.includes(t))) ||
-         (t === 'rupadiya' && SPOKE_CITIES.some(s => s.id === f || s.alias?.includes(f)));
+  const isFHub = f === 'rupaidiha' || f === 'rupadiya';
+  const isTHub = t === 'rupaidiha' || t === 'rupadiya';
+  return (isFHub && SPOKE_CITIES.some(s => s.id === t || s.alias?.includes(t))) ||
+         (isTHub && SPOKE_CITIES.some(s => s.id === f || s.alias?.includes(f)));
 }

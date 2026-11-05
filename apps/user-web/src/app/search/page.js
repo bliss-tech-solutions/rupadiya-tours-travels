@@ -32,7 +32,7 @@ function SearchContent() {
 
   const todayIso = getLocalDateString(new Date());
 
-  const from = searchParams.get('from') || 'rupadiya';
+  const from = searchParams.get('from') || 'rupaidiha';
   const to = searchParams.get('to') || 'ahmedabad';
   const rawDate = searchParams.get('date') || todayIso;
 
@@ -83,8 +83,9 @@ function SearchContent() {
   });
 
   const getCityName = (id) => {
-    if (id === 'rupadiya') return 'Rupadiya';
-    const found = SPOKE_CITIES.find(s => s.id === id);
+    if (!id) return '';
+    if (id === 'rupaidiha' || id === 'rupadiya') return 'Rupaidiha';
+    const found = SPOKE_CITIES.find(s => s.id === id || s.alias?.includes(id));
     return found ? found.name : id;
   };
 
@@ -242,7 +243,7 @@ function SearchContent() {
               const availableSeats = trip.seats?.filter(s => s.status === 'AVAILABLE').length ?? 38;
               const depTime = formatTime(trip.departureTime, '06:00 PM');
               const arrTime = formatTime(trip.arrivalTime, '06:30 AM');
-              const boardingPointName = trip.boardingPoints?.[0]?.name || 'Rupadiya Border Main Stand';
+              const boardingPointName = trip.boardingPoints?.[0]?.name || 'Rupaidiha Border Main Stand';
 
               return (
                 <div

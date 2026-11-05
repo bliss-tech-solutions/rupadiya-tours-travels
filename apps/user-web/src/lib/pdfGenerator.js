@@ -12,7 +12,7 @@ export function downloadTicketPdf({
   dateStr = 'Mon, 27th Oct',
   timeStr = '05:30 PM',
   seatsStr = '1, 2',
-  boardingName = 'Rupadiya Border Main Stand',
+  boardingName = 'Rupaidiha Border Main Stand',
   droppingName = 'Ahmedabad Central Bus Station',
   totalFare = '1,700',
   passengers = [],

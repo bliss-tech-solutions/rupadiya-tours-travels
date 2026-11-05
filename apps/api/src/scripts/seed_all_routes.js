@@ -14,22 +14,31 @@ async function seedRoutes() {
     for (const city of group.cities) {
       const durationHours = parseFloat(city.duration) || 20;
 
-      // 1. Outbound: Rupadiya -> City
+      // 1. Outbound: Rupaidiha -> City
       const outboundFilter = {
-        'fromCity.name': 'Rupadiya',
         $or: [
-          { 'toCity.id': city.id },
-          { 'toCity.name': new RegExp(`^${city.name}$`, 'i') }
+          { 'fromCity.name': 'Rupaidiha' },
+          { 'fromCity.name': 'Rupadiya' },
+          { 'fromCity.id': 'rupaidiha' },
+          { 'fromCity.id': 'rupadiya' }
+        ],
+        $and: [
+          {
+            $or: [
+              { 'toCity.id': city.id },
+              { 'toCity.name': new RegExp(`^${city.name}$`, 'i') }
+            ]
+          }
         ]
       };
 
       const outboundData = {
-        name: `Rupadiya - ${city.name} Corridor`,
+        name: `Rupaidiha - ${city.name} Corridor`,
         routeGroupId: group.id,
         routeName: group.name,
         fromCity: {
-          id: 'rupadiya',
-          name: 'Rupadiya',
+          id: 'rupaidiha',
+          name: 'Rupaidiha',
           state: 'Uttar Pradesh'
         },
         toCity: {
@@ -41,8 +50,8 @@ async function seedRoutes() {
         estimatedDurationHours: durationHours,
         baseFare: city.baseFare || 1650,
         boardingPoints: [
-          { id: 'bp-rup-1', name: 'Rupadiya Central Bus Terminal', timeOffsetMinutes: 0 },
-          { id: 'bp-rup-2', name: 'Rupadiya Border Gate Point', timeOffsetMinutes: 20 }
+          { id: 'bp-rup-1', name: 'Rupaidiha Central Bus Terminal', timeOffsetMinutes: 0 },
+          { id: 'bp-rup-2', name: 'Rupaidiha Border Gate Point', timeOffsetMinutes: 20 }
         ],
         droppingPoints: [
           { id: `dp-${city.id}-1`, name: `${city.name} Central Drop Stand`, timeOffsetMinutes: Math.round(durationHours * 60) },
@@ -61,17 +70,26 @@ async function seedRoutes() {
         createdCount++;
       }
 
-      // 2. Inbound: City -> Rupadiya
+      // 2. Inbound: City -> Rupaidiha
       const inboundFilter = {
-        'toCity.name': 'Rupadiya',
         $or: [
-          { 'fromCity.id': city.id },
-          { 'fromCity.name': new RegExp(`^${city.name}$`, 'i') }
+          { 'toCity.name': 'Rupaidiha' },
+          { 'toCity.name': 'Rupadiya' },
+          { 'toCity.id': 'rupaidiha' },
+          { 'toCity.id': 'rupadiya' }
+        ],
+        $and: [
+          {
+            $or: [
+              { 'fromCity.id': city.id },
+              { 'fromCity.name': new RegExp(`^${city.name}$`, 'i') }
+            ]
+          }
         ]
       };
 
       const inboundData = {
-        name: `${city.name} - Rupadiya Corridor`,
+        name: `${city.name} - Rupaidiha Corridor`,
         routeGroupId: group.id,
         routeName: group.name,
         fromCity: {
@@ -80,8 +98,8 @@ async function seedRoutes() {
           state: city.state
         },
         toCity: {
-          id: 'rupadiya',
-          name: 'Rupadiya',
+          id: 'rupaidiha',
+          name: 'Rupaidiha',
           state: 'Uttar Pradesh'
         },
         distanceKm: city.distanceKm || 1200,
@@ -91,7 +109,7 @@ async function seedRoutes() {
           { id: `bp-${city.id}-1`, name: `${city.name} Central Bus Terminal`, timeOffsetMinutes: 0 }
         ],
         droppingPoints: [
-          { id: 'dp-rup-1', name: 'Rupadiya Central Bus Terminal', timeOffsetMinutes: Math.round(durationHours * 60) }
+          { id: 'dp-rup-1', name: 'Rupaidiha Central Bus Terminal', timeOffsetMinutes: Math.round(durationHours * 60) }
         ],
         isActive: true
       };

@@ -996,8 +996,8 @@ router.post('/trips', async (req, res, next) => {
 
       // If route doesn't exist yet, auto-create it with standard hub points
       if (!route) {
-        const fromName = origin.includes('Rupadiya') ? 'Rupadiya' : origin;
-        const toName = destination.includes('Rupadiya') ? 'Rupadiya' : destination;
+        const fromName = (origin.includes('Rupai') || origin.includes('Rupa')) ? 'Rupaidiha' : origin;
+        const toName = (destination.includes('Rupai') || destination.includes('Rupa')) ? 'Rupaidiha' : destination;
         const matchedSpoke = SPOKE_CITIES.find(s => s.id === normFrom || s.id === normTo || s.name.toLowerCase() === fromName.toLowerCase() || s.name.toLowerCase() === toName.toLowerCase());
         const distanceKm = matchedSpoke?.distanceKm || 1200;
         const durationHours = matchedSpoke ? (parseFloat(matchedSpoke.duration) || 20) : 20;
@@ -1007,8 +1007,8 @@ router.post('/trips', async (req, res, next) => {
         route = await Route.create({
           companyId: req.user.companyId || bus.companyId || null,
           companyCode: code,
-          fromCity: { id: normFrom, name: fromName, state: fromName === 'Rupadiya' ? 'Uttar Pradesh' : spokeState },
-          toCity: { id: normTo, name: toName, state: toName === 'Rupadiya' ? 'Uttar Pradesh' : spokeState },
+          fromCity: { id: normFrom, name: fromName, state: (fromName === 'Rupaidiha' || fromName === 'Rupadiya') ? 'Uttar Pradesh' : spokeState },
+          toCity: { id: normTo, name: toName, state: (toName === 'Rupaidiha' || toName === 'Rupadiya') ? 'Uttar Pradesh' : spokeState },
           distanceKm,
           estimatedDurationHours: durationHours,
           baseFare: routeFare,
@@ -1159,7 +1159,7 @@ router.get('/trips/:id/seat-chart', async (req, res, next) => {
               contactPhone: b.passengerPhone || b.contactDetails?.phone || b.passengerId?.phone || '—',
               pnr: b.pnr || b.bookingId || `RUP-${String(b._id).slice(-6).toUpperCase()}`,
               bookingId: b.bookingId || String(b._id),
-              boardingPoint: b.boardingPoint?.name || b.boardingPoint || 'Rupadiya Main Stand',
+              boardingPoint: b.boardingPoint?.name || b.boardingPoint || 'Rupaidiha Main Stand',
               droppingPoint: b.droppingPoint?.name || b.droppingPoint || 'Central Drop Point',
               fare: p.fare || b.fareBreakdown?.baseFare || trip.baseFare || 1650,
               insuranceEnrolled: Boolean(b.insuranceEnrolled),
@@ -1228,7 +1228,7 @@ router.get('/trips/:id/seat-chart', async (req, res, next) => {
         chartPrepared: Boolean(trip.chartPrepared),
         chartPreparedAt: trip.chartPreparedAt,
         route: {
-          fromCity: trip.routeId?.fromCity || { name: 'Rupadiya (Hub)' },
+          fromCity: trip.routeId?.fromCity || { name: 'Rupaidiha (Hub)' },
           toCity: trip.routeId?.toCity || { name: 'Ahmedabad' },
           distanceKm: trip.routeId?.distanceKm || 1150
         },

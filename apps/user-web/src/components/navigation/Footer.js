@@ -14,7 +14,7 @@ export default function Footer() {
               <span className="text-xs tracking-widest text-sky-400 font-bold uppercase">TRAVEL</span>
             </div>
             <p className="text-slate-400 text-sm leading-relaxed">
-              Good journeys start here. Dedicated intercity network connecting Rupadiya Hub with Ahmedabad, Surat, Vadodara, Bengaluru, Hyderabad, and Mumbai.
+              Good journeys start here. Dedicated intercity network connecting Rupaidiha Hub with Ahmedabad, Surat, Vadodara, Bengaluru, Hyderabad, and Mumbai.
             </p>
             <div className="pt-2 flex items-center gap-2 text-xs text-slate-500">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -51,12 +51,12 @@ export default function Footer() {
             <div className="space-y-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Fixed Corridors</span>
               <ul className="space-y-1.5 text-xs text-slate-400">
-                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupadiya ↔ Ahmedabad</li>
-                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupadiya ↔ Vadodara</li>
-                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupadiya ↔ Surat</li>
-                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupadiya ↔ Bengaluru</li>
-                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupadiya ↔ Hyderabad</li>
-                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupadiya ↔ Mumbai</li>
+                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupaidiha ↔ Ahmedabad</li>
+                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupaidiha ↔ Vadodara</li>
+                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupaidiha ↔ Surat</li>
+                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupaidiha ↔ Bengaluru</li>
+                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupaidiha ↔ Hyderabad</li>
+                <li className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-sky-400" /> Rupaidiha ↔ Mumbai</li>
               </ul>
             </div>
 

@@ -16,7 +16,7 @@ const handleSearch = async (req, res, next) => {
     if (from && to && !isValidCorridor(from, to)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid route corridor. Journeys are strictly between Rupadiya Central Hub and approved corridor cities across Gujarat, Saurashtra, South, and Maharashtra / Goa.'
+        error: 'Invalid route corridor. Journeys are strictly between Rupaidiha Central Hub and approved corridor cities across Gujarat, Saurashtra, South, and Maharashtra / Goa.'
       });
     }
 
@@ -60,8 +60,8 @@ router.get('/:tripId', async (req, res, next) => {
 
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
     const obj = trip.toObject();
-    const fromName = obj.routeId?.fromCity?.name || 'Rupadiya';
-    const toName = obj.routeId?.toCity?.name || 'Ahmedabad';
+    const fromName = (obj.routeId?.fromCity?.name === 'Rupadiya' ? 'Rupaidiha' : (obj.routeId?.fromCity?.name || 'Rupaidiha'));
+    const toName = (obj.routeId?.toCity?.name === 'Rupadiya' ? 'Rupaidiha' : (obj.routeId?.toCity?.name || 'Ahmedabad'));
 
     // Merge live in-memory holds into trip layout
     const heldSeats = holdStore.getHeldSeatsForTrip(trip._id.toString());

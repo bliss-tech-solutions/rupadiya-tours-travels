@@ -244,7 +244,7 @@ export default function BoardingPointsSelectionPage() {
                     Step 2 of 4
                   </span>
                   <h3 className="text-base font-bold text-slate-900 mt-2">
-                    {checkoutData.trip?.route?.fromCity?.name || 'Rupadiya'} → {checkoutData.trip?.route?.toCity?.name || 'Ahmedabad'}
+                    {checkoutData.trip?.route?.fromCity?.name || 'Rupaidiha'} → {checkoutData.trip?.route?.toCity?.name || 'Ahmedabad'}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {checkoutData.trip?.bus?.name || 'Rupadiya Intercity Bus'}

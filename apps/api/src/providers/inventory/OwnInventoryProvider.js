@@ -43,8 +43,8 @@ class OwnInventoryProvider extends InventoryProvider {
       const availableSeats = Math.max(0, 40 - bookedCount - effectiveHeldCount);
 
       const obj = t.toObject ? t.toObject() : t;
-      const fromName = obj.routeId?.fromCity?.name || 'Rupadiya';
-      const toName = obj.routeId?.toCity?.name || 'Ahmedabad';
+      const fromName = (obj.routeId?.fromCity?.name === 'Rupadiya' ? 'Rupaidiha' : (obj.routeId?.fromCity?.name || 'Rupaidiha'));
+      const toName = (obj.routeId?.toCity?.name === 'Rupadiya' ? 'Rupaidiha' : (obj.routeId?.toCity?.name || 'Ahmedabad'));
 
       return {
         ...obj,

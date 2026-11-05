@@ -148,7 +148,7 @@ export default function MyBookingsHistoryPage() {
               <Ticket className="w-12 h-12 text-slate-300 mx-auto mb-3" />
               <h3 className="text-base font-bold text-slate-800">No Bus Bookings Yet</h3>
               <p className="text-xs text-slate-500 mt-1 mb-6">
-                Ready for your journey? Explore routes from Rupadiya to Ahmedabad, Surat, and more.
+                Ready for your journey? Explore routes from Rupaidiha to Ahmedabad, Surat, and more.
               </p>
               <Link
                 href="/"
@@ -206,7 +206,7 @@ export default function MyBookingsHistoryPage() {
                           <Calendar className="w-3.5 h-3.5 text-sky-500" /> {date} · {timeStr}
                         </span>
                         <span className="flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400" /> {b.boardingPoint?.name || 'Rupadiya Border Main Stand'}
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" /> {b.boardingPoint?.name || 'Rupaidiha Border Main Stand'}
                         </span>
                         <span>Seats: <strong className="text-slate-800">{seatList}</strong></span>
                       </div>

@@ -110,7 +110,7 @@ export default function TicketConfirmationPage() {
     || booking?.passengers?.map(p => p.seatNumber).filter(Boolean).join(', ')
     || '1, 2';
 
-  const boardingName = booking?.boardingPoint?.name || 'Rupadiya Border Main Stand';
+  const boardingName = booking?.boardingPoint?.name || 'Rupaidiha Border Main Stand';
   const droppingName = booking?.droppingPoint?.name || `${route?.toCity?.name || 'Ahmedabad'} Central Bus Station`;
   const fb = booking?.fareBreakdown || {};
   const seatsList = (booking?.seatNumbers && booking.seatNumbers.length > 0)

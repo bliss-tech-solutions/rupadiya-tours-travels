@@ -65,7 +65,7 @@ function buildLeanTicketDTO(bookingDoc) {
     hour12: true
   }) : 'Scheduled';
 
-  const fromCity = route.fromCity?.name || 'Rupadiya';
+  const fromCity = (route.fromCity?.name === 'Rupadiya' ? 'Rupaidiha' : (route.fromCity?.name || 'Rupaidiha'));
   const toCity = route.toCity?.name || 'Destination';
 
   return {
@@ -933,7 +933,7 @@ router.get('/trips/upcoming', agentOnly, async (req, res, next) => {
       .limit(10);
 
     const formattedTrips = trips.map(t => {
-      const from = t.routeId?.fromCity?.name || 'Rupadiya';
+      const from = (t.routeId?.fromCity?.name === 'Rupadiya' ? 'Rupaidiha' : (t.routeId?.fromCity?.name || 'Rupaidiha'));
       const to = t.routeId?.toCity?.name || 'Lucknow';
       const depTime = t.departureTime ? new Date(t.departureTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '05:30 PM';
       const depDate = t.departureTime ? new Date(t.departureTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today';
