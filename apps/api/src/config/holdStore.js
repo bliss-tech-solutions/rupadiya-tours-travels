@@ -83,7 +83,8 @@ class HoldStore {
         success: false,
         conflict: true,
         message: `Seats [${conflicts.join(', ')}] are already held by another user.`,
-        conflictedSeats: conflicts
+        conflictedSeats: conflicts,
+        conflictingSeats: conflicts
       };
     }
 
