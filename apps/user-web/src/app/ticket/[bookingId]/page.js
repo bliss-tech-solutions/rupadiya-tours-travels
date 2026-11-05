@@ -91,11 +91,21 @@ export default function TicketConfirmationPage() {
   const displayBookingId = booking?.bookingId || bookingId || 'RUP-7829-BK';
   
   const trip = booking?.trip || booking?.tripId || {};
-  const bus = trip?.bus || booking?.busId || {};
-  const route = trip?.route || booking?.routeId || {};
+  const bus = trip?.bus || booking?.busId || trip?.busId || {};
+  const route = trip?.route || booking?.routeId || trip?.routeId || {};
 
-  const busName = bus?.name || 'Rupadiya Intercity Express';
+  let rawFrom = route?.fromCity?.name || trip?.sourceCity || booking?.fromCity || 'Rupaidiha';
+  if (rawFrom.toLowerCase() === 'rupadiya') rawFrom = 'Rupaidiha';
+  const fromCity = rawFrom;
+  const toCity = route?.toCity?.name || trip?.destinationCity || booking?.toCity || 'Ahmedabad';
+
+  const busName = bus?.operatorName || bus?.name || 'Rupadiya Intercity Express';
+  const busNumber = bus?.busNumber || bus?.registrationNumber || 'UP-40-TC-1001';
   const busModel = bus?.busType || 'Setra Coach Bus (2+2 AC Seater)';
+  const layoutType = bus?.layoutType || (busModel.includes('2+1') ? '2+1 Sleeper' : '2+2 Seater');
+  const driverName = bus?.driverName || bus?.driverDetails?.name || 'Verified Captain (Dinesh Kumar)';
+  const driverPhone = bus?.driverPhone || bus?.driverDetails?.phone || '+91 98765 43210';
+  const amenities = bus?.amenities || ['Climate Control AC', 'USB Charging Port', 'Night Reading Lamp', 'Water Bottle', 'Clean Blanket', 'GPS Radar'];
   
   const departureDate = trip?.departureTime || booking?.createdAt;
   const dateStr = departureDate 
@@ -103,12 +113,17 @@ export default function TicketConfirmationPage() {
     : 'Thu, 29 Oct 2026';
 
   const timeStr = formatTime(booking?.boardingPoint?.time || trip?.departureTime, '05:30 PM');
+  const arrTimeStr = formatTime(booking?.droppingPoint?.time || trip?.arrivalTime, 'Morning (Scheduled)');
 
   const seatsStr = (booking?.seatNumbers && booking.seatNumbers.length > 0)
     ? booking.seatNumbers.join(', ')
     : booking?.seats?.map(s => typeof s === 'string' ? s : s.seatNumber).filter(Boolean).join(', ')
     || booking?.passengers?.map(p => p.seatNumber).filter(Boolean).join(', ')
     || '1, 2';
+
+  const passengerList = (booking?.passengers && booking.passengers.length > 0)
+    ? booking.passengers
+    : [{ name: travelerName, age: '—', gender: '—', seatNumber: seatsStr }];
 
   const boardingName = booking?.boardingPoint?.name || 'Rupaidiha Border Main Stand';
   const droppingName = booking?.droppingPoint?.name || `${route?.toCity?.name || 'Ahmedabad'} Central Bus Station`;
@@ -176,25 +191,39 @@ export default function TicketConfirmationPage() {
       
       downloadTicketPdf({
         bookingId: displayBookingId,
+        pnr: booking?.pnr || displayBookingId,
         travelerName,
-        busName,
-        busModel,
+        travelerPhone: booking?.customerPhone || booking?.contactDetails?.phone || booking?.passengers?.[0]?.phone || '+91 98765 43210',
+        travelerEmail: booking?.customerEmail || booking?.contactDetails?.email || '',
+        fromCity,
+        toCity,
         dateStr,
         timeStr,
-        seatsStr,
+        arrTimeStr,
         boardingName,
         droppingName,
+        busName,
+        busNumber,
+        busModel,
+        layoutType,
+        driverName,
+        driverPhone,
+        amenities,
+        seatsStr,
+        passengers: passengerList,
         totalFare: totalPaid,
-        insuranceAmount,
-        insuranceOpted,
-        passengers: booking?.passengers || [],
-        cashbackCode: cashbackCoupon?.code || 'NEXTTRIP150'
+        baseFare: subtotal,
+        gstAmount,
+        insuranceAmount: insuranceOpted ? insuranceAmount : 0,
+        paymentProvider,
+        paymentReference,
+        paymentStatus
       });
 
       setTimeout(() => {
         setIsGeneratingPdf(false);
         addToast(`Ticket-${displayBookingId}.pdf downloaded successfully!`, 'success', 'Ready');
-      }, 600);
+      }, 400);
     } catch (err) {
       console.error(err);
       setIsGeneratingPdf(false);
@@ -213,51 +242,104 @@ export default function TicketConfirmationPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-24">
-      {/* Top Navigation Bar */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 md:top-20 z-30 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/bookings"
-              className="p-2 rounded-xl hover:bg-slate-100 text-slate-700 transition"
-              title="Back to Trips"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm sm:text-base font-bold text-slate-900">
-                  Bus Boarding Pass
-                </span>
-                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  <span>Confirmed</span>
-                </span>
+      {/* Global Print-Only Stylesheet */}
+      <style jsx global>{`
+        @media print {
+          html, body {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 11pt !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* Hide all UI layout chrome: navbars, sidebars, headers, footers, buttons */
+          nav, aside, header, footer, .no-print, [role="navigation"] {
+            display: none !important;
+          }
+
+          /* Hide surrounding web page elements */
+          body * {
+            visibility: hidden !important;
+          }
+
+          /* Show only the printable ticket and its child tree */
+          #printable-ticket, #printable-ticket * {
+            visibility: visible !important;
+          }
+
+          #printable-ticket {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 24px !important;
+            border: 2px solid #0f172a !important;
+            border-radius: 14px !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
+            page-break-inside: avoid !important;
+          }
+
+          @page {
+            size: A4 portrait;
+            margin: 8mm 10mm;
+          }
+        }
+      `}</style>
+
+      {/* Screen Interactive Container (Hidden during Print) */}
+      <div className="no-print">
+        {/* Top Navigation Bar */}
+        <div className="bg-white border-b border-slate-200 sticky top-0 md:top-20 z-30 shadow-sm">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/bookings"
+                className="p-2 rounded-xl hover:bg-slate-100 text-slate-700 transition"
+                title="Back to Trips"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Link>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm sm:text-base font-bold text-slate-900">
+                    Bus Boarding Pass
+                  </span>
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>Confirmed</span>
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-mono hidden sm:block">
+                  Ticket ID: #{displayBookingId}
+                </p>
               </div>
-              <p className="text-[11px] text-slate-400 font-mono hidden sm:block">
-                Ticket ID: #{displayBookingId}
-              </p>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrint}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition"
-              title="Print Pass"
-            >
-              <Printer className="w-4 h-4 text-slate-500" />
-              <span>Print</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrint}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition"
+                title="Print Pass"
+              >
+                <Printer className="w-4 h-4 text-slate-500" />
+                <span>Print</span>
+              </button>
 
-            <button
-              onClick={handleDownloadPdf}
-              disabled={isGeneratingPdf}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold shadow-sm transition active:scale-95"
-            >
-              <Download className="w-4 h-4" />
-              <span>{isGeneratingPdf ? 'Generating...' : 'Download PDF'}</span>
-            </button>
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold shadow-sm transition active:scale-95"
+              >
+                <Download className="w-4 h-4" />
+                <span>{isGeneratingPdf ? 'Generating...' : 'Download PDF'}</span>
+              </button>
 
             <button
               onClick={() => addToast('Booking pass shared via SMS & WhatsApp', 'info')}
@@ -777,8 +859,16 @@ export default function TicketConfirmationPage() {
 
               <div className="flex items-center gap-3">
                 <button
+                  onClick={handlePrint}
+                  className="px-5 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition active:scale-95 flex items-center gap-2 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4 text-slate-300" />
+                  <span>Print Ticket</span>
+                </button>
+
+                <button
                   onClick={handleDownloadPdf}
-                  className="px-6 py-3 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs shadow-md shadow-sky-500/20 transition active:scale-95 flex items-center gap-2"
+                  className="px-6 py-3 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs shadow-md shadow-sky-500/20 transition active:scale-95 flex items-center gap-2 cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   <span>Download Ticket PDF</span>
@@ -786,7 +876,7 @@ export default function TicketConfirmationPage() {
 
                 <Link
                   href="/bookings"
-                  className="px-6 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+                  className="px-6 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
                 >
                   View All Trips
                 </Link>
@@ -998,22 +1088,30 @@ export default function TicketConfirmationPage() {
             </div>
           </div>
 
-          {/* Mobile Action Buttons matching Image 2 */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
+          {/* Mobile Action Buttons */}
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            <button
+              onClick={handlePrint}
+              className="py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-4 h-4 text-slate-300" />
+              <span>Print</span>
+            </button>
+
             <button
               onClick={handleDownloadPdf}
               disabled={isGeneratingPdf}
-              className="py-3.5 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-sky-500/25 transition active:scale-95 flex items-center justify-center gap-2"
+              className="py-3.5 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs shadow-md shadow-sky-500/25 transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Download className="w-4 h-4" />
-              <span>{isGeneratingPdf ? 'Saving...' : 'Download'}</span>
+              <span>{isGeneratingPdf ? 'Saving...' : 'PDF'}</span>
             </button>
 
             <Link
               href="/bookings"
-              className="py-3.5 rounded-2xl bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs sm:text-sm transition active:scale-95 flex items-center justify-center gap-2 text-center"
+              className="py-3.5 rounded-2xl bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs transition active:scale-95 flex items-center justify-center gap-1 text-center"
             >
-              <span>View Details</span>
+              <span>Details</span>
             </Link>
           </div>
 
@@ -1028,6 +1126,237 @@ export default function TicketConfirmationPage() {
 
         </div>
 
+      </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* OFFICIAL PRINTABLE BOARDING PASS (Visible Only in Print) */}
+      {/* ======================================================== */}
+      <div id="printable-ticket" className="hidden print:block bg-white text-slate-900 font-sans">
+        {/* 1. Official Header Banner */}
+        <div className="flex items-center justify-between pb-3.5 border-b-2 border-slate-900">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-sky-600 text-white flex items-center justify-center font-black text-lg">
+              RUP
+            </div>
+            <div>
+              <h1 className="text-xl font-black tracking-tight text-slate-950 uppercase">
+                Rupadiya Intercity Express
+              </h1>
+              <p className="text-[11px] font-bold text-sky-700 tracking-wider uppercase">
+                Official Passenger E-Ticket & Boarding Pass
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase mb-1">
+              ✓ Confirmed & Paid
+            </span>
+            <p className="text-sm font-mono font-black text-slate-950">
+              PNR: #{displayBookingId}
+            </p>
+            <p className="text-[10px] text-slate-500 font-medium">
+              Issue Date: {paymentDateStr}
+            </p>
+          </div>
+        </div>
+
+        {/* 2. Journey Corridor & Timings Bar */}
+        <div className="my-3.5 p-3.5 rounded-xl bg-sky-50/70 border border-sky-200/80 flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800 block mb-0.5">
+              Origin Hub
+            </span>
+            <span className="text-base font-black text-slate-950 uppercase block">
+              {fromCity}
+            </span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">
+              {dateStr} · {timeStr}
+            </span>
+          </div>
+
+          <div className="flex flex-col items-center px-4">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-sky-700 mb-1">
+              Direct Intercity Corridor
+            </span>
+            <div className="w-36 h-0.5 bg-sky-400 relative flex items-center justify-end">
+              <div className="w-2 h-2 border-t-2 border-r-2 border-sky-600 rotate-45 -mr-1" />
+            </div>
+            <span className="text-[9px] font-medium text-slate-500 mt-1">
+              Nonstop Express Service
+            </span>
+          </div>
+
+          <div className="flex-1 text-right">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800 block mb-0.5">
+              Destination
+            </span>
+            <span className="text-base font-black text-slate-950 uppercase block">
+              {toCity}
+            </span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">
+              Expected: {arrTimeStr}
+            </span>
+          </div>
+        </div>
+
+        {/* 3. Bus Fleet Specifications & Driver Contact */}
+        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 mb-3.5">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                Assigned Fleet & Coach
+              </span>
+              <span className="text-sm font-bold text-slate-900">
+                {busName}
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                Vehicle Plate Number
+              </span>
+              <span className="text-sm font-mono font-black text-slate-950 tracking-wider">
+                {busNumber}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 pt-2 text-xs">
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Coach Class & Layout</span>
+              <span className="font-bold text-slate-800 block">{busModel}</span>
+              <span className="text-[10px] text-slate-500">Layout: {layoutType}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Assigned Captain / Pilot</span>
+              <span className="font-bold text-slate-800 block">{driverName}</span>
+              <span className="text-[10px] text-slate-600 font-mono font-semibold">{driverPhone}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Total Capacity & Safety</span>
+              <span className="font-bold text-slate-800 block">36 Confirmed Berths</span>
+              <span className="text-[10px] text-emerald-700 font-bold">24x7 Realtime GPS Tracked</span>
+            </div>
+          </div>
+
+          <div className="mt-2 pt-2 border-t border-slate-200/70 flex flex-wrap items-center gap-1.5 text-[10px]">
+            <span className="font-bold uppercase text-slate-500 mr-1">Onboard Amenities:</span>
+            {(amenities || []).map((am, idx) => (
+              <span key={idx} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 font-medium">
+                ✓ {am}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* 4. Boarding & Dropping Points */}
+        <div className="grid grid-cols-2 gap-3.5 mb-3.5">
+          <div className="p-3 rounded-xl border border-slate-200 bg-white">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-0.5">
+              Boarding Point (Departure)
+            </span>
+            <span className="text-xs font-bold text-slate-900 block mb-1">
+              {boardingName}
+            </span>
+            <div className="p-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-bold">
+              ⚠️ Reporting Time: Please report 15 minutes before {timeStr}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl border border-slate-200 bg-white">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-0.5">
+              Dropping Point (Arrival)
+            </span>
+            <span className="text-xs font-bold text-slate-900 block mb-1">
+              {droppingName}
+            </span>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Primary Contact: {travelerName} · {booking?.customerPhone || booking?.contactDetails?.phone || '+91 98765 43210'}
+            </p>
+          </div>
+        </div>
+
+        {/* 5. Passenger Manifest Table */}
+        <div className="mb-3.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              Passenger Manifest ({passengerList.length} Traveler{passengerList.length > 1 ? 's' : ''})
+            </span>
+            <span className="text-xs font-mono font-bold text-sky-700">
+              Confirmed Seats: [{seatsStr}]
+            </span>
+          </div>
+
+          <table className="w-full text-left text-xs border border-slate-200 rounded-lg overflow-hidden">
+            <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px]">
+              <tr>
+                <th className="py-2 px-3">#</th>
+                <th className="py-2 px-3">Passenger Name</th>
+                <th className="py-2 px-3">Age / Gender</th>
+                <th className="py-2 px-3">Seat Number</th>
+                <th className="py-2 px-3 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {passengerList.map((p, idx) => (
+                <tr key={idx} className="text-slate-800">
+                  <td className="py-2 px-3 text-slate-400 font-mono">{idx + 1}</td>
+                  <td className="py-2 px-3 font-bold text-slate-900">{p.name || `Passenger ${idx + 1}`}</td>
+                  <td className="py-2 px-3 text-slate-600">{p.age ? `${p.age} yrs` : '—'} • {p.gender ? p.gender.toUpperCase() : '—'}</td>
+                  <td className="py-2 px-3 font-mono font-black text-sky-700">Seat: {p.seatNumber || seatsList[idx] || (idx + 1)}</td>
+                  <td className="py-2 px-3 text-right text-emerald-700 font-bold">Confirmed</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 6. Fare Breakdown & Payment Audit */}
+        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-4 mb-3.5">
+          <div className="text-xs space-y-0.5">
+            <span className="text-[10px] font-bold uppercase text-slate-400 block">Payment Audit & Fare Details</span>
+            <p className="text-slate-700 font-semibold">
+              Base Fare: ₹{subtotal.toLocaleString('en-IN')} | GST (5%): ₹{gstAmount.toLocaleString('en-IN')} {insuranceOpted ? `| Insurance: ₹${insuranceAmount}` : ''}
+            </p>
+            <p className="text-[10px] text-slate-500">
+              Gateway: {paymentProvider} · Ref: <span className="font-mono">{paymentReference}</span> · {paymentDateStr}
+            </p>
+          </div>
+
+          <div className="text-right">
+            <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Amount Paid</span>
+            <span className="text-lg font-black text-slate-950">
+              ₹{finalTotalPaid.toLocaleString('en-IN')}
+            </span>
+            <span className="text-[10px] font-bold text-emerald-700 block uppercase">
+              ✓ Fully Settled · 0 Due
+            </span>
+          </div>
+        </div>
+
+        {/* 7. Guidelines & Barcode */}
+        <div className="flex items-end justify-between pt-2 border-t border-slate-200 text-xs">
+          <div className="text-[10px] text-slate-500 space-y-0.5 max-w-md">
+            <p>• <strong>Reporting:</strong> Passengers must arrive at the boarding location 15 minutes before departure.</p>
+            <p>• <strong>Identity Proof:</strong> Valid Govt Photo ID (Aadhaar / Voter ID / DL) is mandatory for boarding.</p>
+            <p>• <strong>24/7 Helpline:</strong> +91 98765 43210 | Support: support@rupadiya.com</p>
+          </div>
+
+          <div className="flex flex-col items-end">
+            <div className="h-9 flex items-center gap-[1.5px] px-2 bg-white">
+              {[3, 1, 4, 1, 2, 5, 1, 2, 4, 2, 1, 3, 5, 2, 1, 4, 2, 3, 1, 5, 2, 1, 3, 4, 1, 2, 4, 3, 1, 5, 2, 4].map((w, idx) => (
+                <div
+                  key={idx}
+                  style={{ width: `${w * 1.5}px` }}
+                  className="h-full bg-slate-900 rounded-sm"
+                />
+              ))}
+            </div>
+            <span className="text-[9px] font-mono tracking-widest text-slate-500 mt-1">
+              * PNR: {displayBookingId} *
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
