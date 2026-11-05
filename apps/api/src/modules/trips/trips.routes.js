@@ -5,7 +5,9 @@ const Trip = require('./trip.model');
 const Bus = require('../fleet/bus.model');
 const Booking = require('../bookings/booking.model');
 const holdStore = require('../../config/holdStore');
-const { isValidCorridor } = require('../../config/constants');
+const { isValidCorridor, ROLES } = require('../../config/constants');
+const { authenticateToken } = require('../../middleware/auth.middleware');
+const { authorizeRoles } = require('../../middleware/rbac.middleware');
 const { searchLimiter } = require('../../middleware/rateLimit.middleware');
 
 // Search trips
@@ -82,6 +84,7 @@ router.get('/:tripId', requireBusSelectSession, async (req, res, next) => {
       .populate('busId');
 
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
     const obj = trip.toObject();
     const fromName = (obj.routeId?.fromCity?.name === 'Rupadiya' ? 'Rupaidiha' : (obj.routeId?.fromCity?.name || 'Rupaidiha'));
     const toName = (obj.routeId?.toCity?.name === 'Rupadiya' ? 'Rupaidiha' : (obj.routeId?.toCity?.name || 'Ahmedabad'));
@@ -124,11 +127,15 @@ router.get('/:tripId/seats', requireBusSelectSession, async (req, res, next) => 
 });
 
 // Schedule Trip (Supports 36-Seat Sleeper 2+1 and 40-Seat Seater 2+2)
-router.post('/', async (req, res, next) => {
+router.post('/', authenticateToken, authorizeRoles(ROLES.COMPANY_OWNER, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
     const { routeId, busId, departureTime, arrivalTime, baseFare } = req.body;
     const bus = await Bus.findById(busId);
     if (!bus) return res.status(404).json({ error: 'Bus not found' });
+
+    if (req.user.role === ROLES.COMPANY_OWNER && bus.companyCode !== req.user.companyCode) {
+      return res.status(403).json({ error: 'You are only authorized to schedule trips using buses belonging to your company.' });
+    }
 
     if (typeof bus.checkCompliance === 'function') {
       const compliance = bus.checkCompliance();
@@ -162,12 +169,16 @@ router.post('/', async (req, res, next) => {
 });
 
 // Prepare Seat Chart Manifest & Lock Trip for Boarding
-router.post('/:tripId/prepare-chart', async (req, res, next) => {
+router.post('/:tripId/prepare-chart', authenticateToken, authorizeRoles(ROLES.COMPANY_OWNER, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
     const trip = await Trip.findById(req.params.tripId)
       .populate('routeId')
       .populate('busId');
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+    if (req.user && req.user.role === ROLES.COMPANY_OWNER && trip.companyCode !== req.user.companyCode) {
+      return res.status(403).json({ error: 'Unauthorized to prepare passenger chart for another company trip.' });
+    }
 
     trip.chartPrepared = true;
     trip.chartPreparedAt = new Date();
@@ -187,12 +198,16 @@ router.post('/:tripId/prepare-chart', async (req, res, next) => {
 });
 
 // Fetch Formatted Passenger Seat Sheet Manifest
-router.get('/:tripId/seat-chart', async (req, res, next) => {
+router.get('/:tripId/seat-chart', authenticateToken, authorizeRoles(ROLES.COMPANY_OWNER, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
     const trip = await Trip.findById(req.params.tripId)
       .populate('routeId')
       .populate('busId');
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+    if (req.user && req.user.role === ROLES.COMPANY_OWNER && trip.companyCode !== req.user.companyCode) {
+      return res.status(403).json({ error: 'Unauthorized to view passenger manifest for another company trip.' });
+    }
 
     const bookings = await Booking.find({
       tripId: trip._id,

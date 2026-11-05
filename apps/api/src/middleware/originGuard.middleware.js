@@ -10,7 +10,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:3003',
   'http://127.0.0.1:3003',
   'http://localhost:3004',
-  'http://127.0.0.1:3004'
+  'http://127.0.0.1:3004',
+  'https://scotland-archive-moved-molecules.trycloudflare.com'
 ];
 
 function getAllowedOrigins() {

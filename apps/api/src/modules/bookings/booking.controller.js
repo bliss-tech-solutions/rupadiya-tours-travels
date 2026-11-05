@@ -175,6 +175,9 @@ class BookingController {
   async getMine(req, res, next) {
     try {
       const orFilter = [{ passengerId: req.user._id }];
+      if (req.user.role === 'AGENT') {
+        orFilter.push({ referralAgentId: req.user._id });
+      }
       if (req.user.phone) {
         orFilter.push({ 'contactDetails.phone': req.user.phone });
       }
@@ -239,10 +242,17 @@ class BookingController {
 
       // IDOR & Privacy Protection:
       // If requester is not the verified passenger or privileged admin, mask personal data
-      const isOwner = req.user && (
-        bookingDoc.passengerId?.toString() === req.user._id.toString() ||
-        ['SUPER_ADMIN', 'COMPANY_OWNER', 'AGENT'].includes(req.user.role)
+      const isSuperAdmin = req.user && req.user.role === 'SUPER_ADMIN';
+      const isPassenger = req.user && (bookingDoc.passengerId?.toString() === req.user._id.toString());
+      const isBookingAgent = req.user && req.user.role === 'AGENT' && (
+        bookingDoc.referralAgentId?.toString() === req.user._id.toString() ||
+        bookingDoc.passengerId?.toString() === req.user._id.toString()
       );
+      const isCompanyOwner = req.user && req.user.role === 'COMPANY_OWNER' && (
+        bookingDoc.companyCode === req.user.companyCode ||
+        (bookingDoc.companyId && bookingDoc.companyId.toString() === req.user.companyId?.toString())
+      );
+      const isOwner = Boolean(isSuperAdmin || isPassenger || isBookingAgent || isCompanyOwner);
       const cleanQueryPhone = req.query.phone ? req.query.phone.replace(/\D/g, '') : null;
       const isMatchingPhone = cleanQueryPhone && bookingDoc.contactDetails?.phone === cleanQueryPhone;
 
@@ -273,10 +283,17 @@ class BookingController {
       if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
       // IDOR Prevention: Verify that the person requesting cancellation owns the booking
-      const isOwner = req.user && (
-        booking.passengerId?.toString() === req.user._id.toString() ||
-        req.user.role === 'SUPER_ADMIN'
+      const isSuperAdmin = req.user && req.user.role === 'SUPER_ADMIN';
+      const isPassenger = req.user && booking.passengerId?.toString() === req.user._id.toString();
+      const isBookingAgent = req.user && req.user.role === 'AGENT' && (
+        booking.referralAgentId?.toString() === req.user._id.toString() ||
+        booking.passengerId?.toString() === req.user._id.toString()
       );
+      const isCompanyOwner = req.user && req.user.role === 'COMPANY_OWNER' && (
+        booking.companyCode === req.user.companyCode ||
+        (booking.companyId && booking.companyId.toString() === req.user.companyId?.toString())
+      );
+      const isOwner = Boolean(isSuperAdmin || isPassenger || isBookingAgent || isCompanyOwner);
       const reqPhone = (req.body.contactPhone || req.body.phone || '').replace(/\D/g, '');
       const isPhoneVerified = reqPhone && booking.contactDetails?.phone === reqPhone;
 

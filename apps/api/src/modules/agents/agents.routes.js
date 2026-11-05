@@ -535,7 +535,15 @@ router.get('/tickets/search', agentOnly, async (req, res, next) => {
       }
     }
 
-    // Scope ticket search to agent's company
+    // Scope ticket search strictly to this agent's own bookings and company
+    const agentOwnership = {
+      $or: [
+        { referralAgentId: req.user._id },
+        { passengerId: req.user._id }
+      ]
+    };
+    query.$and = [agentOwnership];
+
     if (req.user.companyCode) {
       query.companyCode = req.user.companyCode;
     }
@@ -581,10 +589,17 @@ router.get('/bookings', agentOnly, async (req, res, next) => {
     const agentId = req.user._id;
     const { status, search, startDate, endDate, page = 1, limit = 20 } = req.query;
 
-    const query = { referralAgentId: agentId };
+    const baseAgentFilter = {
+      $or: [
+        { referralAgentId: agentId },
+        { passengerId: agentId }
+      ]
+    };
+
+    const andConditions = [baseAgentFilter];
 
     if (status && status !== 'ALL') {
-      query.status = String(status).toUpperCase().trim();
+      andConditions.push({ status: String(status).toUpperCase().trim() });
     }
 
     if (search && String(search).trim()) {
@@ -598,28 +613,31 @@ router.get('/bookings', agentOnly, async (req, res, next) => {
       if (sDigits.length >= 4) {
         searchConditions.push({ 'contactDetails.phone': { $regex: sDigits, $options: 'i' } });
       }
-      query.$or = searchConditions;
+      andConditions.push({ $or: searchConditions });
     }
 
     if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) query.createdAt.$gte = new Date(startDate);
+      const dateFilter = {};
+      if (startDate) dateFilter.$gte = new Date(startDate);
       if (endDate) {
         const d = new Date(endDate);
         d.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = d;
+        dateFilter.$lte = d;
       }
+      andConditions.push({ createdAt: dateFilter });
     }
+
+    const query = { $and: andConditions };
 
     const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
     const pageLimit = Math.min(100, Math.max(1, parseInt(limit, 10)));
 
     const [totalBookings, confirmedCount, cancelledCount, volumeAgg, docs] = await Promise.all([
       Booking.countDocuments(query),
-      Booking.countDocuments({ referralAgentId: agentId, status: 'CONFIRMED' }),
-      Booking.countDocuments({ referralAgentId: agentId, status: 'CANCELLED' }),
+      Booking.countDocuments({ $and: [baseAgentFilter, { status: 'CONFIRMED' }] }),
+      Booking.countDocuments({ $and: [baseAgentFilter, { status: 'CANCELLED' }] }),
       Booking.aggregate([
-        { $match: { referralAgentId: agentId, status: 'CONFIRMED' } },
+        { $match: { $and: [baseAgentFilter, { status: 'CONFIRMED' }] } },
         { $group: { _id: null, total: { $sum: '$fareBreakdown.totalPayable' } } }
       ]),
       Booking.find(query)
@@ -683,6 +701,19 @@ router.post('/tickets/cancel', agentOnly, async (req, res, next) => {
 
     if (!booking) {
       return res.status(404).json({ error: 'Ticket not found.' });
+    }
+
+    // Strict Agent Scoping: Agents can ONLY cancel bookings booked or referred by their own agency account
+    const isAgentBooking = 
+      (booking.referralAgentId && booking.referralAgentId.toString() === agentId.toString()) ||
+      (booking.passengerId && booking.passengerId.toString() === agentId.toString());
+
+    if (!isAgentBooking) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access Denied: You are only authorized to cancel tickets issued by your own agency account.',
+        code: 'UNAUTHORIZED_AGENT_CANCELLATION'
+      });
     }
 
     if (cleanMobile) {
