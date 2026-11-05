@@ -421,9 +421,7 @@ export default function AgentBookingPage() {
     let buttonClass = '';
     if (isSelected) {
       buttonClass = 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs ring-2 ring-emerald-400';
-    } else if (isHeld) {
-      buttonClass = 'bg-amber-50 border-2 border-amber-300 text-amber-800 cursor-not-allowed';
-    } else if (isBooked) {
+    } else if (isHeld || isBooked) {
       buttonClass = isFemale
         ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
         : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed';
@@ -470,9 +468,7 @@ export default function AgentBookingPage() {
     let buttonClass = '';
     if (isSelected) {
       buttonClass = 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs ring-1 ring-emerald-400';
-    } else if (isHeld) {
-      buttonClass = 'bg-amber-50 border-2 border-amber-300 text-amber-800 cursor-not-allowed';
-    } else if (isBooked) {
+    } else if (isHeld || isBooked) {
       buttonClass = isFemale
         ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
         : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed';

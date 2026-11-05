@@ -3,6 +3,7 @@ const app = require('./app');
 const env = require('./config/env');
 const { connectDB } = require('./config/db');
 const websocketService = require('./services/websocket.service');
+const redisService = require('./config/redis');
 
 async function startServer() {
   try {
@@ -13,6 +14,7 @@ async function startServer() {
 
     // Initialize Real-time WebSocket Server on /ws
     websocketService.init(server);
+    redisService.init();
 
     // Wire hold expiration cleanup directly to real-time seat release broadcast
     const holdStore = require('./config/holdStore');

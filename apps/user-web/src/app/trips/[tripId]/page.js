@@ -53,6 +53,7 @@ export default function TripSeatSelectionPage() {
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSeats, setSelectedSeats] = useState([]);
+  const [heldSeatNumbers, setHeldSeatNumbers] = useState(new Set());
   const [layoutMode, setLayoutMode] = useState('sleeper'); // 'sleeper' | 'seater'
 
   useEffect(() => {
@@ -61,6 +62,11 @@ export default function TripSeatSelectionPage() {
       try {
         const res = await api.getTrip(tripId);
         setTrip(res.data);
+        const initialHeld = new Set();
+        (res.data?.seats || []).forEach(s => {
+          if (s.status === 'HELD') initialHeld.add(String(s.seatNumber || '').trim().toLowerCase());
+        });
+        setHeldSeatNumbers(initialHeld);
         const bType = res.data?.bus?.busType?.toLowerCase() || '';
         const bLayout = res.data?.bus?.layoutType || '';
         const hasSleeperSeats = res.data?.seats?.some(s => s.seatNumber.startsWith('L') || s.seatNumber.startsWith('U') || s.category === 'SLEEPER');
@@ -120,6 +126,12 @@ export default function TripSeatSelectionPage() {
               const heldNumbers = (data?.seatNumbers || []).map(s => String(s).trim().toLowerCase());
               if (heldNumbers.length === 0) return;
 
+              setHeldSeatNumbers(prev => {
+                const next = new Set(prev);
+                heldNumbers.forEach(n => next.add(n));
+                return next;
+              });
+
               setTrip(prev => {
                 if (!prev || !prev.seats) return prev;
                 const nextSeats = prev.seats.map(s => {
@@ -148,6 +160,12 @@ export default function TripSeatSelectionPage() {
             } else if (evtType === 'SEATS_RELEASED') {
               const releasedNumbers = (data?.seatNumbers || []).map(s => String(s).trim().toLowerCase());
               if (releasedNumbers.length === 0) return;
+
+              setHeldSeatNumbers(prev => {
+                const next = new Set(prev);
+                releasedNumbers.forEach(n => next.delete(n));
+                return next;
+              });
 
               setTrip(prev => {
                 if (!prev || !prev.seats) return prev;
@@ -211,9 +229,15 @@ export default function TripSeatSelectionPage() {
       try {
         const res = await api.getTrip(tripId);
         if (res?.data?.seats) {
-          setTrip(prev => {
-            if (!prev) return res.data;
-            return { ...prev, seats: res.data.seats };
+          setTrip(prev => (prev ? { ...prev, seats: res.data.seats } : res.data));
+          setHeldSeatNumbers(prev => {
+            const next = new Set(prev);
+            res.data.seats.forEach(s => {
+              const code = String(s.seatNumber || '').trim().toLowerCase();
+              if (s.status === 'HELD') next.add(code);
+              else if (s.status === 'AVAILABLE') next.delete(code);
+            });
+            return next;
           });
         }
       } catch (e) {}
@@ -339,9 +363,9 @@ export default function TripSeatSelectionPage() {
 
   const handleSeatClick = (seatObj, seatCode) => {
     const actualCode = seatObj?.seatNumber || seatCode;
-    if (seatObj.status === 'BOOKED') {
-      const isFemale = seatObj.passenger?.gender === 'female';
-      addToast(`This berth is booked by a ${isFemale ? 'female' : 'male'} passenger.`, 'info', 'Berth Sold');
+    const sCodeLower = String(actualCode).trim().toLowerCase();
+    if (seatObj.status === 'BOOKED' || seatObj.status === 'HELD' || seatObj.status === 'BLOCKED' || heldSeatNumbers.has(sCodeLower)) {
+      addToast('This seat is sold / currently held by another passenger.', 'warning', 'Seat Sold');
       return;
     }
 
@@ -419,7 +443,10 @@ export default function TripSeatSelectionPage() {
   const renderSleeperBerth = (berthCode, fallbackNum) => {
     const seatObj = findSeat(berthCode, fallbackNum);
     const actualSeatCode = seatObj.seatNumber || berthCode;
-    const isHeld = seatObj.status === 'HELD';
+    const isHeld = seatObj.status === 'HELD' ||
+      heldSeatNumbers.has(String(actualSeatCode).trim().toLowerCase()) ||
+      heldSeatNumbers.has(String(berthCode).trim().toLowerCase()) ||
+      (fallbackNum && heldSeatNumbers.has(String(fallbackNum).trim().toLowerCase()));
     const isBooked = seatObj.status === 'BOOKED' || seatObj.status === 'BLOCKED' || isHeld;
     const isBookedFemale = !isHeld && isBooked && seatObj.passenger?.gender === 'female';
     const isBookedMale = !isHeld && isBooked && !isBookedFemale;
@@ -439,19 +466,9 @@ export default function TripSeatSelectionPage() {
       containerStyle = 'bg-emerald-600 border-2 border-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-400';
       pillowStyle = 'bg-white/80';
       label = actualSeatCode;
-    } else if (isHeld) {
-      containerStyle = 'bg-amber-50 border-2 border-amber-300 text-amber-800 cursor-not-allowed';
-      pillowStyle = 'bg-amber-200';
-      label = 'Sold';
-      isSold = true;
-    } else if (isBookedFemale) {
-      containerStyle = 'bg-pink-100 border border-pink-200 cursor-not-allowed';
-      pillowStyle = 'bg-pink-200';
-      label = 'Sold';
-      isSold = true;
-    } else if (isBookedMale) {
-      containerStyle = 'bg-indigo-50 border border-indigo-200 cursor-not-allowed';
-      pillowStyle = 'bg-indigo-200';
+    } else if (isHeld || isBooked) {
+      containerStyle = 'bg-slate-100 border border-slate-300 text-slate-400 cursor-not-allowed opacity-85';
+      pillowStyle = 'bg-slate-300';
       label = 'Sold';
       isSold = true;
     } else if (isAdjFemale) {
@@ -477,9 +494,7 @@ export default function TripSeatSelectionPage() {
         >
           {/* Top of berth / occupant icon */}
           <div className="pt-1 flex items-center justify-center">
-            {isHeld && <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />}
-            {isBookedFemale && <FemaleIcon className="w-3.5 h-3.5 text-pink-400" />}
-            {isBookedMale && <MaleIcon className="w-3.5 h-3.5 text-indigo-400" />}
+            {(isHeld || isBooked) && <Lock className="w-3.5 h-3.5 text-slate-400" />}
             {isAdjFemale && !isSelected && <FemaleIcon className="w-3.5 h-3.5 text-pink-500" />}
             {isAdjMale && !isSelected && <MaleIcon className="w-3.5 h-3.5 text-blue-500" />}
             {isSelected && <Check className="w-4 h-4 text-white stroke-[3]" />}
@@ -650,22 +665,16 @@ export default function TripSeatSelectionPage() {
                         {row.left.map((sCode) => {
                           const sObj = findSeat(sCode, parseInt(sCode, 10));
                           const actualCode = sObj.seatNumber || sCode;
-                          const isHeld = sObj.status === 'HELD';
+                          const isHeld = sObj.status === 'HELD' || heldSeatNumbers.has(String(actualCode).trim().toLowerCase()) || heldSeatNumbers.has(String(sCode).trim().toLowerCase());
                           const isBooked = sObj.status === 'BOOKED' || sObj.status === 'BLOCKED' || isHeld;
-                          const isBookedFemale = !isHeld && isBooked && sObj.passenger?.gender === 'female';
-                          const isBookedMale = !isHeld && isBooked && !isBookedFemale;
                           const isSelected = selectedSeats.includes(actualCode);
                           const isFemaleAdj = !isBooked && isAdjacentToFemalePassenger(actualCode);
 
                           let sClass = '';
                           if (isSelected) {
                             sClass = 'bg-emerald-600 text-white font-bold ring-2 ring-emerald-400 shadow-md';
-                          } else if (isHeld) {
-                            sClass = 'bg-amber-100 text-amber-800 border-2 border-amber-300 cursor-not-allowed';
-                          } else if (isBookedFemale) {
-                            sClass = 'bg-pink-100 text-pink-700 border-2 border-pink-300 cursor-not-allowed';
-                          } else if (isBookedMale) {
-                            sClass = 'bg-indigo-50 text-indigo-700 border-2 border-indigo-200 cursor-not-allowed';
+                          } else if (isBooked) {
+                            sClass = 'bg-slate-100 text-slate-400 border border-slate-300 cursor-not-allowed opacity-85';
                           } else if (isFemaleAdj) {
                             sClass = 'bg-white border-2 border-pink-500 text-pink-600 hover:bg-pink-50';
                           } else {
@@ -677,9 +686,11 @@ export default function TripSeatSelectionPage() {
                               key={actualCode}
                               onClick={() => handleSeatClick(sObj, actualCode)}
                               disabled={isBooked}
-                              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xs font-bold transition-all ${sClass}`}
+                              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center text-xs font-bold transition-all ${sClass}`}
+                              title={`${actualCode} · ${isBooked ? 'Sold' : isSelected ? 'Selected' : 'Available'}`}
                             >
-                              {actualCode}
+                              <span className={isBooked ? 'text-[10px] text-slate-400 line-through' : ''}>{actualCode}</span>
+                              {isBooked && <span className="text-[9px] uppercase font-bold text-slate-500 tracking-tight">Sold</span>}
                             </button>
                           );
                         })}
@@ -695,22 +706,16 @@ export default function TripSeatSelectionPage() {
                         {row.right.map((sCode) => {
                           const sObj = findSeat(sCode, parseInt(sCode, 10));
                           const actualCode = sObj.seatNumber || sCode;
-                          const isHeld = sObj.status === 'HELD';
+                          const isHeld = sObj.status === 'HELD' || heldSeatNumbers.has(String(actualCode).trim().toLowerCase()) || heldSeatNumbers.has(String(sCode).trim().toLowerCase());
                           const isBooked = sObj.status === 'BOOKED' || sObj.status === 'BLOCKED' || isHeld;
-                          const isBookedFemale = !isHeld && isBooked && sObj.passenger?.gender === 'female';
-                          const isBookedMale = !isHeld && isBooked && !isBookedFemale;
                           const isSelected = selectedSeats.includes(actualCode);
                           const isFemaleAdj = !isBooked && isAdjacentToFemalePassenger(actualCode);
 
                           let sClass = '';
                           if (isSelected) {
                             sClass = 'bg-emerald-600 text-white font-bold ring-2 ring-emerald-400 shadow-md';
-                          } else if (isHeld) {
-                            sClass = 'bg-amber-100 text-amber-800 border-2 border-amber-300 cursor-not-allowed';
-                          } else if (isBookedFemale) {
-                            sClass = 'bg-pink-100 text-pink-700 border-2 border-pink-300 cursor-not-allowed';
-                          } else if (isBookedMale) {
-                            sClass = 'bg-indigo-50 text-indigo-700 border-2 border-indigo-200 cursor-not-allowed';
+                          } else if (isBooked) {
+                            sClass = 'bg-slate-100 text-slate-400 border border-slate-300 cursor-not-allowed opacity-85';
                           } else if (isFemaleAdj) {
                             sClass = 'bg-white border-2 border-pink-500 text-pink-600 hover:bg-pink-50';
                           } else {
@@ -722,9 +727,11 @@ export default function TripSeatSelectionPage() {
                               key={actualCode}
                               onClick={() => handleSeatClick(sObj, actualCode)}
                               disabled={isBooked}
-                              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xs font-bold transition-all ${sClass}`}
+                              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center text-xs font-bold transition-all ${sClass}`}
+                              title={`${actualCode} · ${isBooked ? 'Sold' : isSelected ? 'Selected' : 'Available'}`}
                             >
-                              {actualCode}
+                              <span className={isBooked ? 'text-[10px] text-slate-400 line-through' : ''}>{actualCode}</span>
+                              {isBooked && <span className="text-[9px] uppercase font-bold text-slate-500 tracking-tight">Sold</span>}
                             </button>
                           );
                         })}

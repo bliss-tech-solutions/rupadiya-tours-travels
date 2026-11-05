@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const net = require('net');
 const tls = require('tls');
 const env = require('./env');
+const redisService = require('./redis');
 
 /**
  * Hold Store - Manages 10-minute temporary seat reservations with atomic consistency
@@ -99,6 +100,9 @@ class HoldStore {
         passengerId,
         expiresAt
       });
+      try {
+        redisService.setHoldLock(tripId, seat, token, ttlSeconds);
+      } catch (e) {}
     }
 
     const holdData = {
@@ -203,6 +207,9 @@ class HoldStore {
       if (lock && lock.holdToken === holdToken) {
         this.seatLocks.delete(lockKey);
       }
+      try {
+        redisService.releaseHoldLock(record.tripId, seat);
+      } catch (e) {}
     }
 
     this.holdRecords.delete(holdToken);
@@ -252,3 +259,4 @@ class HoldStore {
 const holdStore = new HoldStore();
 
 module.exports = holdStore;
+
