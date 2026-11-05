@@ -266,9 +266,10 @@ export default function TripSeatSelectionPage() {
   const renderSleeperBerth = (berthCode, fallbackNum) => {
     const seatObj = findSeat(berthCode, fallbackNum);
     const actualSeatCode = seatObj.seatNumber || berthCode;
-    const isBooked = seatObj.status === 'BOOKED';
-    const isBookedFemale = isBooked && seatObj.passenger?.gender === 'female';
-    const isBookedMale = isBooked && !isBookedFemale;
+    const isHeld = seatObj.status === 'HELD';
+    const isBooked = seatObj.status === 'BOOKED' || seatObj.status === 'BLOCKED' || isHeld;
+    const isBookedFemale = !isHeld && isBooked && seatObj.passenger?.gender === 'female';
+    const isBookedMale = !isHeld && isBooked && !isBookedFemale;
     const isSelected = selectedSeats.includes(actualSeatCode) || selectedSeats.includes(berthCode);
     const isAdjFemale = !isBooked && (isAdjacentToFemalePassenger(actualSeatCode) || isAdjacentToFemalePassenger(berthCode));
     const isAdjMale = !isBooked && (isAdjacentToMalePassenger(actualSeatCode) || isAdjacentToMalePassenger(berthCode));
@@ -282,6 +283,11 @@ export default function TripSeatSelectionPage() {
       containerStyle = 'bg-emerald-600 border-2 border-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-400';
       pillowStyle = 'bg-white/80';
       label = actualSeatCode;
+    } else if (isHeld) {
+      containerStyle = 'bg-amber-50 border border-amber-300 cursor-not-allowed';
+      pillowStyle = 'bg-amber-200';
+      label = 'Held';
+      isSold = true;
     } else if (isBookedFemale) {
       containerStyle = 'bg-pink-100 border border-pink-200 cursor-not-allowed';
       pillowStyle = 'bg-pink-200';
@@ -487,15 +493,18 @@ export default function TripSeatSelectionPage() {
                         {row.left.map((sCode) => {
                           const sObj = findSeat(sCode, parseInt(sCode, 10));
                           const actualCode = sObj.seatNumber || sCode;
-                          const isBooked = sObj.status === 'BOOKED';
-                          const isBookedFemale = isBooked && sObj.passenger?.gender === 'female';
-                          const isBookedMale = isBooked && !isBookedFemale;
+                          const isHeld = sObj.status === 'HELD';
+                          const isBooked = sObj.status === 'BOOKED' || sObj.status === 'BLOCKED' || isHeld;
+                          const isBookedFemale = !isHeld && isBooked && sObj.passenger?.gender === 'female';
+                          const isBookedMale = !isHeld && isBooked && !isBookedFemale;
                           const isSelected = selectedSeats.includes(actualCode);
                           const isFemaleAdj = !isBooked && isAdjacentToFemalePassenger(actualCode);
 
                           let sClass = '';
                           if (isSelected) {
                             sClass = 'bg-emerald-600 text-white font-bold ring-2 ring-emerald-400 shadow-md';
+                          } else if (isHeld) {
+                            sClass = 'bg-amber-100 text-amber-800 border-2 border-amber-300 cursor-not-allowed';
                           } else if (isBookedFemale) {
                             sClass = 'bg-pink-100 text-pink-700 border-2 border-pink-300 cursor-not-allowed';
                           } else if (isBookedMale) {
@@ -529,15 +538,18 @@ export default function TripSeatSelectionPage() {
                         {row.right.map((sCode) => {
                           const sObj = findSeat(sCode, parseInt(sCode, 10));
                           const actualCode = sObj.seatNumber || sCode;
-                          const isBooked = sObj.status === 'BOOKED';
-                          const isBookedFemale = isBooked && sObj.passenger?.gender === 'female';
-                          const isBookedMale = isBooked && !isBookedFemale;
+                          const isHeld = sObj.status === 'HELD';
+                          const isBooked = sObj.status === 'BOOKED' || sObj.status === 'BLOCKED' || isHeld;
+                          const isBookedFemale = !isHeld && isBooked && sObj.passenger?.gender === 'female';
+                          const isBookedMale = !isHeld && isBooked && !isBookedFemale;
                           const isSelected = selectedSeats.includes(actualCode);
                           const isFemaleAdj = !isBooked && isAdjacentToFemalePassenger(actualCode);
 
                           let sClass = '';
                           if (isSelected) {
                             sClass = 'bg-emerald-600 text-white font-bold ring-2 ring-emerald-400 shadow-md';
+                          } else if (isHeld) {
+                            sClass = 'bg-amber-100 text-amber-800 border-2 border-amber-300 cursor-not-allowed';
                           } else if (isBookedFemale) {
                             sClass = 'bg-pink-100 text-pink-700 border-2 border-pink-300 cursor-not-allowed';
                           } else if (isBookedMale) {

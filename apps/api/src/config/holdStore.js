@@ -126,9 +126,9 @@ class HoldStore {
   }
 
   /**
-   * Retrieves active hold record by token
+   * Retrieves active hold record by token (Synchronous in-memory lookup)
    */
-  async getHold(holdToken) {
+  getHold(holdToken) {
     if (!holdToken) return null;
     const record = this.holdRecords.get(holdToken);
     if (!record) return null;
@@ -213,17 +213,19 @@ class HoldStore {
    * Returns list of currently held seat numbers for a trip
    */
   getHeldSeatsForTrip(tripId) {
+    if (!tripId) return [];
     this.cleanupExpiredHolds();
     const now = Date.now();
     const held = [];
+    const targetTrip = String(tripId).trim();
 
     for (const [key, lock] of this.seatLocks.entries()) {
-      if (String(lock.tripId) === String(tripId) && lock.expiresAt > now) {
-        held.push(lock.seat);
+      if (String(lock.tripId).trim() === targetTrip && lock.expiresAt > now) {
+        held.push(String(lock.seat).trim());
       }
     }
 
-    return held;
+    return Array.from(new Set(held));
   }
 
   cleanupExpiredHolds() {

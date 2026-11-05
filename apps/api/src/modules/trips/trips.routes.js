@@ -4,6 +4,7 @@ const ownInventory = require('../../providers/inventory/OwnInventoryProvider');
 const Trip = require('./trip.model');
 const Bus = require('../fleet/bus.model');
 const Booking = require('../bookings/booking.model');
+const holdStore = require('../../config/holdStore');
 const { isValidCorridor } = require('../../config/constants');
 const { searchLimiter } = require('../../middleware/rateLimit.middleware');
 
@@ -61,6 +62,17 @@ router.get('/:tripId', async (req, res, next) => {
     const obj = trip.toObject();
     const fromName = obj.routeId?.fromCity?.name || 'Rupadiya';
     const toName = obj.routeId?.toCity?.name || 'Ahmedabad';
+
+    // Merge live in-memory holds into trip layout
+    const heldSeats = holdStore.getHeldSeatsForTrip(trip._id.toString());
+    if (heldSeats && heldSeats.length > 0 && Array.isArray(obj.seats)) {
+      obj.seats = obj.seats.map(s => {
+        if (s.status === 'AVAILABLE' && heldSeats.includes(s.seatNumber?.toString())) {
+          return { ...s, status: 'HELD' };
+        }
+        return s;
+      });
+    }
 
     const formatted = { 
       ...obj, 

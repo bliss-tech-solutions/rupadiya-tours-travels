@@ -12,6 +12,7 @@ const websocketService = require('../../services/websocket.service');
 const WithdrawalRequest = require('../withdrawals/withdrawal.model');
 const Booking = require('../bookings/booking.model');
 const bookingService = require('../bookings/booking.service');
+const holdStore = require('../../config/holdStore');
 const Trip = require('../trips/trip.model');
 const User = require('../users/user.model');
 const { ROLES, TRANSACTION_TYPES, SEAT_STATUS } = require('../../config/constants');
@@ -803,7 +804,7 @@ router.get('/rewards', agentOnly, async (req, res, next) => {
 });
 
 // -------------------------------------------------------------
-// 8. AGENT BOOKING — WALLET DEBIT ENGINE
+// 8. AGENT BOOKING — WALLET DEBIT ENGINE (ATOMIC & CONCURRENCY SAFE)
 // -------------------------------------------------------------
 router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
   try {
@@ -818,187 +819,95 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
       contactPhone,
       contactEmail,
       contactDetails,
-      agentServiceFee,
-      serviceCharge,
       insuranceOpted,
-      insuranceAmount: reqInsuranceAmount
+      holdToken
     } = req.body;
 
     const seatsToBook = (selectedSeats && selectedSeats.length > 0) ? selectedSeats : (seatNumbers || []);
+    const normalizedSeats = seatsToBook.map(s => String(s).trim());
 
-    if (!tripId || seatsToBook.length === 0) {
-      return res.status(400).json({ error: 'Trip and seats are required' });
+    if (!tripId || normalizedSeats.length === 0) {
+      return res.status(400).json({ success: false, error: 'Trip and seats are required' });
     }
 
     const trip = await Trip.findById(tripId).populate('routeId').populate('busId');
-    if (!trip) return res.status(404).json({ error: 'Trip not found' });
+    if (!trip) return res.status(404).json({ success: false, error: 'Trip not found' });
 
-    const baseFare = trip.baseFare || 510;
-    const subtotal = seatsToBook.length * baseFare;
-    const gstAmount = Math.round(subtotal * 0.05);
-    const fee = Number(agentServiceFee ?? serviceCharge ?? 0);
     const isInsurance = Boolean(insuranceOpted === true || insuranceOpted === 'true' || insuranceOpted === 1);
-    const insAmount = isInsurance ? (seatsToBook.length * 5) : 0;
-    const totalFare = subtotal + gstAmount + fee + insAmount;
-
-    // 1. Verify Agent Wallet Balance
-    const wallet = await getOrCreateAgentWallet(agentId, req.user.companyCode);
-    if (wallet.availableBalance < totalFare) {
-      return res.status(400).json({
-        error: `Insufficient wallet balance (Available: ₹${wallet.availableBalance.toLocaleString()}, Required: ₹${totalFare.toLocaleString()}). Please top-up funds first.`
-      });
-    }
-
-    // 2. Atomically deduct wallet balance
-    wallet.availableBalance -= totalFare;
-    await wallet.save();
-
-    const bookingId = `BK_AGT_${Math.floor(100000 + Math.random() * 900000)}`;
-    const pnr = `RUP-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-
-    // 3. Record Wallet Ledger Entry
-    await WalletLedger.create({
-      walletId: wallet._id,
-      userId: agentId,
-      companyCode: req.user.companyCode || 1,
-      entryType: 'DEBIT',
-      amount: totalFare,
-      balanceAfter: wallet.availableBalance,
-      transactionType: TRANSACTION_TYPES.TICKET_PURCHASE,
-      referenceType: 'BOOKING',
-      referenceId: bookingId,
-      description: `Customer Ticket Purchase #${bookingId} (PNR: ${pnr}) - Seats [${seatsToBook.join(', ')}]`,
-      idempotencyKey: `IDEM_${bookingId}_${Date.now()}`
-    });
-
-    // 4. Update seats in Trip to BOOKED
-    trip.seats.forEach(s => {
-      if (seatsToBook.includes(s.seatNumber)) {
-        s.status = SEAT_STATUS.BOOKED;
-        const pass = (passengers || []).find(p => p.seatNumber === s.seatNumber);
-        if (pass) {
-          s.passenger = {
-            name: pass.name || 'Passenger',
-            age: Number(pass.age || 25),
-            gender: pass.gender || 'male'
-          };
-        }
-      }
-    });
-    await trip.save();
-
     const finalPhone = contactPhone || contactDetails?.phone || req.user.phone || '9876543210';
     const finalEmail = contactEmail || contactDetails?.email || req.user.email || 'passenger@rupadiya.test';
 
-    const depFormatted = new Date(trip.departureTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const arrFormatted = new Date(trip.arrivalTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-
     const formattedPassengers = (passengers && passengers.length > 0)
       ? passengers.map(p => ({
-          seatNumber: p.seatNumber,
+          seatNumber: String(p.seatNumber).trim(),
           name: p.name || 'Passenger',
           age: Number(p.age || 25),
           gender: p.gender || 'male',
-          fare: baseFare
+          fare: trip.baseFare || 510
         }))
-      : seatsToBook.map(num => ({
+      : normalizedSeats.map(num => ({
           seatNumber: num,
           name: 'Customer Traveler',
           age: 25,
           gender: 'male',
-          fare: baseFare
+          fare: trip.baseFare || 510
         }));
 
-    // 5. Create Confirmed Booking record
-    const booking = await Booking.create({
-      bookingId,
-      pnr,
-      passengerId: agentId,
-      referralAgentId: agentId,
-      contactDetails: {
-        email: finalEmail,
-        phone: finalPhone
-      },
-      tripId: trip._id,
-      routeId: trip.routeId._id || trip.routeId,
-      busId: trip.busId._id || trip.busId,
-      companyCode: req.user.companyCode || 1,
-      seatNumbers: seatsToBook,
-      passengers: formattedPassengers,
-      boardingPoint: {
-        name: boardingPoint?.name || boardingPoint?.location || trip.routeId?.boardingPoints?.[0]?.name || 'Main Stand',
-        time: boardingPoint?.time || depFormatted
-      },
-      droppingPoint: {
-        name: droppingPoint?.name || droppingPoint?.location || trip.routeId?.droppingPoints?.[0]?.name || 'Destination Station',
-        time: droppingPoint?.time || arrFormatted
-      },
-      fareBreakdown: {
-        baseFare,
-        seatCount: seatsToBook.length,
-        subtotal,
-        gstAmount,
-        insuranceAmount: insAmount,
-        discountAmount: 0,
-        totalPayable: totalFare
-      },
-      insuranceOpted: isInsurance,
-      insurancePremium: insAmount,
-      status: 'CONFIRMED',
-      paymentStatus: 'SUCCESS',
-      paymentProvider: 'agent_wallet',
-      paymentReference: `WAL_${bookingId}`
-    });
-
-    // Record 5% GST in tax_entries
-    try {
-      await taxService.recordGstEntry({
-        booking,
-        subtotal,
-        gstAmount
-      });
-    } catch (taxErr) {
-      console.error('[TaxEngine GST Error]', taxErr);
+    // Pre-hold seats via holdStore if not already held with this token
+    let token = holdToken;
+    if (!token) {
+      token = 'HOLD_AGT_' + crypto.randomBytes(8).toString('hex').toUpperCase();
     }
 
-    // 6. Calculate and distribute 5-level referral commissions (L1..L5 less 1% TCS)
-    let commRecords = [];
-    try {
-      commRecords = await commissionService.distributeCommissions({
-        booking,
-        trip,
-        seatCount: seatsToBook.length
+    const existingHold = holdStore.getHold(token);
+    if (!existingHold) {
+      const holdResult = await holdStore.holdSeats({
+        tripId: trip._id.toString(),
+        seatNumbers: normalizedSeats,
+        passengerDetails: formattedPassengers,
+        holdToken: token,
+        passengerId: agentId.toString(),
+        ttlSeconds: 600
       });
-      if (Array.isArray(commRecords)) {
-        commRecords.forEach(cr => {
-          websocketService.broadcastCommissionEarned(cr.agentId, {
-            pnr: booking.pnr,
-            level: cr.level,
-            grossCommission: cr.grossCommission,
-            tcsDeducted: cr.tcsDeducted,
-            netCommission: cr.netCommission
-          });
+      if (!holdResult.success) {
+        return res.status(409).json({
+          success: false,
+          error: holdResult.message || `Seats [${(holdResult.conflictingSeats || holdResult.conflictedSeats || []).join(', ')}] are already held or booked.`,
+          conflictingSeats: holdResult.conflictingSeats || holdResult.conflictedSeats
         });
       }
-    } catch (commErr) {
-      console.error('[Commission Engine Error]', commErr);
     }
 
-    // 7. Broadcast real-time booking confirmation to trip, company, admin, user
-    try {
-      websocketService.broadcastBookingConfirmed(booking, trip);
-    } catch (wsErr) {
-      console.error('[WebSocket Broadcast Error]', wsErr);
-    }
+    // Call unified booking engine (atomic seat lock + wallet debit + ledger + commission distribution)
+    const booking = await bookingService.confirmBooking({
+      holdToken: token,
+      passengerId: agentId,
+      contactEmail: finalEmail,
+      contactPhone: finalPhone,
+      passengers: formattedPassengers,
+      boardingPoint,
+      droppingPoint,
+      paymentProvider: 'agent_wallet',
+      referralCode: req.user.referralCode,
+      tripId: trip._id.toString(),
+      seatNumbers: normalizedSeats,
+      insuranceOpted: isInsurance
+    });
+
+    const commRecords = await CommissionRecord.find({ bookingId: booking.bookingId }).lean();
+    const updatedWallet = await Wallet.findOne({ userId: agentId });
 
     res.status(201).json({
       success: true,
-      message: `Booking #${bookingId} confirmed successfully via Agent Wallet.`,
+      message: `Booking #${booking.bookingId} confirmed successfully via Agent Wallet.`,
       booking,
       commissionsEarned: commRecords,
-      walletBalance: wallet.availableBalance
+      walletBalance: updatedWallet ? updatedWallet.availableBalance : 0
     });
   } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ success: false, error: err.message });
+    }
     next(err);
   }
 });

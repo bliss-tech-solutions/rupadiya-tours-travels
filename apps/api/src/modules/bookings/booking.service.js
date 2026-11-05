@@ -4,6 +4,7 @@ const Route = require('../routes/route.model');
 const Bus = require('../fleet/bus.model');
 const User = require('../users/user.model');
 const Booking = require('./booking.model');
+const SeatReservation = require('./seatReservation.model');
 const Company = require('../companies/company.model');
 const Refund = require('../payments/refund.model');
 const Offer = require('../offers/offer.model');
@@ -185,7 +186,7 @@ class BookingService {
     tabId = null
   }) {
     // 1. Validate hold token or recover from database if memory was cleared
-    let hold = holdToken ? holdStore.getHold(holdToken) : null;
+    let hold = holdToken ? (await holdStore.getHold(holdToken)) : null;
     if (!hold) {
       const targetTripId = tripId || (passengers?.[0]?.tripId);
       const targetSeats = (seatNumbers || (passengers || []).map(p => p.seatNumber)).filter(Boolean);
@@ -210,7 +211,7 @@ class BookingService {
               passengerId,
               ttlSeconds: env.HOLD_DURATION_SECONDS || 600
             });
-            hold = holdStore.getHold(tokenToUse);
+            hold = await holdStore.getHold(tokenToUse);
           } else {
             const err = new Error(`Seats [${bookedConflict.map(s => s.seatNumber).join(', ')}] have already been booked by another passenger.`);
             err.statusCode = 409;
@@ -390,7 +391,66 @@ class BookingService {
 
     // 3. Perform atomic booking state mutations within a transaction session
     const booking = await withTransaction(async (session) => {
-      // A. If payment was via agent wallet, debit wallet and create ledger
+      // A. Atomically lock seats on the Trip document in MongoDB first
+      const targetSeats = hold.seatNumbers.map(s => s.toString().trim());
+
+      // 1. Physical Unique Reservation Records check
+      const reservationDocs = targetSeats.map(seatNumber => ({
+        tripId: trip._id,
+        seatNumber,
+        bookingId,
+        status: 'BOOKED'
+      }));
+
+      try {
+        await SeatReservation.create(reservationDocs, session ? { session } : {});
+      } catch (dupErr) {
+        if (dupErr.code === 11000 || dupErr.name === 'MongoServerError' || (dupErr.message && dupErr.message.includes('E11000'))) {
+          const conflictErr = new Error(`Double Booking Prevented: One or more of the selected seats [${targetSeats.join(', ')}] were just booked by another person.`);
+          conflictErr.statusCode = 409;
+          throw conflictErr;
+        }
+        throw dupErr;
+      }
+
+      // 2. Atomic document update on Trip with conditional guard
+      const updateTrip = await Trip.findOneAndUpdate(
+        {
+          _id: trip._id,
+          // CRITICAL: Ensure NONE of the requested seats are already BOOKED or BLOCKED
+          seats: {
+            $not: {
+              $elemMatch: {
+                seatNumber: { $in: targetSeats },
+                status: { $in: [SEAT_STATUS.BOOKED, SEAT_STATUS.BLOCKED] }
+              }
+            }
+          }
+        },
+        {
+          $set: {
+            "seats.$[elem].status": SEAT_STATUS.BOOKED
+          }
+        },
+        {
+          arrayFilters: [{ "elem.seatNumber": { $in: targetSeats } }],
+          new: true,
+          session: session || undefined
+        }
+      );
+
+      if (!updateTrip) {
+        if (!session) {
+          await SeatReservation.deleteMany({ bookingId });
+        }
+        const conflictErr = new Error(
+          `Concurrency Conflict: One or more of the selected seats [${targetSeats.join(', ')}] were just booked by another customer. Please select different seats.`
+        );
+        conflictErr.statusCode = 409;
+        throw conflictErr;
+      }
+
+      // B. If payment was via agent wallet, debit wallet and create ledger
       if (paymentProvider === 'agent_wallet') {
         const query = Wallet.findOne({ userId: agentUser._id });
         if (session) query.session(session);
@@ -398,6 +458,14 @@ class BookingService {
 
         const currentBal = agentWallet ? (agentWallet.availableBalance ?? agentWallet.balance ?? 0) : 0;
         if (!agentWallet || currentBal < quote.totalPayable) {
+          if (!session) {
+            await SeatReservation.deleteMany({ bookingId });
+            await Trip.updateOne(
+              { _id: trip._id },
+              { $set: { "seats.$[elem].status": SEAT_STATUS.AVAILABLE } },
+              { arrayFilters: [{ "elem.seatNumber": { $in: targetSeats } }] }
+            );
+          }
           throw new Error(`Insufficient agent wallet balance. Required: ₹${quote.totalPayable}, Available: ₹${currentBal}`);
         }
 
@@ -420,20 +488,25 @@ class BookingService {
         }], session ? { session } : {});
       }
 
-      // B. Mark seats as BOOKED on the Trip document atomically
-      for (const seatNum of hold.seatNumbers) {
-        const seat = trip.seats.find(s => s.seatNumber === seatNum.toString());
-        if (seat) {
-          seat.status = SEAT_STATUS.BOOKED;
-          const passInfo = (passengers || []).find(p => p.seatNumber === seatNum.toString()) || {};
-          seat.passenger = {
-            name: passInfo.name || 'Passenger',
-            age: passInfo.age || 25,
-            gender: passInfo.gender || 'other'
-          };
+      // Also update passenger info on individual seats if provided
+      for (const seatNum of targetSeats) {
+        const passInfo = (passengers || []).find(p => p.seatNumber === seatNum) || {};
+        if (passInfo.name) {
+          await Trip.updateOne(
+            { _id: trip._id, "seats.seatNumber": seatNum },
+            {
+              $set: {
+                "seats.$.passenger": {
+                  name: passInfo.name || 'Passenger',
+                  age: Number(passInfo.age || 25),
+                  gender: passInfo.gender || 'other'
+                }
+              }
+            },
+            session ? { session } : {}
+          );
         }
       }
-      await trip.save(session ? { session } : undefined);
 
       // C. Create Booking record
       const [createdBooking] = await Booking.create([{
@@ -569,6 +642,7 @@ class BookingService {
       }
     }
     await trip.save();
+    await SeatReservation.deleteMany({ bookingId: booking.bookingId }).catch(() => {});
 
     const now = new Date();
     const depTime = new Date(trip.departureTime || trip.departureDate || booking.createdAt);

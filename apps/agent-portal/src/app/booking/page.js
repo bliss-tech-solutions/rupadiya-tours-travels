@@ -102,6 +102,8 @@ export default function AgentBookingPage() {
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState('');
   const [confirmedBooking, setConfirmedBooking] = useState(null);
+  const [holdToken, setHoldToken] = useState(null);
+  const [holdingSeats, setHoldingSeats] = useState(false);
 
   useEffect(() => {
     async function loadAgent() {
@@ -260,9 +262,23 @@ export default function AgentBookingPage() {
       fare: basePricePerSeat
     };
     const isSelected = selectedSeats.some(s => (s.seatNumber || s) === seatCode);
-    const isBooked = seat.status === 'BOOKED' || seat.status === 'LOCKED' || seat.status === 'BLOCKED';
+    const isHeld = seat.status === 'HELD';
+    const isBooked = seat.status === 'BOOKED' || seat.status === 'LOCKED' || seat.status === 'BLOCKED' || isHeld;
     const isFemale = seat.gender === 'female' || seat.category === 'FEMALE_ONLY' || seat.passenger?.gender === 'female';
     const seatPrice = seat.fare || seat.price || basePricePerSeat;
+
+    let buttonClass = '';
+    if (isSelected) {
+      buttonClass = 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs ring-2 ring-emerald-400';
+    } else if (isHeld) {
+      buttonClass = 'bg-amber-50 border-amber-300 text-amber-700 cursor-not-allowed';
+    } else if (isBooked) {
+      buttonClass = isFemale
+        ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
+        : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed';
+    } else {
+      buttonClass = 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500 hover:bg-emerald-50/40';
+    }
 
     return (
       <button
@@ -270,26 +286,18 @@ export default function AgentBookingPage() {
         type="button"
         disabled={isBooked}
         onClick={() => toggleSeat(seat)}
-        className={`w-12 h-18 sm:w-14 sm:h-20 rounded-xl border flex flex-col justify-between p-1.5 text-left transition cursor-pointer relative ${
-          isSelected
-            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs ring-2 ring-emerald-400'
-            : isBooked
-            ? isFemale
-              ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
-              : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-            : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500 hover:bg-emerald-50/40'
-        }`}
-        title={`${seatCode} · ${isBooked ? 'Booked' : isSelected ? 'Selected' : 'Available'}`}
+        className={`w-12 h-18 sm:w-14 sm:h-20 rounded-xl border flex flex-col justify-between p-1.5 text-left transition cursor-pointer relative ${buttonClass}`}
+        title={`${seatCode} · ${isHeld ? 'Held (Reserved)' : isBooked ? 'Booked' : isSelected ? 'Selected' : 'Available'}`}
       >
         <span className="text-[10px] font-mono font-bold">{seatCode}</span>
         
         {/* Pillow / Headrest indicator */}
         <div className={`w-6 h-1 rounded-full mx-auto my-0.5 ${
-          isSelected ? 'bg-white/70' : isBooked ? 'bg-slate-300' : 'bg-emerald-100'
+          isSelected ? 'bg-white/70' : isHeld ? 'bg-amber-300' : isBooked ? 'bg-slate-300' : 'bg-emerald-100'
         }`} />
 
         <span className="text-[9px] font-bold truncate">
-          {isBooked ? 'Sold' : `₹${seatPrice}`}
+          {isHeld ? 'Held' : isBooked ? 'Sold' : `₹${seatPrice}`}
         </span>
       </button>
     );
@@ -302,9 +310,23 @@ export default function AgentBookingPage() {
       fare: basePricePerSeat
     };
     const isSelected = selectedSeats.some(s => (s.seatNumber || s) === seatCode);
-    const isBooked = seat.status === 'BOOKED' || seat.status === 'LOCKED' || seat.status === 'BLOCKED';
+    const isHeld = seat.status === 'HELD';
+    const isBooked = seat.status === 'BOOKED' || seat.status === 'LOCKED' || seat.status === 'BLOCKED' || isHeld;
     const isFemale = seat.gender === 'female' || seat.category === 'FEMALE_ONLY' || seat.passenger?.gender === 'female';
     const seatPrice = seat.fare || seat.price || basePricePerSeat;
+
+    let buttonClass = '';
+    if (isSelected) {
+      buttonClass = 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs ring-1 ring-emerald-400';
+    } else if (isHeld) {
+      buttonClass = 'bg-amber-50 border-amber-300 text-amber-700 cursor-not-allowed';
+    } else if (isBooked) {
+      buttonClass = isFemale
+        ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
+        : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed';
+    } else {
+      buttonClass = 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500';
+    }
 
     return (
       <button
@@ -312,19 +334,12 @@ export default function AgentBookingPage() {
         type="button"
         disabled={isBooked}
         onClick={() => toggleSeat(seat)}
-        className={`w-11 h-11 rounded-xl border flex flex-col justify-between p-1 text-left transition cursor-pointer ${
-          isSelected
-            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs ring-1 ring-emerald-400'
-            : isBooked
-            ? isFemale
-              ? 'bg-pink-50 border-pink-200 text-pink-600/70 cursor-not-allowed'
-              : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-            : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500'
-        }`}
+        className={`w-11 h-11 rounded-xl border flex flex-col justify-between p-1 text-left transition cursor-pointer ${buttonClass}`}
+        title={`${seatCode} · ${isHeld ? 'Held (Reserved)' : isBooked ? 'Booked' : isSelected ? 'Selected' : 'Available'}`}
       >
         <span className="text-[10px] font-mono font-bold">{seatCode}</span>
         <span className="text-[9px] font-bold truncate">
-          {isBooked ? 'Sold' : `₹${seatPrice}`}
+          {isHeld ? 'Held' : isBooked ? 'Sold' : `₹${seatPrice}`}
         </span>
       </button>
     );
@@ -338,6 +353,36 @@ export default function AgentBookingPage() {
   const serviceCharge = Math.min(200, Number(agentSettings?.bookingCharge || 20) * (agentSettings?.bookingChargeType === 'FIXED' ? 1 : 1));
   const insuranceAmount = insuranceOpted ? (seatCount * 5) : 0;
   const grandTotal = subtotal + gstAmount + serviceCharge + insuranceAmount;
+
+  const handleProceedToDetails = async () => {
+    if (selectedSeats.length === 0) return;
+    setHoldingSeats(true);
+    setSearchError('');
+    try {
+      const seatNums = selectedSeats.map(s => s.seatNumber || s);
+      const res = await api.holdSeats(tripDetail._id, seatNums);
+      if (res && res.success !== false) {
+        const token = res.holdToken || res.data?.holdToken || res.data?.holdId || res.holdId;
+        setHoldToken(token);
+        setStep(3);
+      } else {
+        const conflict = (res?.conflictingSeats || res?.conflictedSeats || []).join(', ');
+        setSearchError(`Seats ${conflict ? `[${conflict}]` : ''} are already held or booked. Please choose available seats.`);
+        try {
+          const fresh = await api.getTrip(tripDetail._id);
+          if (fresh?.data) setTripDetail(fresh.data);
+        } catch (_) {}
+      }
+    } catch (err) {
+      setSearchError(err.message || 'Selected seats are no longer available. Please select different seats.');
+      try {
+        const fresh = await api.getTrip(tripDetail._id);
+        if (fresh?.data) setTripDetail(fresh.data);
+      } catch (_) {}
+    } finally {
+      setHoldingSeats(false);
+    }
+  };
 
   const handleConfirmBooking = async () => {
     if (!contactMobile || contactMobile.trim().length < 10) {
@@ -378,6 +423,7 @@ export default function AgentBookingPage() {
         seatNumbers: seatNums,
         selectedSeats: seatNums,
         passengers: formattedPassengers,
+        holdToken,
         contactDetails: {
           name: contactName || passengerDetails[0]?.name || 'Passenger',
           phone: contactMobile.trim(),
@@ -419,6 +465,7 @@ export default function AgentBookingPage() {
           amount: grandTotal,
           purpose: 'TICKET_BOOKING',
           metadata: {
+            holdToken,
             tripId: tripDetail._id,
             seatNumbers: seatNums,
             selectedSeats: seatNums,
@@ -1037,11 +1084,11 @@ export default function AgentBookingPage() {
               </div>
 
               <button
-                disabled={selectedSeats.length === 0}
-                onClick={() => setStep(3)}
+                disabled={selectedSeats.length === 0 || holdingSeats}
+                onClick={handleProceedToDetails}
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition active:scale-95 shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>Continue to Passenger & Payment ({selectedSeats.length} Seats)</span>
+                <span>{holdingSeats ? 'Locking Seats...' : `Continue to Passenger & Payment (${selectedSeats.length} Seats)`}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
