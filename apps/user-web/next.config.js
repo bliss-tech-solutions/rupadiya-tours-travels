@@ -4,6 +4,7 @@ const nextConfig = {
   images: {
     domains: ['images.unsplash.com', 'localhost', 'api.qrserver.com', 'scotland-archive-moved-molecules.trycloudflare.com']
   },
+  allowedDevOrigins:['scotland-archive-moved-molecules.trycloudflare.com'],
   async headers() {
     return [
       {

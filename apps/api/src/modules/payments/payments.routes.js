@@ -100,7 +100,7 @@ router.post('/create-order', paymentLimiter, async (req, res, next) => {
       companyCode: resolvedCompanyCode,
       metadata: {
         ...metadata,
-        verifiedAmount,
+        verifiedAmount: finalAmount,
         userId: resolvedUserId,
         companyCode: resolvedCompanyCode
       },
