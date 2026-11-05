@@ -232,6 +232,13 @@ class HoldStore {
     const now = Date.now();
     for (const [token, record] of this.holdRecords.entries()) {
       if (record.expiresAt.getTime() <= now) {
+        if (typeof this.onHoldExpired === 'function') {
+          try {
+            this.onHoldExpired(record.tripId, record.seatNumbers);
+          } catch (e) {
+            console.error('[holdStore] onHoldExpired callback error:', e.message);
+          }
+        }
         this.releaseHold(token, { isForce: true });
       }
     }

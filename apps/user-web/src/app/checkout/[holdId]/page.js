@@ -404,7 +404,7 @@ export default function CheckoutPassengerDetailsPage() {
                       type="tel"
                       required
                       maxLength={10}
-                      placeholder="9876543210"
+                      placeholder="0000000000"
                       value={contactPhone}
                       onChange={(e) => setContactPhone(e.target.value.replace(/\D/g, ''))}
                       className="w-full text-sm font-bold focus:outline-none bg-transparent"

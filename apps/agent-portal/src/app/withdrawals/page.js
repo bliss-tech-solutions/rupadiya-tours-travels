@@ -189,7 +189,7 @@ export default function AgentWithdrawalsPage() {
     } else if (method === 'upi') {
       const cleanUpi = upiId.trim();
       if (!cleanUpi || !/^[a-zA-Z0-9.\-_]{2,49}@[a-zA-Z]{2,49}$/.test(cleanUpi)) {
-        setError('Please enter a valid UPI Virtual Payment Address (e.g. agent@okaxis, 9876543210@paytm).');
+        setError('Please enter a valid UPI Virtual Payment Address (e.g. agent@okaxis, 0000000000@paytm).');
         return false;
       }
     }

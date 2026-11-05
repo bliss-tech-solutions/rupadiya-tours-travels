@@ -14,6 +14,18 @@ async function startServer() {
     // Initialize Real-time WebSocket Server on /ws
     websocketService.init(server);
 
+    // Wire hold expiration cleanup directly to real-time seat release broadcast
+    const holdStore = require('./config/holdStore');
+    holdStore.onHoldExpired = (tripId, seatNumbers) => {
+      try {
+        if (tripId && seatNumbers && seatNumbers.length > 0) {
+          websocketService.broadcastSeatReleased(tripId.toString(), seatNumbers);
+        }
+      } catch (err) {
+        console.error('[WebSocket] Error broadcasting expired seats:', err.message);
+      }
+    };
+
     let keepAliveTimer = null;
     server.listen(env.PORT, () => {
       console.log(`====================================================`);

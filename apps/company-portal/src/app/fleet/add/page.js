@@ -278,13 +278,13 @@ function FleetAddContent() {
         amenities,
         driverDetails: {
           name: driverName.trim() || 'Assigned Fleet Pilot',
-          phone: driverPhone.trim() || '+91 9876543210',
+          phone: driverPhone.trim() || '+91 0000000000',
           licenseNumber: driverLicense.trim() || 'DL-UP40-COMMERCIAL',
           alternatePhone: alternatePhone.trim() || ''
         },
         managerContact: {
           name: driverName.trim() || 'Operations Dispatch',
-          phone: driverPhone.trim() || '+91 9876543210'
+          phone: driverPhone.trim() || '+91 0000000000'
         },
         images: images.length > 0 ? images : [
           'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&auto=format&fit=crop&q=80'
@@ -605,7 +605,7 @@ function FleetAddContent() {
                   type="tel"
                   value={driverPhone}
                   onChange={(e) => setDriverPhone(e.target.value)}
-                  placeholder="+91 9876543210"
+                  placeholder="+91 0000000000"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-1 focus:ring-blue-600 focus:outline-none"
                 />
               </div>

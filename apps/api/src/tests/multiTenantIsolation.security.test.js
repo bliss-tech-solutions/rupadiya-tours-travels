@@ -14,7 +14,7 @@ test('Multi-Tenant Isolation - Agent cannot fetch or cancel another agent\'s boo
     referralAgentId: agent2Id,
     passengerId: agent2Id,
     companyCode: 1,
-    contactDetails: { phone: '9876543210', email: 'passenger@example.com' }
+    contactDetails: { phone: '0000000000', email: 'passenger@example.com' }
   };
 
   // Agent 1 attempts to search for Agent 2's booking
@@ -81,7 +81,7 @@ test('IDOR Protection - Unrelated agents or companies receive masked views on bo
     passengerId: customerId,
     referralAgentId: issuingAgentId,
     companyCode: 1,
-    contactDetails: { phone: '9876543210', email: 'customer@example.com' }
+    contactDetails: { phone: '0000000000', email: 'customer@example.com' }
   };
 
   const evaluateOwnership = (reqUser, doc) => {

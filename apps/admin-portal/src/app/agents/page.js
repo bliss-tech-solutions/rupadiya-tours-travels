@@ -524,7 +524,7 @@ sponsorReferralCode: '',
                   <input
                     type="tel"
                     required
-                    placeholder="9876543210"
+                    placeholder="0000000000"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200/90 text-slate-900 focus:outline-none focus:border-blue-600 font-mono"

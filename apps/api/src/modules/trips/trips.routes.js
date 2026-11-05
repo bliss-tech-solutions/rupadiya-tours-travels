@@ -92,8 +92,10 @@ router.get('/:tripId', requireBusSelectSession, async (req, res, next) => {
     // Merge live in-memory holds into trip layout
     const heldSeats = holdStore.getHeldSeatsForTrip(trip._id.toString());
     if (heldSeats && heldSeats.length > 0 && Array.isArray(obj.seats)) {
+      const heldSeatsLower = heldSeats.map(h => String(h).trim().toLowerCase());
       obj.seats = obj.seats.map(s => {
-        if (s.status === 'AVAILABLE' && heldSeats.includes(s.seatNumber?.toString())) {
+        const sNum = String(s.seatNumber || '').trim().toLowerCase();
+        if (s.status === 'AVAILABLE' && heldSeatsLower.includes(sNum)) {
           return { ...s, status: 'HELD' };
         }
         return s;

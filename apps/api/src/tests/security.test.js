@@ -128,7 +128,7 @@ test('Security Engine - Token hashing and 24-hr refresh lifecycle', async (t) =>
   const dummyUser = {
     _id: '507f1f77bcf86cd799439011',
     email: 'traveler@rupadiya.test',
-    phone: '9876543210',
+    phone: '0000000000',
     role: 'PASSENGER',
     companyCode: null
   };

@@ -236,7 +236,7 @@ export default function AddFleetCoachPage() {
         busType,
         driverDetails: {
           name: driverName.trim() || 'Assigned Fleet Pilot',
-          phone: driverPhone.trim() || '+91 9876543210',
+          phone: driverPhone.trim() || '+91 0000000000',
           licenseNumber: driverLicense.trim() || 'DL-UP40-COMMERCIAL',
           alternatePhone: driverAltPhone.trim() || ''
         },
@@ -533,7 +533,7 @@ export default function AddFleetCoachPage() {
                   </label>
                   <input
                     type="tel"
-                    placeholder="+91 9876543210"
+                    placeholder="+91 0000000000"
                     value={driverPhone}
                     onChange={(e) => setDriverPhone(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:border-blue-600"

@@ -58,7 +58,7 @@ async function setupCleanDatabase() {
       admin = await User.create({
         name: 'Super Admin Officer',
         email: adminEmail,
-        phone: '9876543210',
+        phone: '0000000000',
         passwordHash,
         role: ROLES.SUPER_ADMIN,
         isActive: true,
@@ -377,7 +377,7 @@ async function setupCleanDatabase() {
       traveler = await User.create({
         name: 'Rajesh Kumar',
         email: 'passenger@rupadiya.test',
-        phone: '9876543210',
+        phone: '0000000000',
         passwordHash,
         role: ROLES.PASSENGER,
         isActive: true
@@ -428,7 +428,7 @@ async function setupCleanDatabase() {
         },
         contactDetails: {
           email: 'passenger@rupadiya.test',
-          phone: '9876543210'
+          phone: '0000000000'
         },
         paymentProvider: 'agent_wallet',
         paymentStatus: 'SUCCESS',

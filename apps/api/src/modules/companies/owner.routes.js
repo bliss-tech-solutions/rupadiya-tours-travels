@@ -593,7 +593,7 @@ router.post('/fleet', async (req, res, next) => {
       amenities: amenities || ['Charging Point', 'Reading Light', 'Blanket', 'WiFi', 'GPS Tracking'],
       driverDetails: driverDetails || {
         name: 'Dinesh Kumar',
-        phone: '+91 9876543210',
+        phone: '+91 0000000000',
         licenseNumber: 'DL-UP40-201800123'
       },
       managerContact: managerContact || { name: req.user.name, phone: req.user.phone },
@@ -915,7 +915,7 @@ router.get('/trips', async (req, res, next) => {
         busType,
         bus: `${busNumber} (${busName})`,
         driverName: t.busId?.driverDetails?.name || 'Assigned Driver',
-        driverPhone: t.busId?.driverDetails?.phone || '+91 9876543210',
+        driverPhone: t.busId?.driverDetails?.phone || '+91 0000000000',
         departureTime: t.departureTime,
         arrivalTime: t.arrivalTime,
         createdAt: t.createdAt,
@@ -1238,7 +1238,7 @@ router.get('/trips/:id/seat-chart', async (req, res, next) => {
           busType: trip.busId?.busType || 'AC Sleeper (2+1)',
           operatorName: trip.busId?.operatorName || 'Rupadiya Intercity Travels',
           driverName: trip.busId?.driverDetails?.name || 'Vikram Singh',
-          driverPhone: trip.busId?.driverDetails?.phone || '+91 9876543210',
+          driverPhone: trip.busId?.driverDetails?.phone || '+91 0000000000',
           driverLicense: trip.busId?.driverDetails?.licenseNumber || 'DL-UP40-201800123'
         },
         companyCode: trip.companyCode

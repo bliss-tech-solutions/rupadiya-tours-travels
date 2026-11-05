@@ -33,7 +33,7 @@ async function syncAndClear() {
         shortCode: spec.shortCode,
         name: spec.defaultName,
         slug: spec.slug,
-        contactPhone: '+91 9876543210',
+        contactPhone: '+91 0000000000',
         contactEmail: `contact@${spec.slug}.rupadiya.test`,
         status: 'ACTIVE',
         annualTarget: {

@@ -75,7 +75,7 @@ test('Withdrawal Security - Bank IFSC and Account Number validation rules', asyn
 
   // UPI Tests
   assert.strictEqual(UPI_REGEX.test('agent@okaxis'), true, 'Valid UPI ID passes');
-  assert.strictEqual(UPI_REGEX.test('9876543210@paytm'), true, 'Valid Phone UPI passes');
+  assert.strictEqual(UPI_REGEX.test('0000000000@paytm'), true, 'Valid Phone UPI passes');
   assert.strictEqual(UPI_REGEX.test('not-a-upi'), false, 'UPI without @ fails');
 });
 

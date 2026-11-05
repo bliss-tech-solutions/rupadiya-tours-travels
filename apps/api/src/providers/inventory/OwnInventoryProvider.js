@@ -77,8 +77,10 @@ class OwnInventoryProvider extends InventoryProvider {
     });
 
     // 2. Merge database state with active 10-minute hold state and dynamic adjacent female rule
+    const heldSeatsLower = (heldSeats || []).map(h => String(h).trim().toLowerCase());
     const dynamicSeats = trip.seats.map(s => {
-      const isCurrentlyHeld = heldSeats.includes(s.seatNumber);
+      const sNum = String(s.seatNumber || '').trim().toLowerCase();
+      const isCurrentlyHeld = heldSeatsLower.includes(sNum);
       const adjacentNum = Trip.getAdjacentSeatNumber(s.seatNumber);
       const isAdjacentToFemale = Boolean(adjacentNum && femaleBookedSeats.has(adjacentNum));
 

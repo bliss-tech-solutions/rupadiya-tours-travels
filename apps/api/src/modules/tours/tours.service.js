@@ -57,7 +57,7 @@ const toursService = {
 
     const departureDate = payload.departureDate || payload.travelDate || (tour.departureDates?.[0] ? tour.departureDates[0] : new Date());
     const contactEmail = payload.contactEmail || leadTraveler?.email || 'traveler@rupadiya.test';
-    const contactPhone = payload.contactPhone || leadTraveler?.phone || '9876543210';
+    const contactPhone = payload.contactPhone || leadTraveler?.phone || '0000000000';
 
     const travelerCount = finalTravelers.length;
     const baseFareTotal = tour.basePrice * travelerCount;

@@ -78,6 +78,157 @@ export default function TripSeatSelectionPage() {
     loadTrip();
   }, [tripId, addToast]);
 
+  // Real-time WebSocket connection for live seat hold/release/booking synchronization
+  useEffect(() => {
+    if (!tripId) return;
+
+    let ws = null;
+    let reconnectTimer = null;
+    let isUnmounted = false;
+
+    const connectWs = () => {
+      try {
+        const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+        let host = 'localhost:4500';
+        if (typeof window !== 'undefined') {
+          if (process.env.NEXT_PUBLIC_API_URL) {
+            try {
+              host = new URL(process.env.NEXT_PUBLIC_API_URL).host;
+            } catch (e) {
+              host = window.location.hostname === 'localhost' ? 'localhost:4500' : window.location.host;
+            }
+          } else {
+            host = window.location.hostname === 'localhost' ? 'localhost:4500' : window.location.host;
+          }
+        }
+        const wsUrl = `${isSecure ? 'wss' : 'ws'}://${host}/ws?room=trip:${tripId}`;
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ action: 'subscribe', room: `trip:${tripId}` }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const parsed = JSON.parse(event.data);
+            const { event: evtType, data } = parsed;
+
+            if (data?.tripId && String(data.tripId) !== String(tripId)) return;
+
+            if (evtType === 'SEATS_HELD') {
+              const heldNumbers = (data?.seatNumbers || []).map(s => String(s).trim().toLowerCase());
+              if (heldNumbers.length === 0) return;
+
+              setTrip(prev => {
+                if (!prev || !prev.seats) return prev;
+                const nextSeats = prev.seats.map(s => {
+                  const sCode = String(s.seatNumber || '').trim().toLowerCase();
+                  if (heldNumbers.includes(sCode)) {
+                    return { ...s, status: 'HELD' };
+                  }
+                  return s;
+                });
+                return { ...prev, seats: nextSeats };
+              });
+
+              // Deselect if user had clicked any of these seats
+              setSelectedSeats(prev => {
+                const conflicted = prev.filter(s => heldNumbers.includes(String(s).trim().toLowerCase()));
+                if (conflicted.length > 0) {
+                  addToast(
+                    `Seat ${conflicted.join(', ')} was just reserved by another passenger.`,
+                    'warning',
+                    'Seat Held'
+                  );
+                  return prev.filter(s => !heldNumbers.includes(String(s).trim().toLowerCase()));
+                }
+                return prev;
+              });
+            } else if (evtType === 'SEATS_RELEASED') {
+              const releasedNumbers = (data?.seatNumbers || []).map(s => String(s).trim().toLowerCase());
+              if (releasedNumbers.length === 0) return;
+
+              setTrip(prev => {
+                if (!prev || !prev.seats) return prev;
+                const nextSeats = prev.seats.map(s => {
+                  const sCode = String(s.seatNumber || '').trim().toLowerCase();
+                  if (releasedNumbers.includes(sCode) && s.status === 'HELD') {
+                    return { ...s, status: 'AVAILABLE' };
+                  }
+                  return s;
+                });
+                return { ...prev, seats: nextSeats };
+              });
+            } else if (evtType === 'SEATS_BOOKED') {
+              const bookedNumbers = (data?.seatNumbers || []).map(s => String(s).trim().toLowerCase());
+              if (bookedNumbers.length === 0) return;
+
+              setTrip(prev => {
+                if (!prev || !prev.seats) return prev;
+                const nextSeats = prev.seats.map(s => {
+                  const sCode = String(s.seatNumber || '').trim().toLowerCase();
+                  if (bookedNumbers.includes(sCode)) {
+                    return { ...s, status: 'BOOKED' };
+                  }
+                  return s;
+                });
+                return { ...prev, seats: nextSeats };
+              });
+
+              setSelectedSeats(prev => {
+                const conflicted = prev.filter(s => bookedNumbers.includes(String(s).trim().toLowerCase()));
+                if (conflicted.length > 0) {
+                  addToast(
+                    `Seat ${conflicted.join(', ')} was booked by another passenger.`,
+                    'error',
+                    'Seat Sold'
+                  );
+                  return prev.filter(s => !bookedNumbers.includes(String(s).trim().toLowerCase()));
+                }
+                return prev;
+              });
+            }
+          } catch (e) {}
+        };
+
+        ws.onclose = () => {
+          if (!isUnmounted) {
+            reconnectTimer = setTimeout(connectWs, 3000);
+          }
+        };
+
+        ws.onerror = () => {
+          try { ws.close(); } catch (e) {}
+        };
+      } catch (e) {}
+    };
+
+    connectWs();
+
+    // Fallback background polling every 6 seconds to ensure seat map stays fresh
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await api.getTrip(tripId);
+        if (res?.data?.seats) {
+          setTrip(prev => {
+            if (!prev) return res.data;
+            return { ...prev, seats: res.data.seats };
+          });
+        }
+      } catch (e) {}
+    }, 6000);
+
+    return () => {
+      isUnmounted = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      clearInterval(pollInterval);
+      if (ws) {
+        try { ws.close(); } catch (e) {}
+      }
+    };
+  }, [tripId, addToast]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -102,9 +253,11 @@ export default function TripSeatSelectionPage() {
 
   // Helper to find seat data by seatNumber or index
   const findSeat = (seatId, fallbackIndex) => {
+    const sIdLower = String(seatId || '').trim().toLowerCase();
+    const fbStr = String(fallbackIndex || '').trim();
     return (
-      seats.find(s => s.seatNumber === seatId) ||
-      seats.find(s => s.seatNumber === String(fallbackIndex)) ||
+      seats.find(s => String(s.seatNumber || '').trim().toLowerCase() === sIdLower) ||
+      seats.find(s => String(s.seatNumber || '').trim() === fbStr) ||
       { seatNumber: seatId, status: 'AVAILABLE', fare: baseFare }
     );
   };
@@ -270,7 +423,10 @@ export default function TripSeatSelectionPage() {
     const isBooked = seatObj.status === 'BOOKED' || seatObj.status === 'BLOCKED' || isHeld;
     const isBookedFemale = !isHeld && isBooked && seatObj.passenger?.gender === 'female';
     const isBookedMale = !isHeld && isBooked && !isBookedFemale;
-    const isSelected = selectedSeats.includes(actualSeatCode) || selectedSeats.includes(berthCode);
+    const isSelected = selectedSeats.some(s => 
+      String(s).trim().toLowerCase() === String(actualSeatCode).trim().toLowerCase() || 
+      String(s).trim().toLowerCase() === String(berthCode).trim().toLowerCase()
+    );
     const isAdjFemale = !isBooked && (isAdjacentToFemalePassenger(actualSeatCode) || isAdjacentToFemalePassenger(berthCode));
     const isAdjMale = !isBooked && (isAdjacentToMalePassenger(actualSeatCode) || isAdjacentToMalePassenger(berthCode));
 
@@ -284,9 +440,9 @@ export default function TripSeatSelectionPage() {
       pillowStyle = 'bg-white/80';
       label = actualSeatCode;
     } else if (isHeld) {
-      containerStyle = 'bg-amber-50 border border-amber-300 cursor-not-allowed';
+      containerStyle = 'bg-amber-50 border-2 border-amber-300 text-amber-800 cursor-not-allowed';
       pillowStyle = 'bg-amber-200';
-      label = 'Held';
+      label = 'Sold';
       isSold = true;
     } else if (isBookedFemale) {
       containerStyle = 'bg-pink-100 border border-pink-200 cursor-not-allowed';
@@ -317,10 +473,11 @@ export default function TripSeatSelectionPage() {
           onClick={() => handleSeatClick(seatObj, actualSeatCode)}
           disabled={isBooked}
           className={`w-11 sm:w-12 h-20 sm:h-22 rounded-lg flex flex-col items-center justify-between py-2 transition-all relative ${containerStyle}`}
-          title={`${actualSeatCode} · ${isBooked ? 'Booked' : isSelected ? 'Selected' : 'Available'}`}
+          title={`${actualSeatCode} · ${isHeld ? 'Held (Currently in checkout by another passenger)' : isBooked ? 'Booked' : isSelected ? 'Selected' : 'Available'}`}
         >
           {/* Top of berth / occupant icon */}
           <div className="pt-1 flex items-center justify-center">
+            {isHeld && <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />}
             {isBookedFemale && <FemaleIcon className="w-3.5 h-3.5 text-pink-400" />}
             {isBookedMale && <MaleIcon className="w-3.5 h-3.5 text-indigo-400" />}
             {isAdjFemale && !isSelected && <FemaleIcon className="w-3.5 h-3.5 text-pink-500" />}

@@ -34,7 +34,7 @@ test('Agent Profile Guard - Only permits name mutation and locks other attribute
   const agentUser = {
     name: 'Original Counter Name',
     email: 'counter@rupadiya.test',
-    phone: '+919876543210',
+    phone: '+910000000000',
     role: 'AGENT',
     companyCode: 1,
     referralCode: 'AGT01L1T0001',
@@ -55,7 +55,7 @@ test('Agent Profile Guard - Only permits name mutation and locks other attribute
   }
 
   assert.strictEqual(agentUser.name, 'Updated Counter Name', 'Name should be successfully updated');
-  assert.strictEqual(agentUser.phone, '+919876543210', 'Phone must remain unchanged and locked');
+  assert.strictEqual(agentUser.phone, '+910000000000', 'Phone must remain unchanged and locked');
   assert.strictEqual(agentUser.email, 'counter@rupadiya.test', 'Email must remain unchanged and locked');
   assert.strictEqual(agentUser.companyCode, 1, 'Company code must remain locked');
 });

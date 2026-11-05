@@ -19,7 +19,7 @@ function LoginContent() {
   const [authMode, setAuthMode] = useState('otp');
 
   // Mobile OTP State
-  const [phone, setPhone] = useState('9876543210');
+  const [phone, setPhone] = useState('0000000000');
   const [otp, setOtp] = useState('1234');
   const [otpSent, setOtpSent] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
@@ -171,7 +171,7 @@ function LoginContent() {
                         type="tel"
                         required
                         maxLength={10}
-                        placeholder="9876543210"
+                        placeholder="0000000000"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                         className="w-full text-sm font-bold focus:outline-none bg-transparent text-slate-900"

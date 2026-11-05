@@ -159,13 +159,15 @@ class WebSocketService {
       bookedAt: booking.createdAt || new Date()
     };
 
-    // 1. Broadcast to trip room so seat map updates for all viewers
+    // 1. Broadcast to trip room and all connected clients so seat map updates for all viewers
     if (tripId) {
-      this.broadcast(`trip:${tripId}`, 'SEATS_BOOKED', {
-        tripId,
+      const bookedData = {
+        tripId: String(tripId),
         seatNumbers,
         bookingId: booking.bookingId
-      });
+      };
+      this.broadcast(`trip:${tripId}`, 'SEATS_BOOKED', bookedData);
+      this.broadcastToAll('SEATS_BOOKED', bookedData);
     }
 
     // 2. Broadcast to company room for company owner notification
@@ -186,21 +188,25 @@ class WebSocketService {
    * Broadcast seat hold lock
    */
   broadcastSeatHeld(tripId, seatNumbers, expiresAt) {
-    this.broadcast(`trip:${tripId}`, 'SEATS_HELD', {
-      tripId,
-      seatNumbers,
+    const payload = {
+      tripId: String(tripId),
+      seatNumbers: (seatNumbers || []).map(s => String(s).trim()),
       expiresAt
-    });
+    };
+    this.broadcast(`trip:${tripId}`, 'SEATS_HELD', payload);
+    this.broadcastToAll('SEATS_HELD', payload);
   }
 
   /**
    * Broadcast seat hold release
    */
   broadcastSeatReleased(tripId, seatNumbers) {
-    this.broadcast(`trip:${tripId}`, 'SEATS_RELEASED', {
-      tripId,
-      seatNumbers
-    });
+    const payload = {
+      tripId: String(tripId),
+      seatNumbers: (seatNumbers || []).map(s => String(s).trim())
+    };
+    this.broadcast(`trip:${tripId}`, 'SEATS_RELEASED', payload);
+    this.broadcastToAll('SEATS_RELEASED', payload);
   }
 
   /**

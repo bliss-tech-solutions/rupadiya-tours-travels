@@ -270,7 +270,7 @@ export default function UserProfilePage() {
                   maxLength={10}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                  placeholder="9876543210"
+                  placeholder="0000000000"
                   className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-sm font-semibold text-slate-900 transition pl-20 tracking-wider"
                   required
                 />

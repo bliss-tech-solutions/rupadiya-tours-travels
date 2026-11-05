@@ -540,11 +540,10 @@ export default function HomePage() {
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-slate-900">
-                        Choose your bus route
+                        {t('searchBuses') || 'Search Buses'}
                       </h2>
                       <p className="text-xs text-slate-500 mt-1 leading-snug">
-                        Rupaidiha ↔ Ahmedabad · Surat · Vadodara · Bengaluru ·
-                        Hyderabad · Mumbai
+                        Find verified and comfortable bus rides across India
                       </p>
                     </div>
                   </div>

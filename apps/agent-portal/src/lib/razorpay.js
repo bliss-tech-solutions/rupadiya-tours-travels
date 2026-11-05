@@ -67,7 +67,7 @@ export async function openRazorpayCheckout({
     prefill: {
       name: prefill.name || 'Rupadiya Agent',
       email: prefill.email || 'agent@rupadiya.com',
-      contact: prefill.contact || prefill.phone || '9876543210'
+      contact: prefill.contact || prefill.phone || '0000000000'
     },
     notes: {
       platform: 'Rupadiya',

@@ -53,7 +53,7 @@ async function initMainDb() {
       admin = await User.create({
         name: 'Super Admin Officer',
         email: adminEmail,
-        phone: '9876543210',
+        phone: '0000000000',
         passwordHash,
         role: ROLES.SUPER_ADMIN,
         isActive: true,

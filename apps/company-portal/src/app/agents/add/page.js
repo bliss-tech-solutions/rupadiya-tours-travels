@@ -227,7 +227,7 @@ export default function AddFranchiseAgentPage() {
                 <input
                   type="tel"
                   required
-                  placeholder="9876543210"
+                  placeholder="0000000000"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
@@ -541,7 +541,7 @@ export default function AddFranchiseAgentPage() {
                 type="text"
                 value={bankAccountNumber}
                 onChange={(e) => setBankAccountNumber(e.target.value)}
-                placeholder="9876543210123"
+                placeholder="0000000000123"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>

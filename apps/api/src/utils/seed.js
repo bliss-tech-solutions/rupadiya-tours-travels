@@ -58,7 +58,7 @@ async function seed() {
   const admin = await User.create({
     name: 'Super Admin Officer',
     email: 'admin@rupadiya.test',
-    phone: '9876543210',
+    phone: '0000000000',
     passwordHash,
     role: ROLES.SUPER_ADMIN,
     isActive: true
@@ -186,7 +186,7 @@ async function seed() {
       slug: c.slug,
       ownerId: c.code === 1 ? owner._id : null,
       status: 'ACTIVE',
-      contactPhone: '+91 9876543210',
+      contactPhone: '+91 0000000000',
       contactEmail: `contact@${c.slug}.rupadiya.test`,
       annualTarget: {
         targetPassengers: 12000,

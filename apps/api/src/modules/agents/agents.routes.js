@@ -865,7 +865,7 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
     if (!trip) return res.status(404).json({ success: false, error: 'Trip not found' });
 
     const isInsurance = Boolean(insuranceOpted === true || insuranceOpted === 'true' || insuranceOpted === 1);
-    const finalPhone = contactPhone || contactDetails?.phone || req.user.phone || '9876543210';
+    const finalPhone = contactPhone || contactDetails?.phone || req.user.phone || '0000000000';
     const finalEmail = contactEmail || contactDetails?.email || req.user.email || 'passenger@rupadiya.test';
 
     const formattedPassengers = (passengers && passengers.length > 0)

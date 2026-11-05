@@ -110,7 +110,7 @@ export default function MakeDepositPage() {
         prefill: {
           name: agentUser?.name || 'Authorized Agent',
           email: agentUser?.email || 'agent@rupadiya.test',
-          phone: agentUser?.phone || '9876543210'
+          phone: agentUser?.phone || '0000000000'
         },
         onSuccess: async (rzpResponse) => {
           try {

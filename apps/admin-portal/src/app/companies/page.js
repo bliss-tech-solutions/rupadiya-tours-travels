@@ -742,7 +742,7 @@ export default function AdminCompaniesPage() {
                     value={editForm.contactPhone}
                     onChange={(e) => setEditForm(prev => ({ ...prev, contactPhone: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"
-                    placeholder="+91 9876543210"
+                    placeholder="+91 0000000000"
                   />
                 </div>
                 <div>
@@ -906,7 +906,7 @@ export default function AdminCompaniesPage() {
                       <input
                         type="tel"
                         required
-                        placeholder="9876543210"
+                        placeholder="0000000000"
                         value={newOwnerPhone}
                         onChange={(e) => setNewOwnerPhone(e.target.value)}
                         className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"

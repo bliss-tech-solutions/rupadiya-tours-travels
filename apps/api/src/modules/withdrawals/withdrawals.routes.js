@@ -13,7 +13,7 @@ const websocketService = require('../../services/websocket.service');
 const IFSC_REGEX = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 // Standard Indian Bank Account Number regex (9 to 18 digits)
 const BANK_ACCOUNT_REGEX = /^\d{9,18}$/;
-// Standard UPI ID regex (e.g. user@okhdfcbank, 9876543210@upi)
+// Standard UPI ID regex (e.g. user@okhdfcbank, 0000000000@upi)
 const UPI_REGEX = /^[a-zA-Z0-9.\-_]{2,49}@[a-zA-Z]{2,49}$/;
 
 /**
@@ -174,7 +174,7 @@ router.post(['/', '/request'], authenticateToken, authorizeRoles(ROLES.AGENT), a
 
       if (!upiId || !UPI_REGEX.test(upiId)) {
         return res.status(400).json({
-          error: 'Please enter a valid UPI Virtual Payment Address (e.g. agent@okaxis, 9876543210@paytm).'
+          error: 'Please enter a valid UPI Virtual Payment Address (e.g. agent@okaxis, 0000000000@paytm).'
         });
       }
 

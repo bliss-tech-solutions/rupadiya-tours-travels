@@ -111,7 +111,7 @@ export default function CompanyFleetPage() {
     totalSeats: 36,
     layoutType: '2+1',
     driverName: 'Vikram Singh',
-    driverPhone: '9876543210',
+    driverPhone: '0000000000',
     driverLicense: 'DL-UP40-201800123',
     alternatePhone: '9876543211',
     amenities: ['Charging Point', 'Reading Light', 'Blanket', 'Water Bottle'],
@@ -149,7 +149,7 @@ export default function CompanyFleetPage() {
       totalSeats: 36,
       layoutType: '2+1',
       driverName: 'Vikram Singh',
-      driverPhone: '9876543210',
+      driverPhone: '0000000000',
       driverLicense: 'DL-UP40-201800123',
       alternatePhone: '9876543211',
       amenities: ['Charging Point', 'Reading Light', 'Blanket', 'Water Bottle'],
@@ -444,7 +444,7 @@ export default function CompanyFleetPage() {
                         </span>
                         <a href={`tel:${driver.phone}`} className="text-blue-600 hover:underline font-mono text-[11px] flex items-center gap-1">
                           <Phone className="w-3 h-3" />
-                          {driver.phone || '+91 9876543210'}
+                          {driver.phone || '+91 0000000000'}
                         </a>
                       </div>
                       {driver.licenseNumber && (
@@ -671,7 +671,7 @@ export default function CompanyFleetPage() {
                     <input
                       type="tel"
                       required
-                      placeholder="9876543210"
+                      placeholder="0000000000"
                       value={formData.driverPhone}
                       onChange={(e) => setFormData({ ...formData, driverPhone: e.target.value })}
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500"

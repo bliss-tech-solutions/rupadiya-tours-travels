@@ -598,7 +598,7 @@ export default function CompanyAgentsPage() {
                     <input
                       type="tel"
                       required
-                      placeholder="9876543210"
+                      placeholder="0000000000"
                       value={formData.phone}
                       onChange={(e) =>
                         setFormData({ ...formData, phone: e.target.value })

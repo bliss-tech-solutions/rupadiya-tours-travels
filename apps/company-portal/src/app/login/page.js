@@ -259,7 +259,7 @@ function LoginContent() {
                   <input
                     type="tel"
                     required
-                    placeholder="9876543210"
+                    placeholder="0000000000"
                     value={regData.phone}
                     onChange={(e) => setRegData({ ...regData, phone: e.target.value })}
                     className="w-full text-slate-900 focus:outline-none bg-transparent"

@@ -2,6 +2,7 @@ const bookingService = require('./booking.service');
 const Booking = require('./booking.model');
 const Offer = require('../offers/offer.model');
 const holdStore = require('../../config/holdStore');
+const websocketService = require('../../services/websocket.service');
 const { validateSeatHoldRequest } = require('../../config/validation');
 
 class BookingController {
@@ -66,6 +67,10 @@ class BookingController {
       const passengerId = req.user ? req.user._id : null;
 
       if (token) {
+        const hold = holdStore.getHold(token);
+        const tripId = hold?.tripId;
+        const seatNumbers = hold?.seatNumbers;
+
         const released = holdStore.releaseHold(token, { tabId, passengerId });
         if (!released && holdStore.getHold(token)) {
           return res.status(403).json({
@@ -73,6 +78,14 @@ class BookingController {
             error: 'Access Denied: You cannot release a seat hold belonging to another browser tab or session.',
             code: 'HOLD_RELEASE_FORBIDDEN'
           });
+        }
+
+        if (released && tripId && seatNumbers && seatNumbers.length > 0) {
+          try {
+            websocketService.broadcastSeatReleased(tripId.toString(), seatNumbers);
+          } catch (wsErr) {
+            console.error('[WebSocket] broadcastSeatReleased error:', wsErr.message);
+          }
         }
       }
       res.json({ success: true, message: 'Hold released successfully' });
