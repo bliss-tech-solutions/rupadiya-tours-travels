@@ -2,3 +2,7 @@ node_modules/
 .expo/
 dist/
 *.apk
+credentials/
+credentials.json
+*.keystore
+*.jks
