@@ -1,234 +1,365 @@
 /**
- * Client-Side PDF Generator for Rupadiya Travel Boarding Pass
- * Creates a valid, standard ISO 32000-1 / PDF 1.4 document directly in the browser
- * with 0 external dependencies, saving as Ticket-[BookingId].pdf.
- * Features exact dynamic byte offsets, complete journey corridor, coach/fleet
- * specifications, passenger roster manifest, fare breakdown, and barcode.
+ * Client-side PDF ticket for Rupadiya Bus Samiti (A4 portrait, no external PDF library).
+ * Same simple layout as the printed ticket: header, journey, bus, boarding/dropping,
+ * contact, passenger list, fare details, payment, guidelines and the boarding QR code.
+ * Long passenger lists continue on extra pages. Saves as Ticket-<PNR>.pdf.
  */
+import QRCode from 'qrcode';
+
+const PAGE_W = 595;
+const PAGE_H = 842;
+const LEFT = 40;
+const RIGHT = 555;
+const WIDTH = RIGHT - LEFT;
+const BOTTOM = 50;
+
+const BLUE = [0.08, 0.58, 0.94];
+const INK = [0.08, 0.12, 0.2];
+const MUTED = [0.38, 0.43, 0.5];
+const LINE = [0.84, 0.87, 0.91];
+const GREEN = [0.05, 0.55, 0.33];
+const RED = [0.8, 0.15, 0.2];
+
+const money = (v) => `Rs. ${Math.round(Number(v) || 0).toLocaleString('en-IN')}`;
+const has = (v) => v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '—';
+
+// Standard Helvetica / Helvetica-Bold glyph widths (1/1000 em) for ASCII 32..126,
+// so right-aligned amounts line up and long text is cut before it leaves its box.
+const W_REG = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584];
+const W_BOLD = [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584];
+const textWidth = (s, size, bold) => {
+  const table = bold ? W_BOLD : W_REG;
+  let w = 0;
+  for (const ch of plainText(s)) w += table[ch.charCodeAt(0) - 32] || 556;
+  return (w * size) / 1000;
+};
+const fit = (s, maxW, size, bold) => {
+  let t = String(s ?? '');
+  if (textWidth(t, size, bold) <= maxW) return t;
+  while (t.length > 1 && textWidth(`${t}...`, size, bold) > maxW) t = t.slice(0, -1);
+  return `${t}...`;
+};
+
+// Built-in PDF fonts only cover plain Latin text: map the few symbols we use, drop the rest.
+function plainText(text) {
+  return String(text ?? '')
+    .replace(/₹/g, 'Rs. ')
+    .replace(/[–—]/g, '-')
+    .replace(/[·•]/g, '|')
+    .replace(/[^\x20-\x7E]/g, ' ');
+}
+
+function cleanText(text) {
+  return plainText(text)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+}
+
+/** Fare lines from a booking's fareBreakdown (only the lines that apply). */
+export function fareLinesFrom(fb = {}, { insuranceAmount, discountAmount } = {}) {
+  const seats = Number(fb.seatCount) || 0;
+  const base = Number(fb.baseFare) || 0;
+  const lines = [
+    [seats && base ? `Base fare (${seats} x Rs. ${base.toLocaleString('en-IN')})` : 'Base fare', fb.subtotal],
+    ['GST (5%)', fb.gstAmount],
+    ['Platform fee', fb.platformFee],
+    [fb.gatewayFeeActual != null ? 'Payment gateway charge (actual)' : 'Payment gateway charge', fb.gatewayFeeActual ?? fb.gatewayFee],
+    [`Travel insurance${fb.insurancePerPassenger ? ` (Rs. ${fb.insurancePerPassenger}/passenger)` : ''}`, insuranceAmount ?? fb.insuranceAmount],
+    ['Discount', -(Number(discountAmount ?? fb.discountAmount) || 0)]
+  ];
+  return lines.filter(([, v]) => Number(v));
+}
 
 export function downloadTicketPdf(input = {}) {
-  // Normalize input parameters
-  const bookingId = input.bookingId || input.pnr || 'RUP-7829-BK';
-  const travelerName = input.travelerName || input.passengerName || input.passengers?.[0]?.name || 'Traveler';
-  const travelerPhone = input.travelerPhone || input.contactPhone || input.passengers?.[0]?.phone || '+91 98765 43210';
-  const travelerEmail = input.travelerEmail || input.contactEmail || '';
+  const pnr = input.pnr || input.bookingId || '';
+  const cancelled = String(input.status || '').toUpperCase() === 'CANCELLED';
+  const statusLabel = cancelled ? 'CANCELLED - NOT VALID FOR TRAVEL' : String(input.status || 'CONFIRMED').toUpperCase();
 
-  // Journey corridor
-  let rawFrom = input.fromCity || input.sourceCity || 'Rupaidiha';
-  if (rawFrom.toLowerCase() === 'rupadiya') rawFrom = 'Rupaidiha';
-  const fromCity = rawFrom;
-  const toCity = input.toCity || input.destinationCity || 'Ahmedabad';
-  const dateStr = input.dateStr || input.travelDate || input.departureDate || 'Scheduled Date';
-  const timeStr = input.timeStr || input.departureTime || '05:30 PM';
-  const arrTimeStr = input.arrTimeStr || input.arrivalTime || 'Morning (Scheduled)';
-  const boardingName = input.boardingName || input.boardingPoint?.name || `${fromCity} Central Stand`;
-  const droppingName = input.droppingName || input.droppingPoint?.name || `${toCity} Central Bus Stand`;
+  let fromCity = input.fromCity || input.sourceCity || '';
+  if (fromCity.toLowerCase() === 'rupadiya') fromCity = 'Rupaidiha';
+  const toCity = input.toCity || input.destinationCity || '';
+  const dateStr = input.dateStr || input.travelDate || input.departureDate || '';
+  const timeStr = input.timeStr || input.departureTime || '';
+  const arrTimeStr = input.arrTimeStr || input.arrivalTime || '';
 
-  // Coach & Fleet details
-  const busName = input.busName || input.operatorName || 'Rupadiya Intercity Express';
-  const busNumber = input.busNumber || input.registrationNumber || input.regNumber || 'UP-40-TC-1001';
-  const busModel = input.busModel || input.busType || '36 AC Sleeper (2+1)';
-  const layoutType = input.layoutType || (busModel.includes('2+1') ? '2+1 Sleeper' : '2+2 Seater');
-  const driverName = input.driverName || 'Verified Captain (Dinesh Kumar)';
-  const driverPhone = input.driverPhone || '+91 98765 43210';
-  const amenities = Array.isArray(input.amenities) && input.amenities.length > 0
-    ? input.amenities.join(', ')
-    : 'Climate Control AC, USB Charging, Reading Lamp, First Aid Box';
+  const busName = input.busName || input.operatorName || '';
+  const companyName = input.companyName && input.companyName !== busName ? input.companyName : '';
+  const busNumber = input.busNumber || input.registrationNumber || '';
+  const busModel = input.busModel || input.busType || '';
+  const amenities = Array.isArray(input.amenities) ? input.amenities.filter(Boolean).join(', ') : (input.amenities || '');
 
-  // Seats & Passengers
-  const seatsStr = input.seatsStr || input.seats || (input.passengers?.map(p => p.seatNumber).filter(Boolean).join(', ')) || '1, 2';
-  const rawPassengers = input.passengers && input.passengers.length > 0
+  const passengers = (input.passengers && input.passengers.length)
     ? input.passengers
-    : [{ name: travelerName, age: '28', gender: 'M', seatNumber: seatsStr }];
+    : [{ name: input.travelerName || 'Passenger', seatNumber: input.seatsStr }];
+  const seatsStr = input.seatsStr || passengers.map((p) => p.seatNumber).filter(Boolean).join(', ');
 
-  // Fare & Payment details
-  const totalFare = input.totalFare || input.totalPaid || input.totalAmount || '1,733';
-  const formattedFare = isNaN(Number(totalFare)) ? totalFare : Number(totalFare).toLocaleString('en-IN');
-  const baseFare = input.baseFare ? (isNaN(Number(input.baseFare)) ? input.baseFare : Number(input.baseFare).toLocaleString('en-IN')) : '';
-  const gstAmount = input.gstAmount ? (isNaN(Number(input.gstAmount)) ? input.gstAmount : Number(input.gstAmount).toLocaleString('en-IN')) : '';
-  const insuranceAmount = input.insuranceAmount ? (isNaN(Number(input.insuranceAmount)) ? input.insuranceAmount : Number(input.insuranceAmount).toLocaleString('en-IN')) : '';
-  const paymentProvider = input.paymentProvider || 'Razorpay Gateway';
-  const paymentReference = input.paymentReference || input.paymentId || 'pay_91283018';
-  const paymentStatus = input.paymentStatus || 'CONFIRMED & SETTLED';
+  const contactName = input.travelerName || input.contactName || passengers[0]?.name || '';
+  const contactPhone = input.travelerPhone || input.contactPhone || '';
+  const contactEmail = input.travelerEmail || input.contactEmail || '';
 
-  const content = [];
+  const fb = input.fareBreakdown || {};
+  const fareLines = input.fareLines || (Object.keys(fb).length ? fareLinesFrom(fb, input) : [
+    ['Base fare', input.baseFare],
+    ['GST (5%)', input.gstAmount ?? input.gst],
+    ['Travel insurance', input.insuranceAmount]
+  ].filter(([, v]) => Number(String(v ?? '').replace(/,/g, ''))));
+  const total = input.totalFare ?? input.totalPaid ?? input.totalAmount ?? fb.totalPayable ?? 0;
+  const totalNum = Number(String(total).replace(/,/g, '')) || 0;
 
-  // Helper to add sanitized text (Type 1 Helvetica ASCII safe)
-  const addText = (text, x, y, size = 10, isBold = false, r = 0.1, g = 0.12, b = 0.15) => {
-    const clean = String(text ?? '')
-      .replace(/\\/g, '\\\\')
-      .replace(/\(/g, '\\(')
-      .replace(/\)/g, '\\)')
-      .replace(/₹/g, 'Rs. ')
-      .replace(/[^\x20-\x7E]/g, ' ');
-    content.push(`BT /${isBold ? 'F2' : 'F1'} ${size} Tf ${r} ${g} ${b} rg 1 0 0 1 ${x} ${y} Tm (${clean}) Tj ET`);
+  // ---- drawing helpers (multi-page) --------------------------------------
+  const pages = [];
+  let ops = null;
+  let y = 0;
+  const text = (s, x, yy, size = 9, bold = false, c = INK) => {
+    ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${c[0]} ${c[1]} ${c[2]} rg 1 0 0 1 ${x.toFixed(1)} ${yy.toFixed(1)} Tm (${cleanText(s)}) Tj ET`);
   };
-
-  // Helper to add rectangles (fill or stroke)
-  const addRect = (x, y, w, h, r, g, b, fill = true) => {
-    content.push(`q ${r} ${g} ${b} ${fill ? 'rg' : 'RG'} ${x} ${y} ${w} ${h} re ${fill ? 'f' : 's'} Q`);
+  const textRight = (s, xr, yy, size = 9, bold = false, c = INK) => text(s, xr - textWidth(s, size, bold), yy, size, bold, c);
+  const rect = (x, yy, w, h, c, fill = true) => {
+    ops.push(`q ${c[0]} ${c[1]} ${c[2]} ${fill ? 'rg' : 'RG'} 0.8 w ${x.toFixed(1)} ${yy.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)} re ${fill ? 'f' : 'S'} Q`);
   };
+  const hline = (yy, c = LINE) => ops.push(`q ${c[0]} ${c[1]} ${c[2]} RG 0.8 w ${LEFT} ${yy} m ${RIGHT} ${yy} l S Q`);
+  const label = (s, x, yy) => text(String(s).toUpperCase(), x, yy, 7, true, MUTED);
 
-  // 1. Page Border (A4 Portrait bounds: 595 x 842 pt)
-  addRect(36, 40, 523, 762, 0.85, 0.88, 0.9, false);
+  const newPage = (continued) => {
+    ops = [];
+    pages.push(ops);
+    rect(28, 28, PAGE_W - 56, PAGE_H - 56, LINE, false);
+    if (continued) {
+      text(`Rupadiya Bus Samiti | Ticket PNR ${pnr} (continued)`, LEFT, PAGE_H - 60, 10, true, BLUE);
+      hline(PAGE_H - 68);
+      y = PAGE_H - 90;
+    }
+  };
+  const ensure = (h) => { if (y - h < BOTTOM) newPage(true); };
 
-  // 2. Top Header Brand Banner (Rupadiya Blue: 0.08, 0.58, 0.94)
-  addRect(36, 732, 523, 70, 0.08, 0.58, 0.94, true);
+  // ---- 1. header banner ----------------------------------------------------
+  newPage(false);
+  rect(28, PAGE_H - 108, PAGE_W - 56, 80, BLUE);
+  rect(LEFT, PAGE_H - 92, 48, 48, [1, 1, 1]);
+  text('RUP', LEFT + 9, PAGE_H - 73, 14, true, BLUE);
+  text('RUPADIYA BUS SAMITI', LEFT + 60, PAGE_H - 62, 17, true, [1, 1, 1]);
+  text('PASSENGER E-TICKET', LEFT + 60, PAGE_H - 78, 9, false, [0.9, 0.95, 1]);
+  if (companyName || busName) text(fit(`Operator: ${companyName || busName}`, 250, 8, false), LEFT + 60, PAGE_H - 92, 8, false, [0.9, 0.95, 1]);
+  textRight(`PNR: ${pnr}`, RIGHT, PAGE_H - 60, 13, true, [1, 1, 1]);
+  textRight(`STATUS: ${statusLabel}`, RIGHT, PAGE_H - 76, 9, true, cancelled ? [1, 0.8, 0.8] : [0.8, 1, 0.85]);
+  if (input.bookedAt) textRight(`Booked: ${input.bookedAt}`, RIGHT, PAGE_H - 92, 8, false, [0.9, 0.95, 1]);
 
-  // Brand Logo Accent Box
-  addRect(50, 744, 46, 46, 1, 1, 1, true);
-  addText('RUP', 58, 762, 14, true, 0.08, 0.58, 0.94);
+  // ---- 2. journey + QR -----------------------------------------------------
+  const qrSize = 104;
+  const showQr = Boolean(input.qrToken) && !cancelled;
+  const jTop = PAGE_H - 124;
+  const jW = showQr ? WIDTH - qrSize - 12 : WIDTH;
+  const jH = qrSize;
+  rect(LEFT, jTop - jH, jW, jH, [0.96, 0.98, 1]);
+  rect(LEFT, jTop - jH, jW, jH, [0.8, 0.88, 0.96], false);
+  const half = jW / 2;
+  label('From', LEFT + 12, jTop - 18);
+  text(fit(fromCity.toUpperCase() || '-', half - 24, 14, true), LEFT + 12, jTop - 36, 14, true);
+  text(fit(`Departure: ${timeStr || '-'}`, half - 24, 9, true), LEFT + 12, jTop - 52, 9, true, BLUE);
+  label('To', LEFT + half + 6, jTop - 18);
+  text(fit(toCity.toUpperCase() || '-', half - 18, 14, true), LEFT + half + 6, jTop - 36, 14, true);
+  text(fit(`Arrival: ${arrTimeStr || '-'}`, half - 18, 9, false), LEFT + half + 6, jTop - 52, 9, false, MUTED);
+  ops.push(`q ${LINE[0]} ${LINE[1]} ${LINE[2]} RG 0.8 w ${LEFT + 12} ${jTop - 64} m ${LEFT + jW - 12} ${jTop - 64} l S Q`);
+  label('Date of journey', LEFT + 12, jTop - 78);
+  text(fit(dateStr || '-', half - 24, 10, true), LEFT + 12, jTop - 92, 10, true);
+  label('Seat(s)', LEFT + half + 6, jTop - 78);
+  text(fit(seatsStr || '-', half - 18, 10, true), LEFT + half + 6, jTop - 92, 10, true, BLUE);
 
-  // Brand Title & Subtitle
-  addText('RUPADIYA INTERCITY EXPRESS', 106, 772, 17, true, 1, 1, 1);
-  addText('OFFICIAL INTERCITY BOARDING PASS & PASSENGER E-TICKET', 106, 752, 9, false, 0.9, 0.95, 1);
+  if (showQr) {
+    const qx = RIGHT - qrSize;
+    const qy = jTop - qrSize;
+    rect(qx, qy, qrSize, qrSize, [1, 1, 1]);
+    rect(qx, qy, qrSize, qrSize, LINE, false);
+    try {
+      const qr = QRCode.create(String(input.qrToken), { errorCorrectionLevel: 'M' });
+      const n = qr.modules.size;
+      const cell = (qrSize - 12) / n;
+      const ox = qx + 6;
+      const oy = qy + 6;
+      for (let r = 0; r < n; r += 1) {
+        for (let c = 0; c < n; c += 1) {
+          if (qr.modules.get(r, c)) ops.push(`${(ox + c * cell).toFixed(2)} ${(oy + (n - 1 - r) * cell).toFixed(2)} ${(cell + 0.05).toFixed(2)} ${(cell + 0.05).toFixed(2)} re`);
+        }
+      }
+      ops.push('0 0 0 rg f');
+    } catch (e) { /* QR is optional; the PNR still works for boarding */ }
+    text('Show this QR while boarding', qx + 2, qy - 10, 7, false, MUTED);
+  }
+  y = jTop - jH - 16;
 
-  // PNR & Confirmed Status
-  addText('STATUS: CONFIRMED', 385, 772, 10, true, 0.8, 1, 0.85);
-  addText(`PNR: #${bookingId}`, 385, 752, 12, true, 1, 1, 1);
+  // ---- 3. bus details ------------------------------------------------------
+  const busRows = [
+    ['Bus', busName], ['Bus number', busNumber], ['Coach type', busModel],
+    ['Operator', companyName],
+    ['Driver', [input.driverName, input.driverPhone].filter(has).join(' | ')],
+    ['Bus manager', [input.managerName, input.managerPhone].filter(has).join(' | ')]
+  ].filter(([, v]) => has(v));
+  if (busRows.length || amenities) {
+    const rowsN = Math.ceil(busRows.length / 2);
+    const h = 22 + rowsN * 26 + (amenities ? 16 : 0);
+    ensure(h + 10);
+    rect(LEFT, y - h, WIDTH, h, [0.97, 0.98, 0.99]);
+    rect(LEFT, y - h, WIDTH, h, LINE, false);
+    text('BUS DETAILS', LEFT + 12, y - 14, 8, true, BLUE);
+    busRows.forEach(([k, v], i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = LEFT + 12 + col * (WIDTH / 2);
+      const yy = y - 30 - row * 26;
+      label(k, x, yy);
+      text(fit(v, WIDTH / 2 - 24, 9.5, true), x, yy - 11, 9.5, true);
+    });
+    if (amenities) text(fit(`Amenities: ${amenities}`, WIDTH - 24, 8, false), LEFT + 12, y - h + 8, 8, false, MUTED);
+    y -= h + 10;
+  }
 
-  // 3. Journey Corridor Box
-  addRect(48, 660, 499, 60, 0.96, 0.98, 1.0, true);
-  addRect(48, 660, 499, 60, 0.82, 0.89, 0.96, false);
+  // ---- 4. boarding / dropping ---------------------------------------------
+  ensure(70);
+  const bw = (WIDTH - 10) / 2;
+  [[LEFT, 'Boarding point', input.boardingName || input.boardingPoint?.name, input.boardingTime || timeStr, 'Please report 15 minutes before departure'],
+    [LEFT + bw + 10, 'Dropping point', input.droppingName || input.droppingPoint?.name, input.droppingTime || arrTimeStr, '']]
+    .forEach(([x, k, name, t, note]) => {
+      rect(x, y - 58, bw, 58, LINE, false);
+      label(k, x + 10, y - 14);
+      text(fit(name || '-', bw - 20, 10, true), x + 10, y - 28, 10, true);
+      if (has(t)) text(fit(`Time: ${t}`, bw - 20, 8.5, false), x + 10, y - 41, 8.5, false, BLUE);
+      if (note) text(fit(note, bw - 20, 7.5, false), x + 10, y - 52, 7.5, false, [0.7, 0.45, 0.05]);
+    });
+  y -= 72;
 
-  addText('ORIGIN HUB', 60, 705, 8, true, 0.35, 0.45, 0.55);
-  addText(fromCity.toUpperCase(), 60, 688, 13, true, 0.08, 0.15, 0.25);
-  addText(`Dep: ${timeStr} | ${dateStr}`, 60, 672, 8, false, 0.08, 0.55, 0.9);
+  // ---- 5. contact ----------------------------------------------------------
+  const contactBits = [contactName, contactPhone && `Phone: ${contactPhone}`, contactEmail && `Email: ${contactEmail}`].filter(Boolean);
+  const ec = input.emergencyContact;
+  if (contactBits.length || ec?.phone) {
+    ensure(34);
+    if (contactBits.length) { label('Contact', LEFT, y); text(fit(contactBits.join('  |  '), WIDTH - 80, 9, false), LEFT + 80, y, 9, false); y -= 14; }
+    if (ec?.phone) { label('Emergency', LEFT, y); text(fit(`${ec.name || ''}${ec.relation ? ` (${ec.relation})` : ''}  |  ${ec.phone}`, WIDTH - 80, 9, false), LEFT + 80, y, 9, false); y -= 14; }
+    y -= 6;
+  }
 
-  addText('---- DIRECT INTERCITY CORRIDOR ---->', 195, 688, 8, true, 0.08, 0.55, 0.9);
+  // ---- 6. passenger table --------------------------------------------------
+  const cols = [LEFT + 8, LEFT + 30, LEFT + 260, LEFT + 360, LEFT + 440];
+  const tableHeader = () => {
+    rect(LEFT, y - 16, WIDTH, 16, [0.93, 0.95, 0.96]);
+    ['#', 'PASSENGER NAME', 'AGE / GENDER', 'SEAT', 'STATUS'].forEach((h, i) => text(h, cols[i], y - 11, 7.5, true, MUTED));
+    y -= 30;
+  };
+  ensure(60);
+  text(`PASSENGERS (${passengers.length})`, LEFT, y, 9, true);
+  y -= 8;
+  tableHeader();
+  passengers.forEach((p, i) => {
+    const infants = Array.isArray(p.infants) ? p.infants : [];
+    if (y - 6 - infants.length * 12 < BOTTOM) { newPage(true); tableHeader(); }
+    const gender = has(p.gender) ? String(p.gender).toUpperCase() : '-';
+    text(String(i + 1), cols[0], y, 8.5, false, MUTED);
+    text(fit(`${p.name || `Passenger ${i + 1}`}${p.isChild ? ' (child)' : ''}`, 220, 9.5, true), cols[1], y, 9.5, true);
+    text(`${has(p.age) ? `${p.age} yrs` : '-'} / ${gender}`, cols[2], y, 8.5, false);
+    text(fit(String(p.seatNumber || '-'), 74, 9.5, true), cols[3], y, 9.5, true, BLUE);
+    text(cancelled ? 'Cancelled' : 'Confirmed', cols[4], y, 8.5, true, cancelled ? RED : GREEN);
+    y -= 12;
+    infants.forEach((inf) => {
+      text(fit(`+ Infant on lap: ${inf.name || ''} (${inf.age ?? '-'} yr${inf.gender ? `, ${inf.gender}` : ''})`, 300, 7.5, false), cols[1], y, 7.5, false, MUTED);
+      y -= 11;
+    });
+    ops.push(`q ${LINE[0]} ${LINE[1]} ${LINE[2]} RG 0.5 w ${LEFT} ${y + 5} m ${RIGHT} ${y + 5} l S Q`);
+    y -= 6;
+  });
+  y -= 4;
 
-  addText('DESTINATION CITY', 375, 705, 8, true, 0.35, 0.45, 0.55);
-  addText(toCity.toUpperCase(), 375, 688, 13, true, 0.08, 0.15, 0.25);
-  addText(`Expected Arr: ${arrTimeStr}`, 375, 672, 8, false, 0.3, 0.35, 0.4);
+  // ---- 7. fare details + payment ------------------------------------------
+  const extraLines = [];
+  if (Number(input.agentServiceCharge) > 0) extraLines.push(['Agent service charge', input.agentServiceCharge]);
+  const fh = 28 + (fareLines.length + extraLines.length) * 13 + 16;
+  ensure(fh + 10);
+  rect(LEFT, y - fh, WIDTH, fh, [0.98, 0.99, 0.98]);
+  rect(LEFT, y - fh, WIDTH, fh, LINE, false);
+  const fx = LEFT + WIDTH / 2 + 10;
+  const fr = RIGHT - 12;
+  text('FARE DETAILS', fx, y - 14, 8, true, BLUE);
+  let fy = y - 30;
+  fareLines.forEach(([k, v]) => {
+    const n = Number(String(v).replace(/,/g, '')) || 0;
+    text(fit(k, fr - fx - 70, 8.5, false), fx, fy, 8.5, false, MUTED);
+    textRight(`${n < 0 ? '- ' : ''}${money(Math.abs(n))}`, fr, fy, 8.5, true, n < 0 ? GREEN : INK);
+    fy -= 13;
+  });
+  ops.push(`q ${LINE[0]} ${LINE[1]} ${LINE[2]} RG 0.8 w ${fx} ${fy + 8} m ${fr} ${fy + 8} l S Q`);
+  fy -= 4;
+  text(input.totalLabel || (cancelled ? 'Amount paid' : 'Total amount paid'), fx, fy, 10, true);
+  textRight(money(totalNum), fr, fy, 12, true, BLUE);
+  extraLines.forEach(([k, v]) => { fy -= 14; text(k, fx, fy, 8.5, false, MUTED); textRight(money(v), fr, fy, 8.5, true); });
 
-  // 4. Assigned Fleet & Coach Specifications Box
-  addRect(48, 576, 499, 74, 0.97, 0.98, 0.99, true);
-  addRect(48, 576, 499, 74, 0.82, 0.86, 0.92, false);
+  // payment column (left)
+  const px = LEFT + 12;
+  const pw = WIDTH / 2 - 24;
+  text('PAYMENT', px, y - 14, 8, true, BLUE);
+  let py = y - 30;
+  [
+    ['Paid via', input.paymentProvider],
+    ['Reference', input.paymentReference],
+    ['Status', input.paymentStatus],
+    ['Note', input.paymentNote],
+    ['Issued by', input.issuedBy || (input.agencyName ? `${input.agencyName}${input.agentCode ? ` (${input.agentCode})` : ''}` : '')]
+  ].filter(([, v]) => has(v)).forEach(([k, v]) => {
+    label(k, px, py);
+    text(fit(v, pw - 62, 8.5, true), px + 62, py, 8.5, true);
+    py -= 13;
+  });
+  if (cancelled && input.cancellationNote) { text(fit(input.cancellationNote, pw, 8.5, true), px, py, 8.5, true, RED); }
+  y -= fh + 14;
 
-  addText('ASSIGNED COACH & FLEET SPECIFICATIONS', 60, 636, 9, true, 0.08, 0.5, 0.85);
-  addText(`Bus Plate No: ${busNumber}`, 60, 620, 10, true, 0.08, 0.12, 0.2);
-  addText(`Coach Type: ${busModel} (${layoutType})`, 240, 620, 9, true, 0.15, 0.2, 0.25);
+  // ---- 8. guidelines -------------------------------------------------------
+  const rules = [
+    'Reporting: reach the boarding point at least 15 minutes before departure.',
+    'ID proof: carry a valid government photo ID (Aadhaar / Voter ID / Driving Licence / Passport).',
+    'Boarding: show the QR code or tell the PNR to the bus manager.',
+    'Luggage: up to 2 pieces (20 kg) per passenger. Inflammable items are not allowed.',
+    'Cancellation refund: more than 48 h before departure 90% | 24-48 h 75% | 12-24 h 50% | under 12 h none.'
+  ];
+  ensure(14 + rules.length * 11);
+  text('IMPORTANT INFORMATION', LEFT, y, 8.5, true);
+  y -= 13;
+  rules.forEach((r, i) => { text(fit(`${i + 1}. ${r}`, WIDTH, 7.8, false), LEFT + 6, y, 7.8, false, MUTED); y -= 11; });
 
-  addText(`Operator: ${busName}`, 60, 604, 9, false, 0.25, 0.3, 0.35);
-  addText(`Captain / Pilot: ${driverName} (${driverPhone})`, 240, 604, 9, false, 0.25, 0.3, 0.35);
-
-  addText(`Onboard Amenities: ${amenities}`, 60, 586, 8, false, 0.35, 0.4, 0.45);
-
-  // 5. Boarding & Dropping Points Box
-  addRect(48, 508, 499, 58, 0.99, 0.99, 0.99, true);
-  addRect(48, 508, 499, 58, 0.88, 0.9, 0.92, false);
-
-  addText('BOARDING POINT:', 60, 549, 8, true, 0.35, 0.45, 0.55);
-  addText(`${boardingName} (Please report 15 mins prior to ${timeStr})`, 160, 549, 9, true, 0.08, 0.15, 0.22);
-
-  addText('DROPPING POINT:', 60, 534, 8, true, 0.35, 0.45, 0.55);
-  addText(droppingName, 160, 534, 9, false, 0.2, 0.25, 0.3);
-
-  addText('PRIMARY CONTACT:', 60, 519, 8, true, 0.35, 0.45, 0.55);
-  addText(`${travelerName} · Phone: ${travelerPhone} ${travelerEmail ? `· Email: ${travelerEmail}` : ''}`, 160, 519, 8, false, 0.2, 0.25, 0.3);
-
-  // 6. Passenger Manifest Table
-  addText(`PASSENGER MANIFEST (${rawPassengers.length} Traveler${rawPassengers.length > 1 ? 's' : ''}) · ASSIGNED SEATS: [${seatsStr}]`, 48, 488, 9, true, 0.1, 0.15, 0.2);
-
-  // Table Header Bar
-  addRect(48, 468, 499, 16, 0.93, 0.95, 0.96, true);
-  addText('#', 56, 473, 8, true, 0.35, 0.4, 0.45);
-  addText('PASSENGER NAME', 85, 473, 8, true, 0.35, 0.4, 0.45);
-  addText('AGE / GENDER', 270, 473, 8, true, 0.35, 0.4, 0.45);
-  addText('CONFIRMED SEAT', 380, 473, 8, true, 0.35, 0.4, 0.45);
-  addText('STATUS', 475, 473, 8, true, 0.35, 0.4, 0.45);
-
-  let currentY = 452;
-  rawPassengers.slice(0, 4).forEach((p, idx) => {
-    const pName = p.name || `Passenger ${idx + 1}`;
-    const pAgeGender = `${p.age || '—'} yrs (${p.gender ? p.gender.toUpperCase() : '—'})`;
-    const pSeat = p.seatNumber || (idx + 1);
-
-    addText(`${idx + 1}`, 56, currentY, 8, false, 0.35, 0.4, 0.45);
-    addText(pName, 85, currentY, 9, true, 0.1, 0.15, 0.2);
-    addText(pAgeGender, 270, currentY, 8, false, 0.3, 0.35, 0.4);
-    addText(`Seat: ${pSeat}`, 380, currentY, 9, true, 0.08, 0.55, 0.9);
-    addText('Confirmed', 475, currentY, 8, false, 0.05, 0.6, 0.35);
-    currentY -= 15;
+  // ---- footer on every page -----------------------------------------------
+  pages.forEach((p, i) => {
+    ops = p;
+    text('Rupadiya Bus Samiti | Have a safe and happy journey!', LEFT, 38, 7.5, false, MUTED);
+    textRight(`PNR ${pnr} | Page ${i + 1} of ${pages.length}`, RIGHT, 38, 7.5, false, MUTED);
   });
 
-  // 7. Fare Breakdown & Payment Audit Box
-  addRect(48, 332, 499, 64, 0.97, 0.98, 0.97, true);
-  addRect(48, 332, 499, 64, 0.8, 0.88, 0.84, false);
-
-  addText('TOTAL FARE PAID:', 60, 380, 8, true, 0.35, 0.45, 0.4);
-  addText(`Rs. ${formattedFare}`, 160, 378, 14, true, 0.08, 0.12, 0.2);
-
-  const breakdownParts = [];
-  if (baseFare) breakdownParts.push(`Base: Rs. ${baseFare}`);
-  if (gstAmount) breakdownParts.push(`GST (5%): Rs. ${gstAmount}`);
-  if (insuranceAmount && Number(insuranceAmount) > 0) breakdownParts.push(`Insurance: Rs. ${insuranceAmount}`);
-  const breakdownStr = breakdownParts.length > 0 ? breakdownParts.join(' | ') : 'Statutory Taxes & 5% GST Included';
-  addText(breakdownStr, 60, 362, 8, false, 0.3, 0.35, 0.4);
-
-  addText(`Payment: ${paymentProvider} · Ref: ${paymentReference}`, 60, 346, 8, false, 0.35, 0.4, 0.45);
-
-  addText('PAYMENT AUDIT:', 340, 380, 8, true, 0.35, 0.45, 0.4);
-  addText(paymentStatus, 340, 365, 9, true, 0.05, 0.55, 0.35);
-  addText('Verified Instant Electronic Settlement', 340, 348, 8, false, 0.4, 0.45, 0.5);
-
-  // 8. Important Travel Guidelines
-  addText('IMPORTANT TRAVEL GUIDELINES & PASSENGER POLICIES', 48, 310, 9, true, 0.15, 0.2, 0.25);
-  addText('1. Reporting Time: Travelers must report at the boarding station 15 minutes before departure.', 56, 296, 8, false, 0.35, 0.4, 0.45);
-  addText('2. Identification: Valid government photo ID (Aadhaar / Voter ID / Driving License) is mandatory.', 56, 283, 8, false, 0.35, 0.4, 0.45);
-  addText('3. Luggage Allowance: 2 pieces of luggage (up to 20kg per passenger). Combustibles strictly prohibited.', 56, 270, 8, false, 0.35, 0.4, 0.45);
-  addText('4. Live Bus Tracking: Real-time GPS location activates 2 hours prior to journey at /track-bus.', 56, 257, 8, false, 0.35, 0.4, 0.45);
-  addText('5. Helpline & Assistance: 24x7 Customer Support Desk: +91 98765 43210 | Email: support@rupadiya.com.', 56, 244, 8, false, 0.35, 0.4, 0.45);
-  addText('6. Cancellation Policy: Cancellations are governed by standard RedBus-style departure-time slabs.', 56, 231, 8, false, 0.35, 0.4, 0.45);
-
-  // 9. High-Contrast Vector Barcode & PNR Scan Strip
-  const barY = 135;
-  const barHeights = 38;
-  const pattern = [3, 1, 4, 1, 2, 5, 1, 2, 4, 2, 1, 3, 5, 2, 1, 4, 2, 3, 1, 5, 2, 1, 3, 4, 1, 2, 4, 3, 1, 5, 2, 4, 2, 1, 3, 4, 2, 1, 4, 2, 1, 3, 5];
-  let curX = 145;
-  for (let i = 0; i < pattern.length; i++) {
-    const w = pattern[i];
-    if (i % 2 === 0) {
-      addRect(curX, barY, w * 1.5, barHeights, 0.1, 0.12, 0.15, true);
-    }
-    curX += (w * 1.5) + 2;
-  }
-  addText(`* PNR: ${bookingId} *`, 245, 120, 9, true, 0.2, 0.25, 0.3);
-
-  // 10. Footer Watermark
-  addText('Rupadiya Travel Network · Connecting India to Rupadiya Hub · Have a safe & pleasant journey!', 115, 60, 8, false, 0.45, 0.5, 0.55);
-
-  // Compile PDF document structure with exact ISO 32000-1 / PDF 1.4 byte offsets
-  const contentStream = content.join('\n');
+  // ---- assemble PDF ----------------------------------------------------------
   const enc = new TextEncoder();
+  const pageCount = pages.length;
+  const fontF1 = 3 + pageCount * 2;
+  const fontF2 = fontF1 + 1;
+  const objs = [];
+  objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  const kids = pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ');
+  objs[2] = `<< /Type /Pages /Kids [${kids}] /Count ${pageCount} >>`;
+  pages.forEach((p, i) => {
+    const stream = p.join('\n');
+    objs[3 + i * 2] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontF1} 0 R /F2 ${fontF2} 0 R >> >> >>`;
+    objs[4 + i * 2] = `<< /Length ${enc.encode(stream).length} >>\nstream\n${stream}\nendstream`;
+  });
+  objs[fontF1] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objs[fontF2] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+
   let body = '%PDF-1.4\n';
   const offsets = [];
-
-  const addObj = (id, str) => {
+  for (let id = 1; id < objs.length; id += 1) {
     offsets[id] = enc.encode(body).length;
-    body += `${id} 0 obj\n${str}\nendobj\n`;
-  };
-
-  addObj(1, '<< /Type /Catalog /Pages 2 0 R >>');
-  addObj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-  addObj(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>');
-  const streamBytes = enc.encode(contentStream);
-  addObj(4, `<< /Length ${streamBytes.length} >>\nstream\n${contentStream}\nendstream`);
-  addObj(5, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
-  addObj(6, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
-
-  const startXref = enc.encode(body).length;
-  let xref = 'xref\n0 7\n0000000000 65535 f \n';
-  for (let i = 1; i <= 6; i++) {
-    xref += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+    body += `${id} 0 obj\n${objs[id]}\nendobj\n`;
   }
-  const trailer = `trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n${startXref}\n%%EOF\n`;
-  const pdfString = body + xref + trailer;
+  const startXref = enc.encode(body).length;
+  let xref = `xref\n0 ${objs.length}\n0000000000 65535 f \n`;
+  for (let id = 1; id < objs.length; id += 1) xref += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
+  const pdf = `${body}${xref}trailer\n<< /Size ${objs.length} /Root 1 0 R >>\nstartxref\n${startXref}\n%%EOF\n`;
 
-  // Create Blob & Trigger Download
-  const blob = new Blob([enc.encode(pdfString)], { type: 'application/pdf' });
-  const filename = `Ticket-${bookingId}.pdf`;
-
+  const blob = new Blob([enc.encode(pdf)], { type: 'application/pdf' });
+  const filename = input.filename || `Ticket-${String(pnr).replace(/[^A-Za-z0-9_-]/g, '') || 'booking'}.pdf`;
   if (typeof window !== 'undefined') {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -241,6 +372,5 @@ export function downloadTicketPdf(input = {}) {
       URL.revokeObjectURL(url);
     }, 250);
   }
-
   return { blob, filename };
 }

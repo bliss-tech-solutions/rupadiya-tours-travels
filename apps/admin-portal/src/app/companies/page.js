@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import PhoneInput from '../../components/ui/PhoneInput';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, 
@@ -737,13 +738,7 @@ export default function AdminCompaniesPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-700 font-semibold block mb-1">Contact Phone</label>
-                  <input
-                    type="tel"
-                    value={editForm.contactPhone}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, contactPhone: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"
-                    placeholder="+91 0000000000"
-                  />
+                  <PhoneInput size="sm" value={editForm.contactPhone} onChange={(v) => setEditForm(prev => ({ ...prev, contactPhone: v }))} />
                 </div>
                 <div>
                   <label className="text-slate-700 font-semibold block mb-1">Official Email</label>
@@ -903,14 +898,7 @@ export default function AdminCompaniesPage() {
 
                     <div>
                       <label className="text-slate-700 font-semibold block mb-1">Owner Phone *</label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="0000000000"
-                        value={newOwnerPhone}
-                        onChange={(e) => setNewOwnerPhone(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"
-                      />
+                      <PhoneInput size="sm" required value={newOwnerPhone} onChange={(v) => setNewOwnerPhone(v)} />
                     </div>
                   </div>
 

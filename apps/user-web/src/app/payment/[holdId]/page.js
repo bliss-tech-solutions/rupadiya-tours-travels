@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { formatPhone } from '../../../lib/phone';
 import { 
   ArrowLeft, 
   ShieldCheck, 
@@ -16,6 +17,7 @@ import { api } from '../../../lib/api';
 import { useToast } from '../../../components/ui/Toast';
 import { openRazorpayCheckout } from '../../../lib/razorpay';
 
+import { seatFareList, sumFares, fareLineLabel } from '../../../lib/fares';
 export default function PaymentPage() {
   const params = useParams();
   const router = useRouter();
@@ -29,6 +31,7 @@ export default function PaymentPage() {
   const [allowedMethods, setAllowedMethods] = useState({ upi: true, card: true, netbanking: true, wallet: true });
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes timer
   const [insuranceOpted, setInsuranceOpted] = useState(false);
+  const [serverQuote, setServerQuote] = useState(null); // authoritative fare (incl. platform + gateway fee)
 
   useEffect(() => {
     const raw = sessionStorage.getItem('rupadiya_checkout');
@@ -96,6 +99,23 @@ export default function PaymentPage() {
     }
   }, [checkoutData]);
 
+  // The amount charged always comes from the server quote (fare + GST + platform fee + insurance − coupon + gateway fee).
+  useEffect(() => {
+    if (!checkoutData?.holdId) return undefined;
+    let alive = true;
+    api.getQuote({
+      tripId: checkoutData.tripId,
+      seatNumbers: checkoutData.selectedSeats,
+      insuranceOpted,
+      insurancePerPassenger: checkoutData.insurancePerPassenger || 28,
+      offerCode: appliedCoupon?.code || null,
+      holdToken: checkoutData.holdId
+    })
+      .then((res) => { if (alive && res?.quote) setServerQuote(res.quote); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [checkoutData, insuranceOpted, appliedCoupon]);
+
   if (!checkoutData) return null;
 
   const minutes = Math.floor(timeLeft / 60);
@@ -103,30 +123,50 @@ export default function PaymentPage() {
 
   const baseFare = checkoutData.baseFare || 510;
   const seatsCount = checkoutData.selectedSeats?.length || 1;
-  const baseTotal = seatsCount * baseFare;
-  const gstAmount = checkoutData.gstAmount || Math.round(baseTotal * 0.05);
-  const insuranceAmount = insuranceOpted ? (seatsCount * 5) : 0;
-  const subtotal = baseTotal + gstAmount + insuranceAmount;
-  const discount = appliedCoupon ? appliedCoupon.discount : 0;
-  const finalTotal = Math.max(0, subtotal - discount);
+  const seatFares = (checkoutData.seatFares && checkoutData.seatFares.length)
+    ? checkoutData.seatFares
+    : seatFareList(checkoutData.selectedSeats || [], checkoutData.trip?.seats || [], baseFare);
+  const insurancePerPassenger = checkoutData.insurancePerPassenger || 28;
+  const q = serverQuote;
+  const baseTotal = q?.subtotal ?? checkoutData.baseTotal ?? sumFares(seatFares);
+  const gstAmount = q?.gstAmount ?? checkoutData.gstAmount ?? Math.round(baseTotal * 0.05);
+  const platformFee = q?.platformFee ?? Math.round(baseTotal * 0.05);
+  const insuranceAmount = q?.insuranceAmount ?? (insuranceOpted ? seatsCount * insurancePerPassenger : 0);
+  const discount = q?.discountAmount ?? (appliedCoupon ? appliedCoupon.discount : 0);
+  const gatewayFee = q?.gatewayFee ?? Math.round(Math.max(0, baseTotal + gstAmount + platformFee + insuranceAmount - discount) * 0.025);
+  const finalTotal = q?.totalPayable ?? Math.max(0, baseTotal + gstAmount + platformFee + insuranceAmount - discount + gatewayFee);
+  const realEmail = checkoutData.contactEmail && !/@rupadiya\.com$/i.test(checkoutData.contactEmail) ? checkoutData.contactEmail : '';
 
-  const handleApplyCoupon = (e) => {
+  // Coupons are validated by the server quote so the amount shown is exactly what is charged.
+  const handleApplyCoupon = async (e) => {
     e.preventDefault();
     const code = couponCode.trim().toUpperCase();
-    if (code === 'RUPADIYA100') {
-      setAppliedCoupon({ code: 'RUPADIYA100', discount: 100, label: 'Flat ₹100 Off' });
-      addToast('Coupon RUPADIYA100 applied successfully! Saved ₹100.', 'success', 'Discount Applied');
-    } else if (code === 'FIRSTTRIP') {
-      const disc = Math.round(subtotal * 0.15);
-      setAppliedCoupon({ code: 'FIRSTTRIP', discount: disc, label: '15% First Trip Off' });
-      addToast(`Coupon FIRSTTRIP applied! Saved ₹${disc}.`, 'success', 'Discount Applied');
-    } else {
-      addToast('Invalid coupon code. Try "RUPADIYA100" or "FIRSTTRIP".', 'error', 'Invalid Code');
+    if (!code) return;
+    try {
+      const res = await api.getQuote({
+        tripId: checkoutData.tripId,
+        seatNumbers: checkoutData.selectedSeats,
+        insuranceOpted,
+        insurancePerPassenger: checkoutData.insurancePerPassenger || 28,
+        offerCode: code,
+        holdToken: checkoutData.holdId
+      });
+      const q = res?.quote;
+      if (!q?.appliedOffer) throw new Error(res?.error || `Coupon ${code} is not valid for this booking.`);
+      setAppliedCoupon({ code: q.appliedOffer.code, discount: q.discountAmount, label: q.appliedOffer.title || 'Offer applied' });
+      addToast(`Coupon ${q.appliedOffer.code} applied. You save ₹${q.discountAmount}.`, 'success', 'Discount Applied');
+    } catch (err) {
+      setAppliedCoupon(null);
+      addToast(err.message || `Coupon ${code} is not valid for this booking.`, 'error', 'Invalid Code');
     }
   };
 
   // Complete Payment & Confirm Ticket via Razorpay
   const handleConfirmPayment = async () => {
+    if (!serverQuote) {
+      addToast('Calculating your final fare, please try again in a moment.', 'info', 'Please wait');
+      return;
+    }
     setProcessing(true);
     try {
       const orderRes = await api.createPaymentOrder({
@@ -142,13 +182,15 @@ export default function PaymentPage() {
           boardingPoint: checkoutData.boardingPoint,
           droppingPoint: checkoutData.droppingPoint,
           contactPhone: checkoutData.contactPhone,
-          contactEmail: checkoutData.contactEmail || `${checkoutData.contactPhone}@rupadiya.com`,
+          contactEmail: realEmail,
           primaryContact: {
             phone: checkoutData.contactPhone,
-            email: checkoutData.contactEmail || `${checkoutData.contactPhone}@rupadiya.com`,
+            email: realEmail,
           },
+          emergencyContact: checkoutData.emergencyContact || null,
           totalAmount: finalTotal,
           insuranceOpted,
+          insurancePerPassenger,
           insuranceAmount,
           couponCode: appliedCoupon?.code || null,
         },
@@ -172,7 +214,7 @@ export default function PaymentPage() {
         description: `Seats [${checkoutData.selectedSeats?.join(', ')}] Booking`,
         prefill: {
           name: checkoutData.passengers?.[0]?.name || 'Passenger',
-          email: checkoutData.contactEmail || `${checkoutData.contactPhone}@rupadiya.com`,
+          email: realEmail || undefined,
           contact: checkoutData.contactPhone
         },
         onSuccess: async (rzpResponse) => {
@@ -308,7 +350,7 @@ export default function PaymentPage() {
               <form onSubmit={handleApplyCoupon} className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="e.g. RUPADIYA100 or FIRSTTRIP"
+                  placeholder="Enter coupon code"
                   value={couponCode}
                   onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold uppercase focus:outline-none focus:border-sky-500"
@@ -488,19 +530,23 @@ export default function PaymentPage() {
 
               {/* Mobile Phone Note */}
               <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs flex items-center justify-between">
-                <span className="text-slate-500 font-medium">SMS Ticket To:</span>
-                <span className="font-bold text-slate-900">+91 {checkoutData.contactPhone}</span>
+                <span className="text-slate-500 font-medium">Ticket on WhatsApp to:</span>
+                <span className="font-bold text-slate-900" data-no-translate>{formatPhone(checkoutData.contactPhone)}</span>
               </div>
 
               {/* Fare Breakdown with 5% GST */}
               <div className="pt-2 border-t border-slate-100 space-y-2 text-xs">
                 <div className="flex justify-between text-slate-600 font-medium">
-                  <span>Base Fare ({seatsCount} Seat{seatsCount > 1 ? 's' : ''} × ₹{baseFare})</span>
+                  <span>{fareLineLabel(seatFares)}</span>
                   <span className="font-bold text-slate-800">₹{baseTotal}</span>
                 </div>
                 <div className="flex justify-between text-slate-600 font-medium">
                   <span>GST & Govt. Taxes (5%)</span>
                   <span className="text-emerald-700 font-bold">+₹{gstAmount}</span>
+                </div>
+                <div className="flex justify-between text-slate-600 font-medium">
+                  <span>Platform fee (5%)</span>
+                  <span className="font-bold text-slate-800">+₹{platformFee}</span>
                 </div>
                 <div className="flex justify-between items-center text-slate-600 font-medium">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -511,7 +557,7 @@ export default function PaymentPage() {
                       className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
                     />
                     <span>Travel Insurance</span>
-                    <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">₹5/pax</span>
+                    <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">₹{insurancePerPassenger}/pax</span>
                   </label>
                   <span className={`font-bold ${insuranceOpted ? 'text-emerald-700' : 'text-slate-400'}`}>
                     {insuranceOpted ? `+₹${insuranceAmount} (Yes)` : '₹0 (No)'}
@@ -523,6 +569,11 @@ export default function PaymentPage() {
                     <span>-₹{discount}</span>
                   </div>
                 )}
+                <div className="flex justify-between text-slate-600 font-medium">
+                  <span>Payment gateway charge (2.5%)</span>
+                  <span className="font-bold text-slate-800">+₹{gatewayFee}</span>
+                </div>
+                <p className="text-[10px] text-slate-400">Razorpay&apos;s actual charge for this payment is shown on your ticket.</p>
                 <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-100">
                   <span>Grand Total</span>
                   <span className="text-sky-600 font-black">₹{finalTotal}</span>

@@ -55,13 +55,17 @@ const commissionRecordSchema = new mongoose.Schema({
     type: String,
     enum: ['CREDITED', 'REVERSED'],
     default: 'CREDITED'
-  }
+  },
+  // Why it was reversed: CANCELLED (ticket cancelled) or CASH_REVERTED (cash "received" undone; re-credited when received again)
+  reversalReason: { type: String, default: null }
 }, {
   timestamps: true
 });
 
 commissionRecordSchema.index({ agentId: 1, createdAt: -1 });
 commissionRecordSchema.index({ bookingId: 1 });
+// One commission per booking per referral level (idempotent distribution).
+commissionRecordSchema.index({ bookingId: 1, level: 1 }, { unique: true, name: 'one_commission_per_level' });
 commissionRecordSchema.index({ pnr: 1 });
 
 const CommissionTier = mongoose.model('CommissionTier', commissionTierSchema);

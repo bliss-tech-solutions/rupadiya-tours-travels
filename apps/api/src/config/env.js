@@ -60,9 +60,16 @@ const env = {
   RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || '',
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || '',
   RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  // RazorpayX Payouts (agent withdrawals). Keys default to the Razorpay PG keys of the same account.
+  RAZORPAYX_KEY_ID: process.env.RAZORPAYX_KEY_ID || '',
+  RAZORPAYX_KEY_SECRET: process.env.RAZORPAYX_KEY_SECRET || '',
+  RAZORPAYX_ACCOUNT_NUMBER: process.env.RAZORPAYX_ACCOUNT_NUMBER || '',
+  RAZORPAYX_WEBHOOK_SECRET: process.env.RAZORPAYX_WEBHOOK_SECRET || '',
   HOLD_DURATION_SECONDS: parseInt(process.env.HOLD_DURATION_SECONDS, 10) || 600, // 10 minutes
   TCS_RATE: parseFloat(process.env.TCS_RATE) || 0.01, // 1%
-  GST_RATE: parseFloat(process.env.GST_RATE) || 0.05  // 5%
+  GST_RATE: parseFloat(process.env.GST_RATE) || 0.05, // 5%
+  PLATFORM_FEE_RATE: Number.isFinite(parseFloat(process.env.PLATFORM_FEE_RATE)) ? parseFloat(process.env.PLATFORM_FEE_RATE) : 0.05, // 5% of ticket fare
+  GATEWAY_FEE_RATE: Number.isFinite(parseFloat(process.env.GATEWAY_FEE_RATE)) ? parseFloat(process.env.GATEWAY_FEE_RATE) : 0.025    // 2.5% of online amount
 };
 
 module.exports = env;

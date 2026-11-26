@@ -30,6 +30,7 @@ const VALID_CLIENT_IDENTIFIERS = new Set([
   'agent-portal',
   'company-portal',
   'admin-portal',
+  'manager-app',
   'test-runner'
 ]);
 
@@ -37,6 +38,7 @@ function isPublicEndpoint(req) {
   const p = (req.originalUrl || req.url || req.path || '').split('?')[0].replace(/\/$/, '');
   if (p === '/health' || p === '/api/v1/health' || p === '/v1/health') return true;
   if (p.startsWith('/api/v1/payments/webhook') || p.startsWith('/v1/payments/webhook')) return true;
+  if (p.startsWith('/api/v1/payouts/webhook') || p.startsWith('/v1/payouts/webhook')) return true;
   if (p.startsWith('/api/v1/auth/guest-token') || p.startsWith('/v1/auth/guest-token')) return true;
   if (p.startsWith('/uploads')) return true;
 

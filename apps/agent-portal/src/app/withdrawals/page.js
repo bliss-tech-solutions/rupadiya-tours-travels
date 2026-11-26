@@ -129,7 +129,7 @@ export default function AgentWithdrawalsPage() {
     const handleWsMessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (['WITHDRAWAL_APPROVED', 'WITHDRAWAL_REJECTED', 'COMMISSION_EARNED'].includes(data.event)) {
+        if (['WITHDRAWAL_APPROVED', 'WITHDRAWAL_REJECTED', 'WITHDRAWAL_PAYOUT_FAILED', 'COMMISSION_EARNED'].includes(data.event)) {
           fetchWithdrawals(true);
           refreshWallet();
         }
@@ -275,8 +275,9 @@ export default function AgentWithdrawalsPage() {
   });
 
   const isKycVerified = summary.kycStatus === 'VERIFIED';
-  const hasPendingRequest = summary.hasPendingRequest || withdrawals.some(w => w.status === 'PENDING');
-  const activePending = withdrawals.find(w => w.status === 'PENDING');
+  const OPEN_STATUSES = ['PENDING', 'PROCESSING', 'PAYOUT_FAILED'];
+  const hasPendingRequest = summary.hasPendingRequest || withdrawals.some(w => OPEN_STATUSES.includes(w.status));
+  const activePending = withdrawals.find(w => OPEN_STATUSES.includes(w.status));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -904,6 +905,8 @@ export default function AgentWithdrawalsPage() {
             {[
               { key: 'ALL', label: 'All Requests' },
               { key: 'PENDING', label: 'On Hold (Pending)' },
+              { key: 'PROCESSING', label: 'Payment Processing' },
+              { key: 'PAYOUT_FAILED', label: 'Payout Failed' },
               { key: 'APPROVED', label: 'Approved & Settled' },
               { key: 'REJECTED', label: 'Rejected (Refunded)' }
             ].map(tab => (
@@ -966,7 +969,7 @@ export default function AgentWithdrawalsPage() {
                 {filteredWithdrawals.map((w) => {
                   const p = w.payoutDetails || {};
                   const isApproved = w.status === 'APPROVED';
-                  const isPending = w.status === 'PENDING';
+                  const isPending = ['PENDING', 'PROCESSING', 'PAYOUT_FAILED'].includes(w.status);
                   const isRejected = w.status === 'REJECTED';
 
                   return (
@@ -1022,7 +1025,11 @@ export default function AgentWithdrawalsPage() {
                           {isApproved && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
                           {isRejected && <AlertCircle className="w-3 h-3 text-rose-600" />}
                           <span>
-                            {isPending
+                            {w.status === 'PROCESSING'
+                              ? 'Payment under processing'
+                              : w.status === 'PAYOUT_FAILED'
+                              ? 'Payment failed — being retried'
+                              : isPending
                               ? 'On Hold (Escrow)'
                               : isApproved
                               ? 'Disbursed to Bank'
@@ -1220,7 +1227,7 @@ export default function AgentWithdrawalsPage() {
                 <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                   detailModalItem.status === 'APPROVED'
                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : detailModalItem.status === 'PENDING'
+                    : ['PENDING', 'PROCESSING'].includes(detailModalItem.status)
                     ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                     : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                 }`}>

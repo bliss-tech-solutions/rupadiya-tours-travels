@@ -1,6 +1,8 @@
 const InventoryProvider = require('./InventoryProvider');
 const Trip = require('../../modules/trips/trip.model');
+const { toPublicSeats } = require('../../services/seatPolicy');
 const holdStore = require('../../config/holdStore');
+const Company = require('../../modules/companies/company.model');
 const { SEAT_STATUS, SEAT_CATEGORY, normalizeCityId } = require('../../config/constants');
 
 class OwnInventoryProvider extends InventoryProvider {
@@ -9,11 +11,16 @@ class OwnInventoryProvider extends InventoryProvider {
     this.name = 'own-fleet';
   }
 
-  async searchTrips({ fromCityId, toCityId, travelDate }) {
+  async searchTrips({ fromCityId, toCityId, travelDate, companyCode = null }) {
     const normFrom = fromCityId ? normalizeCityId(fromCityId) : null;
     const normTo = toCityId ? normalizeCityId(toCityId) : null;
 
-    const query = { status: 'SCHEDULED' };
+    // Show every bus still open for booking that day — scheduled and already boarding alike.
+    // A trip flips to BOARDING when the seat chart is generated or the first passenger boards, but it
+    // is still bookable until it departs, so it must keep appearing in search (all buses on the route).
+    const query = { status: { $in: ['SCHEDULED', 'BOARDING'] } };
+    // Agents only see their own company's buses; customers see every company.
+    if (companyCode != null) query.companyCode = Number(companyCode);
     if (travelDate) {
       const start = new Date(travelDate);
       start.setHours(0, 0, 0, 0);
@@ -36,13 +43,26 @@ class OwnInventoryProvider extends InventoryProvider {
       return matchesFrom && matchesTo;
     });
 
+    // Operator names for the bus cards (one query for all companies in the result).
+    const codes = [...new Set(filtered.map(t => t.companyCode).filter(Boolean))];
+    const companies = codes.length
+      ? await Company.find({ companyCode: { $in: codes } }).select('companyCode name').lean()
+      : [];
+    const companyName = new Map(companies.map(c => [c.companyCode, c.name]));
+
     return filtered.map(t => {
-      const heldSeats = holdStore.getHeldSeatsForTrip(t._id.toString());
-      const bookedCount = (t.seats || []).filter(s => s.status === SEAT_STATUS.BOOKED || s.status === SEAT_STATUS.BLOCKED).length;
-      const effectiveHeldCount = heldSeats.length;
-      const availableSeats = Math.max(0, 40 - bookedCount - effectiveHeldCount);
+      const heldLower = new Set(holdStore.getHeldSeatsForTrip(t._id.toString()).map(h => String(h).trim().toLowerCase()));
+      const seatsArr = t.seats || [];
+      const availableSeats = seatsArr.filter(s =>
+        s.status === SEAT_STATUS.AVAILABLE && !heldLower.has(String(s.seatNumber).trim().toLowerCase())
+      ).length;
 
       const obj = t.toObject ? t.toObject() : t;
+      obj.seats = toPublicSeats(obj, (obj.seats || []).map(s => (
+        s.status === SEAT_STATUS.AVAILABLE && heldLower.has(String(s.seatNumber).trim().toLowerCase())
+          ? { ...s, status: SEAT_STATUS.HELD }
+          : s
+      )));
       const fromName = (obj.routeId?.fromCity?.name === 'Rupadiya' ? 'Rupaidiha' : (obj.routeId?.fromCity?.name || 'Rupaidiha'));
       const toName = (obj.routeId?.toCity?.name === 'Rupadiya' ? 'Rupaidiha' : (obj.routeId?.toCity?.name || 'Ahmedabad'));
 
@@ -57,6 +77,13 @@ class OwnInventoryProvider extends InventoryProvider {
         droppingPoints: obj.routeId?.droppingPoints || [],
         availableSeats,
         availableSeatsCount: availableSeats,
+        companyName: companyName.get(obj.companyCode) || null,
+        // "From ₹X": cheapest seat still on sale (company can price seats individually)
+        minFare: (() => {
+          const open = seatsArr.filter(s => s.status === SEAT_STATUS.AVAILABLE).map(s => s.fare || obj.baseFare);
+          return open.length ? Math.min(...open) : obj.baseFare;
+        })(),
+        maxFare: seatsArr.length ? Math.max(...seatsArr.map(s => s.fare || obj.baseFare)) : obj.baseFare,
         isFull: availableSeats === 0
       };
     });
@@ -93,7 +120,9 @@ class OwnInventoryProvider extends InventoryProvider {
         isAdjacentToFemale,
         status: isCurrentlyHeld ? SEAT_STATUS.HELD : s.status,
         fare: s.fare,
-        passenger: s.passenger
+        ladiesOnly: isAdjacentToFemale && s.status === SEAT_STATUS.AVAILABLE,
+        // Only the gender of a booked seat is public; names/ages stay private.
+        passenger: s.status === SEAT_STATUS.BOOKED && s.passenger?.gender ? { gender: s.passenger.gender } : null
       };
     });
 

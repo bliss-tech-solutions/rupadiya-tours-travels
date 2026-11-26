@@ -45,6 +45,23 @@ const companySchema = new mongoose.Schema({
       enabled: { type: Boolean, default: true }
     }
   ],
+  // WhatsApp number that receives trip start / completion summaries for this company
+  notifyPhone: { type: String, default: '' },
+  // Agent cash (COD) rules for this company
+  cashPolicy: {
+    enabled: { type: Boolean, default: true },
+    cutoffHours: { type: Number, default: 2, min: 0, max: 72 },          // no new cash tickets this close to departure
+    agentCreditLimit: { type: Number, default: 25000, min: 0 }            // max unpaid cash per agent
+  },
+  // Bank account where RBS pays this company's settlement
+  settlementBank: {
+    accountName: { type: String, default: '' },
+    accountNumber: { type: String, default: '', select: false },
+    accountNumberMasked: { type: String, default: '' },
+    ifscCode: { type: String, default: '' },
+    bankName: { type: String, default: '' },
+    upiId: { type: String, default: '' }
+  },
   annualTarget: {
     targetPassengers: { type: Number, default: 12000 },
     currentPassengers: { type: Number, default: 0 },

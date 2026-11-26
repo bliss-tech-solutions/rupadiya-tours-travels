@@ -139,7 +139,72 @@ async function request(endpoint, options = {}, isRetry = false) {
   }
 }
 
+/** True when the signed-in super admin is the primary (main RBS) account. */
+export function isPrimaryAdminSession() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const u = JSON.parse(localStorage.getItem('admin_user') || 'null');
+    return u?.role === 'SUPER_ADMIN' && u?.adminLevel === 'PRIMARY';
+  } catch {
+    return false;
+  }
+}
+
+/** Download a server-generated file (CSV) with the admin session. */
+async function downloadFile(endpoint, fallbackName) {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    credentials: 'include',
+    headers: { 'x-rupadiya-client': 'admin-portal', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Download failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const match = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = match ? match[1] : fallbackName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
+  // WhatsApp (RBS business number) & templates
+  getWhatsappStatus: () => request('/admin/whatsapp/status'),
+  connectWhatsapp: () => request('/admin/whatsapp/connect', { method: 'POST' }),
+  logoutWhatsapp: () => request('/admin/whatsapp/logout', { method: 'POST' }),
+  testWhatsapp: (phone, message) => request('/admin/whatsapp/test', { method: 'POST', body: JSON.stringify({ phone, message }) }),
+  getWhatsappStats: (days = 30) => request(`/admin/whatsapp/stats?days=${encodeURIComponent(days)}`),
+  retryFailedWhatsapp: (hours = 24) => request('/admin/whatsapp/retry-failed', { method: 'POST', body: JSON.stringify({ hours }) }),
+  saveAdminNotifyPhones: (phones) => request('/admin/whatsapp/admin-phones', { method: 'PUT', body: JSON.stringify({ phones }) }),
+  getTemplates: () => request('/admin/templates'),
+  saveTemplate: (key, payload) => request(`/admin/templates/${encodeURIComponent(key)}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  previewTemplate: (payload) => request('/admin/templates/preview', { method: 'POST', body: JSON.stringify(payload) }),
+  getNotifications: (params = {}) => request(`/admin/notifications?${new URLSearchParams(params).toString()}`),
+  retryNotification: (id) => request(`/admin/notifications/${id}/retry`, { method: 'POST' }),
+  // Company settlements
+  previewSettlements: (params) => request(`/admin/settlements/preview?${new URLSearchParams(params).toString()}`),
+  downloadSettlementPreview: (params) => downloadFile(`/admin/settlements/preview.csv?${new URLSearchParams(params).toString()}`, 'settlement-preview.csv'),
+  issueSettlement: (payload) => request('/admin/settlements', { method: 'POST', body: JSON.stringify(payload) }),
+  getSettlementList: (params = {}) => request(`/admin/settlements?${new URLSearchParams(params).toString()}`),
+  settleStatement: (id, payload) => request(`/admin/settlements/${id}/settle`, { method: 'POST', body: JSON.stringify(payload) }),
+  voidStatement: (id) => request(`/admin/settlements/${id}/void`, { method: 'POST' }),
+  downloadStatement: (id) => downloadFile(`/admin/settlements/${id}/export.csv`, 'statement.csv'),
+  // Live journeys
+  getJourneys: (date) => request(`/admin/journeys${date ? `?date=${date}` : ''}`),
+
+  // Admin accounts (primary only) & user directory
+  getAdmins: () => request('/admin/admins'),
+  createAdmin: (payload) => request('/admin/admins', { method: 'POST', body: JSON.stringify(payload) }),
+  updateAdmin: (id, payload) => request(`/admin/admins/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  getUsers: (params = {}) => request(`/admin/users?${new URLSearchParams(params).toString()}`),
+  exportUsers: (params = {}) => downloadFile(`/admin/users/export?${new URLSearchParams(params).toString()}`, 'rupadiya-users.csv'),
+
   // Auth
   login: async (email, password) => {
     refreshFailed = false;
@@ -296,4 +361,14 @@ export const api = {
   },
   processRefund: (id, payload) => request(`/admin/refunds/${id}/process`, { method: 'POST', body: JSON.stringify(payload) }),
   rejectRefund: (id, reason) => request(`/admin/refunds/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  // Agent withdrawals (companies approve; RBS admin pays)
+  getWithdrawals: (params = {}) => { const q = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '' && v !== null))).toString(); return request(`/admin/withdrawals${q ? `?${q}` : ''}`); },
+  getWithdrawalPayoutConfig: () => request('/admin/withdrawals/payout-config'),
+  payWithdrawal: (id, payload) => request(`/admin/withdrawals/${id}/pay`, { method: 'POST', body: JSON.stringify(payload) }),
+  rejectWithdrawal: (id, reason) => request(`/admin/withdrawals/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  // Finance & reconciliation
+  getFinanceOverview: () => request('/admin/finance/reconciliation'),
+  runReconciliation: ({ days, autoHeal }) => request('/admin/finance/reconciliation/run', { method: 'POST', body: JSON.stringify({ days, autoHeal }) }),
+  syncPayouts: () => request('/admin/finance/payouts/sync', { method: 'POST' }),
 };

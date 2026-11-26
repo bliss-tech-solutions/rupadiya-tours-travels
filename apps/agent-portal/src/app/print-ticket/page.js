@@ -24,7 +24,8 @@ import {
   Building2
 } from 'lucide-react';
 import { api } from '../../lib/api';
-import { downloadTicketPdf } from '../../lib/pdfGenerator';
+import { downloadTicketPdf, fareLinesFrom } from '../../lib/pdfGenerator';
+import TicketQr from '../../components/TicketQr';
 
 function PrintTicketContent() {
   const router = useRouter();
@@ -43,6 +44,14 @@ function PrintTicketContent() {
   const [loading, setLoading] = useState(false);
   const [ticket, setTicket] = useState(null);
   const [error, setError] = useState('');
+  const [agentProfile, setAgentProfile] = useState(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('agent_user');
+      if (raw) setAgentProfile(JSON.parse(raw));
+    } catch (e) {}
+  }, []);
 
   const performLookup = useCallback(async (pnrValue) => {
     const q = (pnrValue || '').trim();
@@ -89,54 +98,65 @@ function PrintTicketContent() {
     performLookup(cleanPnr);
   };
 
+  // PDF with the same details as the printed ticket.
   const handleDownloadPdf = () => {
     if (!ticket) return;
     const trip = ticket.trip || ticket.tripId || {};
     const bus = ticket.bus || ticket.busId || trip.busId || {};
     const route = ticket.route || ticket.routeId || trip.routeId || {};
-    const agent = ticket.agentId || {};
-
-    const seatsStr = ticket.seats?.map(s => s.seatNumber || s).join(', ') || ticket.seatNumbers?.join(', ') || 'N/A';
-    const depDate = ticket.departureDate || (trip.departureDate ? new Date(trip.departureDate).toLocaleDateString('en-IN', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    }) : 'Scheduled');
-
+    const dep = trip.departureTime || ticket.departureTime;
+    const arr = trip.arrivalTime || ticket.arrivalTime;
+    const t = (d) => {
+      if (!d) return '';
+      const x = new Date(d);
+      return Number.isNaN(x.getTime()) ? String(d) : x.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }).toUpperCase();
+    };
+    const day = (d) => {
+      const x = new Date(d);
+      return Number.isNaN(x.getTime()) ? (d || '') : x.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+    };
+    const cash = ticket.paymentProvider === 'agent_cash';
+    const fb = ticket.fareBreakdown || {};
+    const agentCharge = Number(ticket.agentServiceCharge) > 0 && ticket.paymentChannel !== 'ONLINE' ? Number(ticket.agentServiceCharge) : 0;
     downloadTicketPdf({
-      bookingId: ticket.pnr || ticket.bookingId,
-      pnr: ticket.pnr,
-      fromCity: ticket.fromCity || trip.sourceCity || route.fromCity?.name || 'Rupadiya',
-      toCity: ticket.toCity || trip.destinationCity || route.toCity?.name || 'Destination',
-      travelDate: depDate,
-      departureTime: ticket.departureTime || trip.departureTime || '05:30 PM',
-      arrivalTime: ticket.arrivalTime || trip.arrivalTime || 'Morning (Scheduled)',
-      busName: bus.operatorName || bus.name || 'Rupadiya Intercity Travels',
-      busNumber: bus.busNumber || 'UP-40-TC-1001',
-      busType: bus.busType || '36 AC Sleeper (2+1)',
-      layoutType: bus.layoutType || '2+1 Sleeper',
-      driverName: bus.driverName || bus.driverDetails?.name || 'Verified Captain',
-      driverPhone: bus.driverPhone || bus.driverDetails?.phone || '+91 98765 43210',
-      amenities: bus.amenities || ['Charging Point', 'Night Reading Lamp', 'Water Bottle', 'AC', 'Blanket'],
-      boardingName: ticket.boardingPoint?.name || ticket.boardingLocation || 'Rupadiya Central Terminal',
-      droppingName: ticket.droppingPoint?.name || ticket.droppingLocation || 'Central Dropping Point',
-      reportingTime: '15 Mins Before Departure',
-      travelerName: ticket.contactDetails?.name || ticket.passengers?.[0]?.name || 'Passenger',
-      travelerPhone: ticket.contactDetails?.phone || ticket.passengers?.[0]?.phone || 'On Record',
+      pnr: ticket.pnr || ticket.bookingId,
+      status: ticket.status,
+      qrToken: ticket.qrToken || null,
+      bookedAt: ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+      fromCity: ticket.fromCity || trip.sourceCity || route.fromCity?.name || '',
+      toCity: ticket.toCity || trip.destinationCity || route.toCity?.name || '',
+      dateStr: ticket.departureDate || (dep ? day(dep) : ''),
+      timeStr: (ticket.boardingPoint?.time && !/scheduled/i.test(ticket.boardingPoint.time)) ? ticket.boardingPoint.time : t(dep),
+      arrTimeStr: (ticket.droppingPoint?.time && !/scheduled/i.test(ticket.droppingPoint.time)) ? ticket.droppingPoint.time : t(arr),
+      boardingName: ticket.boardingPoint?.name || ticket.boardingLocation || '',
+      droppingName: ticket.droppingPoint?.name || ticket.droppingLocation || '',
+      busName: bus.name || bus.operatorName || '',
+      companyName: bus.operatorName || '',
+      busNumber: bus.busNumber || '',
+      busModel: bus.busType || '',
+      driverName: bus.driverName || bus.driverDetails?.name || '',
+      driverPhone: bus.driverPhone || bus.driverDetails?.phone || '',
+      amenities: bus.amenities || [],
+      passengers: (ticket.passengers || []).map((p, idx) => ({ ...p, seatNumber: p.seatNumber || ticket.seatNumbers?.[idx] || String(idx + 1) })),
+      seatsStr: (ticket.seatNumbers || []).join(', '),
+      travelerName: ticket.contactDetails?.name || ticket.passengers?.[0]?.name || '',
+      travelerPhone: ticket.contactDetails?.phone || '',
       travelerEmail: ticket.contactDetails?.email || '',
-      seatsStr,
-      passengers: (ticket.passengers || []).map((p, idx) => ({
-        name: p.name || `Passenger ${idx + 1}`,
-        age: p.age || '—',
-        gender: p.gender || '—',
-        seatNumber: p.seatNumber || ticket.seatNumbers?.[idx] || (idx + 1)
-      })),
-      totalFare: ticket.fareBreakdown?.totalPayable || ticket.totalAmount || 840,
-      baseFare: ticket.fareBreakdown?.baseFare || '',
-      gst: ticket.fareBreakdown?.tax || ticket.fareBreakdown?.gst || '',
-      agentCode: agent.referralCode || 'RUP-AGT',
-      agencyName: agent.agencyName || 'Authorized Counter'
+      emergencyContact: ticket.emergencyContact?.phone ? ticket.emergencyContact : null,
+      fareBreakdown: fb,
+      totalFare: Number(fb.totalPayable ?? ticket.totalAmount ?? 0) + agentCharge,
+      totalLabel: cash ? 'Cash due to company office' : 'Total amount paid',
+      agentServiceCharge: 0,
+      fareLines: [...fareLinesFrom(fb), ...(agentCharge ? [['Agent service charge', agentCharge]] : [])],
+      paymentProvider: ticket.paymentProvider === 'agent_wallet' ? 'Agent counter' : cash ? 'Cash' : 'Online payment',
+      paymentReference: ticket.paymentReference || '',
+      paymentStatus: cash
+        ? (ticket.cashCollection?.status === 'RECEIVED' ? `Received by company office${ticket.cashCollection.receiptNo ? ` (receipt ${ticket.cashCollection.receiptNo})` : ''}` : 'NOT yet received - boarding not allowed')
+        : (ticket.paymentStatus || ''),
+      issuedBy: agentProfile ? `${agentProfile.agencyName || agentProfile.name || ''}${agentProfile.referralCode ? ` (${agentProfile.referralCode})` : ''}${agentProfile.phone ? ` | ${agentProfile.phone}` : ''}` : '',
+      cancellationNote: ticket.status === 'CANCELLED' && ticket.cancellationDetails
+        ? `Cancelled | Refund Rs. ${Number(ticket.cancellationDetails.refundAmount || 0).toLocaleString('en-IN')} | Fee Rs. ${Number(ticket.cancellationDetails.cancellationFee || 0).toLocaleString('en-IN')}`
+        : ''
     });
   };
 
@@ -173,17 +193,21 @@ function PrintTicketContent() {
             visibility: hidden !important;
           }
 
-          /* Show only the printable ticket and its child tree */
-          #printable-ticket, #printable-ticket * {
+          /* Show only the printable ticket */
+          #print-root, #print-root * {
             visibility: visible !important;
           }
+          html, body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
-          #printable-ticket {
+          #print-root {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
-            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          #printable-ticket {
             margin: 0 !important;
             padding: 20px !important;
             border: 2px solid #0f172a !important;
@@ -211,7 +235,7 @@ function PrintTicketContent() {
           <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block mb-1">
             Official Ticket Desk
           </span>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Print Ticket & Boarding Pass</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Print Ticket</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Search passenger bookings by PNR to print tickets or download PDF with complete coach details
           </p>
@@ -247,7 +271,7 @@ function PrintTicketContent() {
               required
               value={pnr}
               onChange={(e) => setPnr(e.target.value)}
-              placeholder="Enter 10-digit Ticket PNR (e.g. RUP-A711C4)"
+              placeholder="Enter ticket PNR (e.g. RUP12345678)"
               className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-hidden focus:border-emerald-500 uppercase shadow-xs"
             />
           </div>
@@ -269,7 +293,9 @@ function PrintTicketContent() {
         )}
       </div>
 
-      {/* Ticket Preview Card (The ONLY element visible in print) */}
+      {ticket && (
+      <div id="print-root">
+      {/* Printable ticket */}
       {ticket && (
         <div id="printable-ticket" className="bg-white border-2 border-dashed border-slate-300 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
           {/* Top Brand Banner */}
@@ -285,12 +311,24 @@ function PrintTicketContent() {
             </div>
 
             <div className="text-left sm:text-right font-mono">
+              {ticket.qrToken && ticket.status !== 'CANCELLED' && (
+                <div className="flex sm:justify-end mb-1">
+                  <TicketQr value={ticket.qrToken} size={96} className="border border-slate-200 rounded-lg p-1 bg-white" />
+                </div>
+              )}
               <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider">Confirmed PNR</span>
               <span className="text-lg font-black text-emerald-700">{ticket.pnr}</span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 mt-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                <span>STATUS: CONFIRMED</span>
-              </span>
+              {ticket.status === 'CANCELLED' ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-800 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-300 mt-1">
+                  <XCircle className="w-3 h-3 text-rose-600" />
+                  <span>STATUS: CANCELLED — NOT VALID FOR TRAVEL</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 mt-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>STATUS: {ticket.status || 'CONFIRMED'}</span>
+                </span>
+              )}
             </div>
           </div>
 
@@ -305,7 +343,7 @@ function PrintTicketContent() {
                 {ticket.boardingPoint?.name || ticket.boardingLocation || 'Main Hub Terminal'}
               </div>
               <div className="text-xs text-slate-500 mt-1 flex items-center gap-1 font-mono">
-                <Clock className="w-3.5 h-3.5 text-slate-400" /> Dep: {ticket.departureTime || trip.departureTime || '05:30 PM'}
+                <Clock className="w-3.5 h-3.5 text-slate-400" /> Dep: {ticket.boardingPoint?.time || ticket.departureTime || '—'}
               </div>
             </div>
 
@@ -333,7 +371,7 @@ function PrintTicketContent() {
                 {ticket.droppingPoint?.name || ticket.droppingLocation || 'Central Stand'}
               </div>
               <div className="text-xs text-slate-500 mt-1 flex items-center gap-1 font-mono md:justify-end">
-                <Clock className="w-3.5 h-3.5 text-slate-400" /> Arr: {ticket.arrivalTime || trip.arrivalTime || 'Morning (Scheduled)'}
+                <Clock className="w-3.5 h-3.5 text-slate-400" /> Arr: {ticket.droppingPoint?.time || ticket.arrivalTime || '—'}
               </div>
             </div>
           </div>
@@ -358,7 +396,7 @@ function PrintTicketContent() {
               <div className="text-right">
                 <span className="text-[10px] font-bold text-slate-500 uppercase block">Vehicle Plate Number</span>
                 <span className="text-sm font-mono font-black text-emerald-900 tracking-wider">
-                  {bus.busNumber || 'UP-40-TC-1001'}
+                  {bus.busNumber || '—'}
                 </span>
               </div>
             </div>
@@ -367,28 +405,27 @@ function PrintTicketContent() {
               <div>
                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">Coach Model & Class</span>
                 <span className="font-bold text-slate-800 mt-0.5 block">
-                  {bus.busType || '36 AC Sleeper (2+1)'}
+                  {bus.busType || '—'}
                 </span>
-                <span className="text-[10px] text-slate-500">Seating Layout: {bus.layoutType || '2+1 Sleeper'}</span>
+                <span className="text-[10px] text-slate-500">Seating Layout: {bus.layoutType || '—'}</span>
               </div>
 
               <div>
                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">Assigned Captain / Pilot</span>
                 <span className="font-bold text-slate-800 mt-0.5 block">
-                  {bus.driverName || bus.driverDetails?.name || 'Verified Captain (Dinesh Kumar)'}
+                  {bus.driverName || bus.driverDetails?.name || 'Shared before departure'}
                 </span>
                 <span className="text-[10px] text-slate-600 flex items-center gap-1 font-mono">
                   <Phone className="w-3 h-3 text-emerald-600" />
-                  {bus.driverPhone || bus.driverDetails?.phone || '+91 98765 43210'}
+                  {bus.driverPhone || bus.driverDetails?.phone || '—'}
                 </span>
               </div>
 
               <div>
                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">Total Seating Capacity</span>
                 <span className="font-bold text-slate-800 mt-0.5 block">
-                  {bus.totalSeats || 36} Confirmed Berths
+                  {bus.totalSeats ? `${bus.totalSeats} seats` : '—'}
                 </span>
-                <span className="text-[10px] text-emerald-700 font-semibold">24x7 Realtime GPS Tracked</span>
               </div>
             </div>
 
@@ -429,12 +466,19 @@ function PrintTicketContent() {
                   }]).map((p, idx) => (
                     <tr key={idx} className="text-slate-800">
                       <td className="py-2.5 px-3 text-slate-400 font-mono">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{p.name}</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
+                        {p.name}{p.isChild ? <span className="ml-1 text-[10px] font-semibold text-sky-700">(child)</span> : null}
+                        {(p.infants || []).map((inf, i) => (
+                          <div key={i} className="text-[10px] font-medium text-slate-500">+ Infant on lap: {inf.name} ({inf.age} yr, {inf.gender})</div>
+                        ))}
+                      </td>
                       <td className="py-2.5 px-3 text-slate-600">{p.age ? `${p.age} yrs` : '—'} • {p.gender || '—'}</td>
                       <td className="py-2.5 px-3 font-mono font-black text-emerald-700 text-sm">
                         Seat: {p.seatNumber || ticket.seatNumbers?.[idx] || idx + 1}
                       </td>
-                      <td className="py-2.5 px-3 text-right text-emerald-700 font-bold">Confirmed</td>
+                      <td className={`py-2.5 px-3 text-right font-bold ${ticket.status === 'CANCELLED' ? 'text-rose-600' : 'text-emerald-700'}`}>
+                        {ticket.status === 'CANCELLED' ? 'Cancelled' : 'Confirmed'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -447,18 +491,66 @@ function PrintTicketContent() {
             <div className="text-[11px] text-slate-500 space-y-1">
               <p>• <strong>Reporting Time:</strong> Please report at the boarding point 15 minutes before departure.</p>
               <p>• <strong>Identification:</strong> Carry a valid government photo identity card (Aadhaar / Voter ID / DL).</p>
-              <p>• <strong>Counter Helpline:</strong> +91 98765 43210 (24x7 Customer Support Desk)</p>
+              <p>• <strong>Cancellation refund:</strong> more than 48 h before departure 90% · 24–48 h 75% · 12–24 h 50% · under 12 h none.</p>
             </div>
 
-            <div className="text-left sm:text-right font-mono bg-slate-50 p-3.5 rounded-xl border border-slate-200 w-full sm:w-auto">
-              <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Fare Paid</span>
-              <span className="text-lg font-black text-slate-900">
-                ₹{Number(ticket.fareBreakdown?.totalPayable || ticket.totalAmount || 840).toLocaleString('en-IN')}
-              </span>
-              <span className="text-[10px] text-slate-400 block mt-0.5">Includes 5% Passenger Transport GST</span>
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 w-full sm:w-72 space-y-1 text-[11px] print-border">
+              <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Fare details</span>
+              {[
+                [`Base fare (${ticket.fareBreakdown?.seatCount || (ticket.seatNumbers || []).length} × ₹${Number(ticket.fareBreakdown?.baseFare || 0).toLocaleString('en-IN')})`, ticket.fareBreakdown?.subtotal],
+                ['GST (5%)', ticket.fareBreakdown?.gstAmount],
+                ['Platform fee (5%)', ticket.fareBreakdown?.platformFee],
+                [ticket.fareBreakdown?.gatewayFeeActual != null ? 'Payment gateway charge (actual)' : 'Payment gateway charge', ticket.fareBreakdown?.gatewayFeeActual ?? ticket.fareBreakdown?.gatewayFee],
+                ['Travel protection', ticket.fareBreakdown?.insuranceAmount],
+                ['Discount', ticket.fareBreakdown?.discountAmount ? -ticket.fareBreakdown.discountAmount : 0]
+              ].filter(([, v]) => Number(v)).map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-3 text-slate-600">
+                  <span>{k}</span>
+                  <span className="font-mono font-semibold text-slate-800">{Number(v) < 0 ? '−' : ''}₹{Math.abs(Number(v)).toLocaleString('en-IN')}</span>
+                </div>
+              ))}
+              <div className="flex justify-between gap-3 pt-1 border-t border-slate-200 text-slate-900 font-bold">
+                <span>{ticket.paymentProvider === 'agent_cash' ? 'Cash due to company office' : 'Amount paid'}</span>
+                <span className="font-mono">₹{Number(ticket.fareBreakdown?.totalPayable ?? ticket.totalAmount ?? 0).toLocaleString('en-IN')}</span>
+              </div>
+              {Number(ticket.agentServiceCharge) > 0 && ticket.paymentChannel !== 'ONLINE' && (
+                <>
+                  <div className="flex justify-between gap-3 text-slate-600">
+                    <span>Agent service charge</span>
+                    <span className="font-mono font-semibold text-slate-800">₹{Number(ticket.agentServiceCharge).toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between gap-3 text-slate-900 font-black text-sm">
+                    <span>Total paid</span>
+                    <span className="font-mono">₹{Number(ticket.fareBreakdown?.customerTotal ?? (Number(ticket.fareBreakdown?.totalPayable || 0) + Number(ticket.agentServiceCharge))).toLocaleString('en-IN')}</span>
+                  </div>
+                </>
+              )}
+              <div className="pt-1 text-[10px] text-slate-500">
+                Paid via {ticket.paymentProvider === 'agent_wallet' ? 'agent counter'
+                  : ticket.paymentProvider === 'agent_cash' ? `cash (${ticket.cashCollection?.status === 'RECEIVED' ? `received by company office, receipt ${ticket.cashCollection.receiptNo}` : 'NOT yet received by company office — boarding not allowed'})`
+                  : 'online payment'}
+                {ticket.createdAt ? ` · Booked ${new Date(ticket.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+              </div>
+              {ticket.emergencyContact?.phone && (
+                <div className="text-[10px] text-slate-500">
+                  Emergency contact: {ticket.emergencyContact.name} ({ticket.emergencyContact.relation}) · {ticket.emergencyContact.phone}
+                </div>
+              )}
+              {agentProfile && (
+                <div className="text-[10px] text-slate-500">
+                  Issued by {agentProfile.agencyName || agentProfile.name}{agentProfile.referralCode ? ` (${agentProfile.referralCode})` : ''}{agentProfile.phone ? ` · ${agentProfile.phone}` : ''}
+                </div>
+              )}
+              {ticket.status === 'CANCELLED' && ticket.cancellationDetails && (
+                <div className="text-[10px] text-rose-700 font-semibold">
+                  Cancelled · Refund ₹{Number(ticket.cancellationDetails.refundAmount || 0).toLocaleString('en-IN')} · Fee ₹{Number(ticket.cancellationDetails.cancellationFee || 0).toLocaleString('en-IN')}
+                </div>
+              )}
             </div>
           </div>
         </div>
+      )}
+      </div>
       )}
     </div>
   );

@@ -178,6 +178,8 @@ app.use('/api/v1/wallet', walletRoutes);
 app.use('/api/v1/agent', agentRoutes);
 app.use('/api/v1/agents', agentRoutes);
 app.use('/api/v1/withdrawals', withdrawalRoutes);
+app.use('/api/v1/payouts', require('./modules/withdrawals/payouts.routes'));
+app.use('/api/v1/manager', require('./modules/manager/manager.routes'));
 app.use('/api/v1/kyc', kycRoutes);
 app.use('/api/v1/owner', ownerRoutes);
 app.use('/api/v1/companies', ownerRoutes);

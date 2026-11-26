@@ -18,6 +18,8 @@ import {
   AlertCircle,
   Compass
 } from 'lucide-react';
+import PhoneInput from '../../components/ui/PhoneInput';
+import { isValidPhone, PHONE_ERROR } from '../../lib/phone';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/ui/Toast';
 import { useAuth } from '../../context/AuthContext';
@@ -62,9 +64,9 @@ export default function UserProfilePage() {
       return;
     }
 
-    const cleanPhone = phone.trim().replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      addToast('Please enter a valid 10-digit mobile number', 'warning');
+    const cleanPhone = phone.trim();
+    if (!isValidPhone(cleanPhone)) {
+      addToast(PHONE_ERROR, 'warning');
       return;
     }
 
@@ -258,23 +260,9 @@ export default function UserProfilePage() {
             {/* Mobile Number */}
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                Mobile Number (10 Digits)
+                Mobile Number (India / Nepal)
               </label>
-              <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-slate-400 text-sm font-semibold border-r border-slate-200 pr-2">
-                  <Phone className="w-4 h-4 text-slate-400" />
-                  <span className="text-xs font-bold text-slate-600">+91</span>
-                </div>
-                <input
-                  type="tel"
-                  maxLength={10}
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                  placeholder="0000000000"
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-sm font-semibold text-slate-900 transition pl-20 tracking-wider"
-                  required
-                />
-              </div>
+              <PhoneInput required value={phone} onChange={setPhone} className="rounded-2xl py-0.5" inputClassName="text-slate-900" />
               <p className="text-[11px] text-slate-400 mt-1">
                 Used for boarding gate SMS alerts and trip notifications.
               </p>

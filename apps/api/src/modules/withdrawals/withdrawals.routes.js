@@ -30,7 +30,7 @@ async function getAgentWithdrawalMetrics(agentId, availableBalance) {
   // 2. All pending or approved withdrawals
   const allWithdrawals = await WithdrawalRequest.find({
     agentId,
-    status: { $in: [WITHDRAWAL_STATUS.PENDING, WITHDRAWAL_STATUS.APPROVED] }
+    status: { $in: [WITHDRAWAL_STATUS.PENDING, WITHDRAWAL_STATUS.PROCESSING, WITHDRAWAL_STATUS.PAYOUT_FAILED, WITHDRAWAL_STATUS.APPROVED] }
   });
 
   const withdrawnTotal = allWithdrawals
@@ -38,7 +38,7 @@ async function getAgentWithdrawalMetrics(agentId, availableBalance) {
     .reduce((sum, w) => sum + w.amount, 0);
 
   const pendingTotal = allWithdrawals
-    .filter(w => w.status === WITHDRAWAL_STATUS.PENDING)
+    .filter(w => w.status !== WITHDRAWAL_STATUS.APPROVED)
     .reduce((sum, w) => sum + w.amount, 0);
 
   const totalCommitted = withdrawnTotal + pendingTotal;
@@ -113,7 +113,7 @@ router.post(['/', '/request'], authenticateToken, authorizeRoles(ROLES.AGENT), a
     // 5. Verification: Concurrency / Single Pending Request check
     const existingPending = await WithdrawalRequest.findOne({
       agentId: req.user._id,
-      status: WITHDRAWAL_STATUS.PENDING
+      status: { $in: [WITHDRAWAL_STATUS.PENDING, WITHDRAWAL_STATUS.PROCESSING, WITHDRAWAL_STATUS.PAYOUT_FAILED] }
     });
     if (existingPending) {
       return res.status(400).json({
@@ -133,8 +133,15 @@ router.post(['/', '/request'], authenticateToken, authorizeRoles(ROLES.AGENT), a
 
       // If user passed a masked account, fallback to saved account if valid, or require full account number
       let finalAccountNumber = rawAccountNumber;
-      if (!finalAccountNumber && req.user.bankDetails?.accountNumberMasked) {
-        finalAccountNumber = req.user.bankDetails.accountNumberMasked;
+      if (!finalAccountNumber || finalAccountNumber.startsWith('XXXX')) {
+        // Use the full saved account number (stored only for payouts).
+        const withBank = await User.findById(req.user._id).select('+bankDetails.accountNumber');
+        finalAccountNumber = withBank?.bankDetails?.accountNumber || '';
+        if (!finalAccountNumber) {
+          return res.status(400).json({
+            error: 'Please enter your full bank account number so the company can send your payout.'
+          });
+        }
       }
 
       if (!accountName || accountName.length < 2) {
@@ -143,7 +150,7 @@ router.post(['/', '/request'], authenticateToken, authorizeRoles(ROLES.AGENT), a
         });
       }
 
-      if (!finalAccountNumber || (!BANK_ACCOUNT_REGEX.test(finalAccountNumber) && !finalAccountNumber.startsWith('XXXX-'))) {
+      if (!BANK_ACCOUNT_REGEX.test(finalAccountNumber)) {
         return res.status(400).json({
           error: 'Please enter a valid Bank Account Number (between 9 and 18 numerical digits).'
         });
@@ -155,9 +162,7 @@ router.post(['/', '/request'], authenticateToken, authorizeRoles(ROLES.AGENT), a
         });
       }
 
-      const maskedNumber = finalAccountNumber.startsWith('XXXX-')
-        ? finalAccountNumber
-        : `XXXX-XXXX-${finalAccountNumber.slice(-4)}`;
+      const maskedNumber = `XXXX-XXXX-${finalAccountNumber.slice(-4)}`;
 
       sanitizedPayout = {
         method: 'bank',
@@ -223,7 +228,19 @@ router.post(['/', '/request'], authenticateToken, authorizeRoles(ROLES.AGENT), a
       payoutDetails: sanitizedPayout,
       status: WITHDRAWAL_STATUS.PENDING
     });
-    await withdrawal.save();
+    try {
+      await withdrawal.save();
+    } catch (saveErr) {
+      // Undo the escrow reservation if the request could not be recorded.
+      await Wallet.updateOne(
+        { userId: req.user._id, reservedBalance: { $gte: numAmount } },
+        { $inc: { availableBalance: numAmount, reservedBalance: -numAmount } }
+      );
+      if (saveErr.code === 11000) {
+        return res.status(409).json({ error: 'You already have a withdrawal request waiting for approval.' });
+      }
+      throw saveErr;
+    }
 
     // 9. Record Immutable Ledger Reservation Entry
     const idempotencyKey = `WDR_LOCK_${withdrawal._id}`;
@@ -248,6 +265,7 @@ router.post(['/', '/request'], authenticateToken, authorizeRoles(ROLES.AGENT), a
         bankDetails: {
           accountName: sanitizedPayout.accountName,
           accountNumberMasked: sanitizedPayout.accountNumberMasked,
+          accountNumber: sanitizedPayout.accountNumber || '',
           ifscCode: sanitizedPayout.ifscCode,
           upiId: sanitizedPayout.upiId,
           bankName: sanitizedPayout.bankName

@@ -268,6 +268,9 @@ function SearchContent() {
                         <span className="text-sm font-bold text-slate-900">
                           {trip.bus?.name || 'Rupadiya Intercity Coach'}
                         </span>
+                        {trip.companyName && (
+                          <span className="block text-[11px] font-semibold text-slate-500">Operated by {trip.companyName}</span>
+                        )}
                         <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
                           {trip.bus?.busType || 'AC Seater 2+2'}
                         </span>
@@ -296,9 +299,11 @@ function SearchContent() {
                   {/* Right: Price & View Seats Button */}
                   <div className="flex items-center justify-between md:flex-col md:items-end gap-3 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100">
                     <div className="text-left md:text-right">
-                      <span className="text-[11px] font-medium text-slate-400 block">{t('farePerSeat') || 'Fare per seat'}</span>
+                      <span className="text-[11px] font-medium text-slate-400 block">
+                        {trip.minFare && trip.maxFare && trip.minFare !== trip.maxFare ? 'Starting from' : (t('farePerSeat') || 'Fare per seat')}
+                      </span>
                       <div className="text-2xl font-bold text-slate-900">
-                        ₹{trip.baseFare || 1650}
+                        ₹{trip.minFare || trip.baseFare}
                       </div>
                       <span className="text-[11px] font-semibold text-emerald-600">
                         {availableSeats} {t('seatsLeft') || 'seats left'}

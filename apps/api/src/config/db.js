@@ -52,6 +52,9 @@ async function connectDB(retries = 5, delayMs = 1500) {
       isConnecting = false;
       isConnected = true;
       console.log(`[DB] Connected to MongoDB: ${conn.connection.host}/${conn.connection.name}`);
+      // Remove made-up "<phone>@rupadiya.com" emails and make users.email optional (idempotent).
+      require('../utils/cleanPlaceholderEmails').cleanPlaceholderEmails()
+        .catch((e) => console.warn('[DB] Placeholder email clean-up skipped:', e.message));
       return conn.connection;
     } catch (err) {
       console.error(`[DB Error] Connection attempt ${attempt}/${retries} failed: ${err.message}`);

@@ -21,7 +21,8 @@ import {
   ShieldCheck,
   X,
   Network,
-  ClipboardList
+  ClipboardList,
+  Banknote
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useWallet } from '../context/WalletContext';
@@ -61,6 +62,7 @@ export default function AgentSidebar({ isOpen, onClose }) {
     { label: 'Referral Network', href: '/network', icon: Network },
     { label: 'Booking', href: '/booking', icon: Ticket },
     { label: 'Booking History', href: '/bookings', icon: ClipboardList },
+    { label: 'Cash Ledger', href: '/cash', icon: Banknote },
     { label: 'Track a Bus', href: '/track-bus', icon: Navigation },
     { label: 'Profile', href: '/profile', icon: User },
     { label: 'Settings', href: '/settings', icon: Sliders },

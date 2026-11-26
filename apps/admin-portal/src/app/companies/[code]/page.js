@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import PhoneInput from '../../../components/ui/PhoneInput';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -693,12 +694,7 @@ export default function AdminCompanyDetailPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">Contact Phone</label>
-                  <input
-                    type="tel"
-                    value={editForm.contactPhone}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, contactPhone: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"
-                  />
+                  <PhoneInput size="sm" value={editForm.contactPhone} onChange={(v) => setEditForm(prev => ({ ...prev, contactPhone: v }))} />
                 </div>
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">Official Email</label>

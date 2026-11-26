@@ -1,156 +1,156 @@
 const { CommissionTier, CommissionRecord } = require('./commission.model');
-const { Wallet, WalletLedger } = require('../wallets/wallet.model');
 const User = require('../users/user.model');
 const taxService = require('../tax/tax.service');
+const walletLedger = require('../../services/walletLedger.service');
 const env = require('../../config/env');
-const { DEFAULT_COMMISSION_TIERS, DEFAULT_BONUS_PER_SEAT, TRANSACTION_TYPES } = require('../../config/constants');
+const { DEFAULT_COMMISSION_TIERS, DEFAULT_BONUS_PER_SEAT, TRANSACTION_TYPES, ROLES } = require('../../config/constants');
+
+const MAX_LEVELS = 5;
 
 class CommissionService {
   /**
-   * Traverse up to 5 levels of the referral tree and distribute commissions
-   * Level 1: ₹100, Level 2: ₹100, Level 3: ₹100, Level 4: ₹200, Level 5: ₹300
-   * Plus configurable bonus per seat (default ₹20)
-   * Deduct 1% TCS and record into tax_entries
+   * Walk up to 5 levels of the referral tree and credit each agent's commission.
+   *
+   *  - Idempotent: a unique (bookingId, level) index plus ledger idempotency keys
+   *    guarantee a retry never pays twice.
+   *  - Cycle-safe: a corrupted referral chain (A → B → A) stops instead of looping.
+   *  - Inactive / non-agent users end the chain.
+   *  - 1% TCS is withheld and recorded for tax filing.
    */
   async distributeCommissions({ booking, trip, seatCount }) {
-    if (!booking.referralAgentId) return [];
+    if (!booking.referralAgentId || !(seatCount > 0)) return [];
 
-    // Load active commission tiers from DB or fallback to constants
-    let tiers = await CommissionTier.find({ isActive: true }).sort({ level: 1 });
-    if (!tiers || tiers.length === 0) {
-      tiers = DEFAULT_COMMISSION_TIERS;
-    }
+    let tiers = await CommissionTier.find({ isActive: true }).sort({ level: 1 }).lean();
+    if (!tiers || tiers.length === 0) tiers = DEFAULT_COMMISSION_TIERS;
 
+    const tcsRate = env.TCS_RATE || 0.01;
+    const visited = new Set();
+    const distributed = [];
     let currentAgentId = booking.referralAgentId;
     let level = 1;
-    const distributedRecords = [];
 
-    while (currentAgentId && level <= 5) {
-      const agent = await User.findById(currentAgentId);
-      if (!agent || !agent.isActive) break;
+    while (currentAgentId && level <= MAX_LEVELS) {
+      const key = String(currentAgentId);
+      if (visited.has(key)) {
+        console.warn(`[Commission] Referral cycle detected at ${key} for booking ${booking.bookingId}`);
+        break;
+      }
+      visited.add(key);
 
-      const tier = tiers.find(t => t.level === level) || { ratePerSeat: 100, bonusPerSeat: DEFAULT_BONUS_PER_SEAT };
-      const baseRate = Number(tier.ratePerSeat) || 100;
-      const bonusPerSeat = Number(tier.bonusPerSeat !== undefined ? tier.bonusPerSeat : DEFAULT_BONUS_PER_SEAT);
+      const agent = await User.findById(currentAgentId).select('_id role isActive referredBy companyId companyCode name');
+      if (!agent || agent.isActive === false || agent.role !== ROLES.AGENT) break;
+
+      const tier = tiers.find((t) => Number(t.level) === level) || { ratePerSeat: 100, bonusPerSeat: DEFAULT_BONUS_PER_SEAT };
+      const baseRate = Math.max(0, Number(tier.ratePerSeat) || 0);
+      const bonusPerSeat = Math.max(0, Number(tier.bonusPerSeat ?? DEFAULT_BONUS_PER_SEAT) || 0);
       const effectiveRate = baseRate + bonusPerSeat;
-
       const grossCommission = effectiveRate * seatCount;
-      const tcsRate = env.TCS_RATE || 0.01;
       const tcsDeducted = Math.round(grossCommission * tcsRate);
       const netCommission = grossCommission - tcsDeducted;
 
-      // 1. Create Commission Record
-      const commRecord = new CommissionRecord({
-        bookingId: booking._id,
-        pnr: booking.pnr,
-        tripId: trip._id,
-        agentId: agent._id,
-        companyId: agent.companyId || booking.companyId || null,
-        companyCode: agent.companyCode || booking.companyCode,
-        level,
-        seatCount,
-        ratePerSeat: baseRate,
-        bonusPerSeat,
-        effectiveRatePerSeat: effectiveRate,
-        grossCommission,
-        tcsRate,
-        tcsDeducted,
-        netCommission,
-        status: 'CREDITED'
-      });
-      await commRecord.save();
-      distributedRecords.push(commRecord);
+      if (netCommission > 0) {
+        let record;
+        try {
+          record = await CommissionRecord.create({
+            bookingId: booking._id,
+            pnr: booking.pnr,
+            tripId: trip._id,
+            agentId: agent._id,
+            companyId: agent.companyId || booking.companyId || null,
+            companyCode: agent.companyCode || booking.companyCode,
+            level,
+            seatCount,
+            ratePerSeat: baseRate,
+            bonusPerSeat,
+            effectiveRatePerSeat: effectiveRate,
+            grossCommission,
+            tcsRate,
+            tcsDeducted,
+            netCommission,
+            status: 'CREDITED'
+          });
+        } catch (err) {
+          if (err.code === 11000) {
+            record = await CommissionRecord.findOne({ bookingId: booking._id, level });
+          } else {
+            throw err;
+          }
+        }
 
-      // 2. Record 1% TCS in tax_entries table per PDF specification
-      try {
-        await taxService.recordTcsEntry({
-          commissionRecord: commRecord,
-          grossCommission,
-          tcsDeducted,
-          agent,
-          companyCode: agent.companyCode || booking.companyCode
-        });
-      } catch (taxErr) {
-        console.error('[TaxEngine TCS Error]', taxErr);
-      }
-
-      // 3. Credit Agent Wallet & Record Immutable Double-Entry Ledger
-      let wallet = await Wallet.findOne({ userId: agent._id });
-      if (!wallet) {
-        wallet = await Wallet.create({
+        await walletLedger.credit({
           userId: agent._id,
+          amount: netCommission,
           companyId: agent.companyId || booking.companyId || null,
           companyCode: agent.companyCode || booking.companyCode,
-          ownerType: 'AGENT',
-          availableBalance: 0,
-          reservedBalance: 0
+          transactionType: TRANSACTION_TYPES.TICKET_COMMISSION_CREDIT,
+          referenceType: 'COMMISSION',
+          referenceId: booking.bookingId,
+          description: `Level ${level} commission · PNR ${booking.pnr} · ${seatCount} seat${seatCount > 1 ? 's' : ''} × ₹${effectiveRate} less ${Math.round(tcsRate * 100)}% TCS`,
+          idempotencyKey: `COMM_CREDIT_${booking.bookingId}_L${level}_${agent._id}`
         });
+
+        try {
+          await taxService.recordTcsEntry({
+            commissionRecord: record,
+            grossCommission,
+            tcsDeducted,
+            agent,
+            companyCode: agent.companyCode || booking.companyCode
+          });
+        } catch (taxErr) {
+          console.error('[TaxEngine TCS Error]', taxErr.message);
+        }
+
+        distributed.push(record);
       }
 
-      wallet.availableBalance += netCommission;
-      await wallet.save();
-
-      const idempotencyKey = `COMM_CREDIT_${booking.bookingId}_L${level}_${agent._id}`;
-      await WalletLedger.create({
-        walletId: wallet._id,
-        userId: agent._id,
-        companyId: agent.companyId || booking.companyId || null,
-        companyCode: agent.companyCode || booking.companyCode,
-        entryType: 'CREDIT',
-        amount: netCommission,
-        balanceAfter: wallet.availableBalance,
-        transactionType: TRANSACTION_TYPES.TICKET_COMMISSION_CREDIT,
-        referenceType: 'COMMISSION',
-        referenceId: booking.bookingId,
-        description: `Level ${level} referral commission for PNR ${booking.pnr} (${seatCount} seats @ ₹${baseRate}+₹${bonusPerSeat}/seat bonus, less 1% TCS)`,
-        idempotencyKey
-      });
-
-      // Move to parent agent for the next tier
       currentAgentId = agent.referredBy;
-      level++;
+      level += 1;
     }
 
-    return distributedRecords;
+    return distributed;
   }
 
   /**
-   * Reverse commissions upon ticket cancellation
+   * Reverse commissions when a ticket is cancelled.
+   * Each record flips CREDITED → REVERSED atomically, so concurrent cancellations
+   * cannot claw back twice. If the agent already withdrew the money, we recover
+   * what is available (never pushing the wallet negative) and log the shortfall.
    */
-  async reverseCommissions(bookingId) {
-    const records = await CommissionRecord.find({ bookingId, status: 'CREDITED' });
+  async reverseCommissions(bookingObjectId) {
+    const records = await CommissionRecord.find({ bookingId: bookingObjectId, status: 'CREDITED' });
 
-    for (const record of records) {
-      const wallet = await Wallet.findOne({ userId: record.agentId });
-      if (wallet) {
-        wallet.availableBalance = Math.max(0, wallet.availableBalance - record.netCommission);
-        await wallet.save();
+    for (const candidate of records) {
+      const record = await CommissionRecord.findOneAndUpdate(
+        { _id: candidate._id, status: 'CREDITED' },
+        { $set: { status: 'REVERSED' } },
+        { new: true }
+      );
+      if (!record) continue;
 
-        const idempotencyKey = `COMM_REV_${record._id}_${Date.now()}`;
-        await WalletLedger.create({
-          walletId: wallet._id,
-          userId: record.agentId,
-          companyCode: wallet.companyCode,
-          entryType: 'DEBIT',
-          amount: record.netCommission,
-          balanceAfter: wallet.availableBalance,
-          transactionType: TRANSACTION_TYPES.COMMISSION_REVERSAL,
-          referenceType: 'COMMISSION',
-          referenceId: record.pnr,
-          description: `Reversal of Level ${record.level} commission due to cancellation of PNR ${record.pnr}`,
-          idempotencyKey
-        });
+      const res = await walletLedger.debit({
+        userId: record.agentId,
+        amount: record.netCommission,
+        companyCode: record.companyCode,
+        transactionType: TRANSACTION_TYPES.COMMISSION_REVERSAL,
+        referenceType: 'COMMISSION',
+        referenceId: record.pnr,
+        description: `Level ${record.level} commission reversed · PNR ${record.pnr} cancelled`,
+        idempotencyKey: `COMM_REV_${record._id}`,
+        allowPartial: true
+      });
+
+      if ((res.amount || 0) < record.netCommission) {
+        console.warn(
+          `[Commission Reversal] Shortfall ₹${record.netCommission - (res.amount || 0)} for agent ${record.agentId} on PNR ${record.pnr}`
+        );
       }
 
-      // Record compensating tax entry reversal
       try {
         await taxService.reverseTcsEntry(record);
       } catch (taxErr) {
-        console.error('[TaxEngine TCS Reversal Error]', taxErr);
+        console.error('[TaxEngine TCS Reversal Error]', taxErr.message);
       }
-
-      record.status = 'REVERSED';
-      await record.save();
     }
   }
 }

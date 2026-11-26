@@ -12,7 +12,13 @@ import {
   LogOut,
   LayoutDashboard,
   CreditCard,
-  Award
+  Award,
+  Banknote,
+  Landmark,
+  BarChart3,
+  History,
+  Network,
+  UserCog
 } from 'lucide-react';
 import { api, clearOwnerSession, isOwnerSessionValid } from '../lib/api';
 import { useCompanyWallet } from '../context/CompanyWalletContext';
@@ -62,6 +68,12 @@ export default function CompanySidebar({ onNavigate }) {
     { label: 'Withdrawal Requests', href: '/withdrawals', icon: CreditCard, badge: pendingWdCount > 0 ? pendingWdCount : null },
     { label: 'Fleet Buses (2+2)', href: '/fleet', icon: Bus },
     { label: 'Trip Scheduler', href: '/trips', icon: CalendarClock },
+    { label: 'Bus Managers', href: '/managers', icon: UserCog },
+    { label: 'Cash Collections', href: '/cash', icon: Banknote },
+    { label: 'Settlements with RBS', href: '/settlements', icon: Landmark },
+    { label: 'Reports', href: '/reports', icon: BarChart3 },
+    { label: 'Booking History', href: '/history', icon: History },
+    { label: 'Network (33 Companies)', href: '/network', icon: Network },
     { label: 'Annual Targets & P&L', href: '/targets', icon: Target },
     { label: 'Agent Payment Rules', href: '/payment-methods', icon: CreditCard },
   ];

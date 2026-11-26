@@ -4,6 +4,8 @@ import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Bus, Lock, Mail, ArrowRight, ShieldCheck, Phone, Sparkles, CheckCircle2 } from 'lucide-react';
+import PhoneInput from '../../components/ui/PhoneInput';
+import { formatPhone, isValidPhone, PHONE_ERROR } from '../../lib/phone';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/ui/Toast';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +21,7 @@ function LoginContent() {
   const [authMode, setAuthMode] = useState('otp');
 
   // Mobile OTP State
-  const [phone, setPhone] = useState('0000000000');
+  const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('1234');
   const [otpSent, setOtpSent] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
@@ -32,9 +34,9 @@ function LoginContent() {
   // 1. Send OTP to Mobile Number
   const handleSendOtp = async (e) => {
     e?.preventDefault();
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      addToast('Please enter a valid 10-digit mobile number.', 'warning', 'Invalid Mobile');
+    const cleanPhone = phone;
+    if (!isValidPhone(cleanPhone)) {
+      addToast(PHONE_ERROR, 'warning', 'Invalid Mobile');
       return;
     }
 
@@ -54,7 +56,7 @@ function LoginContent() {
   // 2. Verify OTP & Log in (and link past bookings)
   const handleVerifyOtp = async (e) => {
     e?.preventDefault();
-    const cleanPhone = phone.replace(/\D/g, '');
+    const cleanPhone = phone;
     if (!otp || otp.length < 4) {
       addToast('Please enter the 4-digit verification code.', 'warning', 'Enter OTP');
       return;
@@ -161,22 +163,9 @@ function LoginContent() {
                 <form onSubmit={handleSendOtp} className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                      Mobile Number (10 Digits)
+                      Mobile Number (India / Nepal)
                     </label>
-                    <div className="flex items-center gap-2 border border-slate-200 rounded-2xl px-3.5 py-3 focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-500/20 bg-slate-50/50">
-                      <span className="text-xs font-bold text-slate-400 border-r border-slate-200 pr-2">
-                        🇮🇳 +91
-                      </span>
-                      <input
-                        type="tel"
-                        required
-                        maxLength={10}
-                        placeholder="0000000000"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                        className="w-full text-sm font-bold focus:outline-none bg-transparent text-slate-900"
-                      />
-                    </div>
+                    <PhoneInput required value={phone} onChange={setPhone} className="rounded-2xl py-0.5" inputClassName="text-slate-900" />
                     <p className="text-[11px] text-slate-400 mt-1.5">
                       We will automatically link and show all bookings made with this mobile number.
                     </p>
@@ -184,9 +173,9 @@ function LoginContent() {
 
                   <button
                     type="submit"
-                    disabled={otpLoading || phone.length < 10}
+                    disabled={otpLoading || !isValidPhone(phone)}
                     className={`w-full py-3.5 rounded-2xl font-bold shadow-lg transition active:scale-[0.99] flex items-center justify-center gap-2 text-sm ${
-                      phone.length >= 10
+                      isValidPhone(phone)
                         ? 'bg-sky-500 hover:bg-sky-600 text-white shadow-sky-500/25'
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                     }`}
@@ -211,7 +200,7 @@ function LoginContent() {
                 <form onSubmit={handleVerifyOtp} className="space-y-4">
                   <div className="text-center pb-2">
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold mb-2">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> OTP Sent to +91 {phone}
+                      <CheckCircle2 className="w-3.5 h-3.5" /> OTP Sent to <span data-no-translate>{formatPhone(phone)}</span>
                     </div>
                     <p className="text-xs text-slate-500">
                       Enter the 4-digit verification code below

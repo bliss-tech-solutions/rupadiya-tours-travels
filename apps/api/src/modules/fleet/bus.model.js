@@ -67,6 +67,12 @@ const busSchema = new mongoose.Schema({
     enum: ['2+2', '2+1', '1+2', 'SLEEPER', 'SEATER']
   },
   amenities: [{ type: String }],
+  // Bus manager assigned by default to new trips of this bus
+  defaultManagerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   driverDetails: {
     name: { type: String, default: '' },
     phone: { type: String, default: '' },

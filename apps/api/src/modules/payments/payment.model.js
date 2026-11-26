@@ -60,6 +60,16 @@ const paymentSchema = new mongoose.Schema({
     enum: ['UPI', 'CARD', 'NETBANKING', 'WALLET', 'RAZORPAY', 'UNKNOWN'],
     default: 'RAZORPAY'
   },
+  // Lifecycle of the business action paid for (ticket issue / wallet credit)
+  fulfillmentStatus: {
+    type: String,
+    enum: ['PENDING', 'FULFILLED', 'FAILED_REFUNDED', 'FAILED_REFUND_PENDING'],
+    default: 'PENDING',
+    index: true
+  },
+  // Razorpay's actual charge (₹) for this payment, captured after verification
+  gatewayFee: { type: Number, default: null },
+  gatewayTax: { type: Number, default: null },
   consumedByBooking: {
     type: String,
     default: null,

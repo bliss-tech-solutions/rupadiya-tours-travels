@@ -36,6 +36,11 @@ export default function RealtimeNotificationListener() {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+          // Authenticate the socket before joining private notification rooms.
+          try {
+            const authToken = localStorage.getItem('admin_token');
+            if (authToken) ws.send(JSON.stringify({ action: 'auth', token: authToken }));
+          } catch (e) {}
           ws.send(JSON.stringify({ action: 'subscribe', room: 'admin:all' }));
         };
 

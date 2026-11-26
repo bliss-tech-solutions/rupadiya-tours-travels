@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import PhoneInput from '../../../components/ui/PhoneInput';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -531,13 +532,7 @@ export default function AddFleetCoachPage() {
                   <label className="text-xs font-semibold text-slate-700 block mb-1.5">
                     Primary Mobile Number
                   </label>
-                  <input
-                    type="tel"
-                    placeholder="+91 0000000000"
-                    value={driverPhone}
-                    onChange={(e) => setDriverPhone(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:border-blue-600"
-                  />
+                  <PhoneInput size="sm" value={driverPhone} onChange={(v) => setDriverPhone(v)} />
                 </div>
               </div>
 
@@ -559,13 +554,7 @@ export default function AddFleetCoachPage() {
                   <label className="text-xs font-semibold text-slate-700 block mb-1.5">
                     Emergency / Co-Driver Phone
                   </label>
-                  <input
-                    type="tel"
-                    placeholder="+91 9123456789"
-                    value={driverAltPhone}
-                    onChange={(e) => setDriverAltPhone(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:border-blue-600"
-                  />
+                  <PhoneInput size="sm" value={driverAltPhone} onChange={(v) => setDriverAltPhone(v)} />
                 </div>
               </div>
             </div>

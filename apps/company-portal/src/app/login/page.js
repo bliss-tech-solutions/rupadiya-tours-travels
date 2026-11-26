@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import PhoneInput from '../../components/ui/PhoneInput';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Lock, Mail, Building2, Phone, User, CheckCircle2, AlertCircle } from 'lucide-react';
 import { api, saveOwnerSession, isOwnerSessionValid } from '../../lib/api';
@@ -254,16 +255,8 @@ function LoginContent() {
 
               <div>
                 <label className="text-slate-700 font-bold block mb-1">Phone Number *</label>
-                <div className="flex items-center gap-2 border border-slate-200 bg-slate-50 rounded-xl px-3 py-2 focus-within:bg-white focus-within:border-blue-600">
-                  <Phone className="w-4 h-4 text-slate-400" />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="0000000000"
-                    value={regData.phone}
-                    onChange={(e) => setRegData({ ...regData, phone: e.target.value })}
-                    className="w-full text-slate-900 focus:outline-none bg-transparent"
-                  />
+                <div>
+                  <PhoneInput size="sm" required value={regData.phone} onChange={(v) => setRegData({ ...regData, phone: v })} />
                 </div>
               </div>
 

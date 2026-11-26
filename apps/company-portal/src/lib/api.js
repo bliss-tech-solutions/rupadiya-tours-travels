@@ -168,7 +168,66 @@ async function request(endpoint, options = {}, isRetry = false) {
   }
 }
 
+/** Download a server-generated CSV with the owner session. */
+// Build a query string, dropping empty / undefined values.
+function qs(params = {}) {
+  const u = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') u.set(k, v); });
+  return u.toString();
+}
+
+async function downloadFile(endpoint, fallbackName) {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('owner_token') : null;
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    credentials: 'include',
+    headers: { 'x-rupadiya-client': 'company-portal', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Download failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const match = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = match ? match[1] : fallbackName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
+  // Cash (COD) collections
+  getCashTickets: (status = 'PENDING') => request(`/owner/cash?status=${encodeURIComponent(status)}`),
+  receiveCash: (bookingIds) => request('/owner/cash/receive', { method: 'POST', body: JSON.stringify({ bookingIds }) }),
+  revertCash: (bookingId, reason) => request('/owner/cash/revert', { method: 'POST', body: JSON.stringify({ bookingId, reason }) }),
+  saveCashPolicy: (policy) => request('/owner/cash/policy', { method: 'PUT', body: JSON.stringify(policy) }),
+  // Settlements with RBS
+  getSettlements: () => request('/owner/settlements'),
+  downloadSettlement: (id) => downloadFile(`/owner/settlements/${id}/export.csv`, 'settlement.csv'),
+  // Reports & network
+  getReportSummary: (range) => request(`/owner/reports/summary?range=${encodeURIComponent(range)}`),
+  downloadReport: (range) => downloadFile(`/owner/reports/summary?range=${encodeURIComponent(range)}&format=csv`, `report-${range}.csv`),
+  getNetworkStats: (range) => request(`/owner/network-stats?range=${encodeURIComponent(range)}`),
+  // Booking history (own + all companies), with custom date range / month and Excel export
+  getHistory: (params = {}) => request(`/owner/history?${qs(params)}`),
+  downloadHistory: (params = {}) => downloadFile(`/owner/history/export.xlsx?${qs(params)}`, 'booking-history.xlsx'),
+  getNetworkHistory: (params = {}) => request(`/owner/network-history?${qs(params)}`),
+  downloadNetworkHistory: (params = {}) => downloadFile(`/owner/network-history/export.xlsx?${qs(params)}`, 'network-booking-history.xlsx'),
+  // Bus managers & journeys
+  getManagers: () => request('/owner/managers'),
+  getManager: (id) => request(`/owner/managers/${id}`),
+  createManager: (payload) => request('/owner/managers', { method: 'POST', body: JSON.stringify(payload) }),
+  updateManager: (id, payload) => request(`/owner/managers/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  assignTripManager: (tripId, payload) => request(`/owner/trips/${tripId}/manager`, { method: 'PUT', body: JSON.stringify(typeof payload === 'object' && payload !== null ? payload : { managerId: payload }) }),
+  getTripManagerTimeline: (tripId) => request(`/owner/trips/${tripId}/manager-timeline`),
+  setBusDefaultManager: (busId, managerId, applyToUpcoming) => request(`/owner/fleet/${busId}/default-manager`, { method: 'PUT', body: JSON.stringify({ managerId, applyToUpcoming }) }),
+  getTripJourney: (tripId) => request(`/owner/trips/${tripId}/journey`),
+  getNotifyPhone: () => request('/owner/notify-phone'),
+  saveNotifyPhone: (phone) => request('/owner/notify-phone', { method: 'PUT', body: JSON.stringify({ phone }) }),
+
   // Auth
   login: async (email, password) => {
     refreshFailed = false;
@@ -270,6 +329,8 @@ export const api = {
   scheduleTrip: (tripData) => request('/owner/trips', { method: 'POST', body: JSON.stringify(tripData) }),
   prepareSeatChart: (tripId) => request(`/owner/trips/${tripId}/prepare-chart`, { method: 'POST' }),
   getSeatChart: (tripId) => request(`/owner/trips/${tripId}/seat-chart`),
+  getSeatFares: (tripId) => request(`/owner/trips/${tripId}/seat-fares`),
+  updateSeatFares: (tripId, payload) => request(`/owner/trips/${tripId}/seat-fares`, { method: 'PATCH', body: JSON.stringify(payload) }),
   getRoutes: () => request('/routes'),
   getCities: () => request('/routes/cities'),
 
@@ -290,6 +351,8 @@ export const api = {
   getWithdrawals: () => request('/owner/withdrawals'),
   approveWithdrawal: (id, payload) => request(`/owner/withdrawals/${id}/approve`, { method: 'POST', body: payload ? JSON.stringify(payload) : undefined }),
   rejectWithdrawal: (id, reason) => request(`/owner/withdrawals/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  retryWithdrawal: (id, payload) => request(`/owner/withdrawals/${id}/retry`, { method: 'POST', body: JSON.stringify(payload || {}) }),
+  getPayoutConfig: () => request('/owner/withdrawals/payout-config'),
 
   // Reports & Network
   getReports: () => request('/owner/reports'),

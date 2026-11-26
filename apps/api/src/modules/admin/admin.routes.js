@@ -1,7 +1,19 @@
 const express = require('express');
+const notificationService = require('../notifications/notification.service');
+const { render: renderTemplate } = require('../notifications/notification.service');
+const { NotificationJob, MessageTemplate, PlatformSetting } = require('../notifications/models');
+const settlementService = require('../settlements/settlement.service');
+const { presetPeriod } = require('../settlements/settlement.service');
+const CompanySettlement = require('../settlements/companySettlement.model');
+const reconciliationService = require('../finance/reconciliation.service');
+const payoutService = require('../withdrawals/payout.service');
+const { recordAudit } = require('../../services/audit.service');
+const walletLedger = require('../../services/walletLedger.service');
+const refundService = require('../payments/refund.service');
 const router = express.Router();
 const { authenticateToken } = require('../../middleware/auth.middleware');
-const { authorizeRoles } = require('../../middleware/rbac.middleware');
+const { authorizeRoles, requirePrimaryAdmin, isPrimaryAdmin } = require('../../middleware/rbac.middleware');
+const RefreshToken = require('../auth/refreshToken.model');
 const Company = require('../companies/company.model');
 const Bus = require('../fleet/bus.model');
 const Route = require('../routes/route.model');
@@ -16,7 +28,8 @@ const { Wallet, WalletLedger } = require('../wallets/wallet.model');
 const { CommissionTier, CommissionRecord } = require('../commissions/commission.model');
 const AuditLog = require('../audit/audit.model');
 const bcrypt = require('bcryptjs');
-const { ROLES, KYC_STATUS, COMPANY_CODES, DEFAULT_COMMISSION_TIERS, TRANSACTION_TYPES, PAYMENT_STATUS, REFUND_STATUS } = require('../../config/constants');
+const { ROLES, KYC_STATUS, COMPANY_CODES, DEFAULT_COMMISSION_TIERS, TRANSACTION_TYPES, PAYMENT_STATUS, REFUND_STATUS, WITHDRAWAL_STATUS } = require('../../config/constants');
+const { normalisePhone, formatPhone, PHONE_ERROR } = require('../../utils/phone');
 
 router.use(authenticateToken);
 router.use(authorizeRoles(ROLES.SUPER_ADMIN));
@@ -138,12 +151,14 @@ router.post('/companies/create-with-owner', async (req, res, next) => {
       contactEmail,
       ownerName, 
       ownerEmail, 
-      ownerPhone, 
+      ownerPhone: rawOwnerPhone,
       ownerPassword, 
       targetPassengers 
     } = req.body;
+    const ownerPhone = rawOwnerPhone ? normalisePhone(rawOwnerPhone) : '';
+    if (rawOwnerPhone && !ownerPhone) return res.status(400).json({ error: `Owner phone: ${PHONE_ERROR}` });
 
-    if (!companyCode || !name || !ownerName || !ownerEmail || !ownerPhone || !ownerPassword) {
+        if (!companyCode || !name || !ownerName || !ownerEmail || !ownerPhone || !ownerPassword) {
       return res.status(400).json({ 
         error: 'Company code, company name, owner name, owner email, owner phone, and owner password are required.' 
       });
@@ -550,7 +565,7 @@ router.post('/agents', async (req, res, next) => {
       companyCode, 
       name, 
       email, 
-      phone, 
+      phone: rawPhone,
       password, 
       agencyName, 
       sponsorReferralCode, 
@@ -559,6 +574,8 @@ router.post('/agents', async (req, res, next) => {
       panNumber, 
       bankDetails 
     } = req.body;
+    const phone = rawPhone ? normalisePhone(rawPhone) : '';
+    if (rawPhone && !phone) return res.status(400).json({ error: PHONE_ERROR });
 
     if (!companyCode || !name || !email || !phone || !password) {
       return res.status(400).json({ error: 'Company code, name, email, phone, and password are required' });
@@ -743,57 +760,53 @@ router.delete('/agents/:id', async (req, res, next) => {
   }
 });
 
-// Super Admin Adjust Agent Wallet Balance
+// Super Admin Adjust Agent Wallet Balance (audited, ledger-backed, overdraft-proof)
 router.post('/agents/:id/wallet', async (req, res, next) => {
   try {
-    const { amount, note, type = 'CREDIT' } = req.body;
-    const numAmount = Number(amount);
-    if (!numAmount || numAmount <= 0) {
+    const { amount, note, type = 'CREDIT' } = req.body || {};
+    const numAmount = Math.round(Number(amount) * 100) / 100;
+    const reason = String(note || '').trim();
+    if (!numAmount || numAmount <= 0 || numAmount > 1000000) {
       return res.status(400).json({ error: 'Valid adjustment amount is required' });
+    }
+    if (reason.length < 5) {
+      return res.status(400).json({ error: 'A reason (min 5 characters) is required for every manual adjustment.' });
+    }
+    if (!['CREDIT', 'DEBIT'].includes(type)) {
+      return res.status(400).json({ error: 'type must be CREDIT or DEBIT' });
     }
 
     const agent = await User.findOne({ _id: req.params.id, role: ROLES.AGENT });
-    if (!agent) {
-      return res.status(404).json({ error: 'Agent not found' });
-    }
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
 
-    let wallet = await Wallet.findOne({ userId: agent._id });
-    if (!wallet) {
-      wallet = await Wallet.create({
-        userId: agent._id,
-        companyCode: agent.companyCode || 1,
-        availableBalance: 0,
-        reservedBalance: 0
-      });
-    }
-
-    if (type === 'DEBIT') {
-      wallet.availableBalance = Math.max(0, wallet.availableBalance - numAmount);
-    } else {
-      wallet.availableBalance += numAmount;
-    }
-    await wallet.save();
-
-    await WalletLedger.create({
-      walletId: wallet._id,
+    const adjId = `ADJ_${Date.now()}_${require('crypto').randomBytes(3).toString('hex').toUpperCase()}`;
+    const params = {
       userId: agent._id,
-      companyCode: agent.companyCode || 1,
-      entryType: type === 'DEBIT' ? 'DEBIT' : 'CREDIT',
       amount: numAmount,
-      balanceAfter: wallet.availableBalance,
+      companyCode: agent.companyCode || null,
       transactionType: TRANSACTION_TYPES.ADMIN_ADJUSTMENT,
-      referenceType: 'MANUAL_ADJUSTMENT',
-      referenceId: `ADJ_${Date.now()}`,
-      description: note || `Admin ${type.toLowerCase()} adjustment`,
-      idempotencyKey: `ADJ_${agent._id}_${Date.now()}`
+      referenceType: 'ADMIN_ADJUSTMENT',
+      referenceId: adjId,
+      description: `Admin ${type.toLowerCase()}: ${reason.slice(0, 200)}`,
+      idempotencyKey: adjId
+    };
+    const result = type === 'DEBIT' ? await walletLedger.debit(params) : await walletLedger.credit(params);
+
+    await recordAudit(req, {
+      action: `SUPER_ADMIN_WALLET_${type}`,
+      resource: 'WALLET',
+      resourceId: agent._id,
+      companyCode: agent.companyCode || null,
+      details: { amount: numAmount, reason, adjustmentId: adjId, balanceAfter: result.wallet?.availableBalance }
     });
 
     res.json({
       success: true,
-      message: `Wallet ${type === 'DEBIT' ? 'debited' : 'credited'} by ₹${numAmount.toLocaleString('en-IN')}. New balance: ₹${wallet.availableBalance.toLocaleString('en-IN')}.`,
-      newBalance: wallet.availableBalance
+      message: `Wallet ${type === 'DEBIT' ? 'debited' : 'credited'} by ₹${numAmount.toLocaleString('en-IN')}. New balance: ₹${result.wallet.availableBalance.toLocaleString('en-IN')}.`,
+      newBalance: result.wallet.availableBalance
     });
   } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });
@@ -1291,88 +1304,36 @@ router.get('/refunds', async (req, res, next) => {
 
 router.post('/refunds/:id/process', async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { mode = 'GATEWAY', utrNumber, notes } = req.body;
-
-    const refund = await Refund.findOne({
-      $or: [{ _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }, { refundId: id }]
+    const { mode = 'GATEWAY', utrNumber, notes } = req.body || {};
+    const refund = await refundService.processRefundRecord(req.params.id, {
+      mode: mode === 'GATEWAY' ? 'GATEWAY' : 'MANUAL_BANK_TRANSFER',
+      actorId: req.user._id,
+      utrNumber,
+      notes
     });
 
-    if (!refund) {
-      return res.status(404).json({ error: 'Refund record not found.' });
-    }
-
-    if (refund.status === REFUND_STATUS.PROCESSED) {
-      return res.status(400).json({ error: 'This refund has already been processed and settled.' });
-    }
-
-    let gatewayRefundId = null;
-    let finalUtr = utrNumber ? String(utrNumber).trim() : null;
-
-    if (mode === 'GATEWAY') {
-      try {
-        const pResult = await paymentService.processRefund({
-          paymentId: refund.paymentId || `pay_${refund.pnr}`,
-          amount: refund.refundAmount,
-          notes: {
-            pnr: refund.pnr,
-            refundId: refund.refundId,
-            adminUserId: req.user._id.toString()
-          }
-        });
-        gatewayRefundId = pResult.refundId;
-      } catch (gateErr) {
-        return res.status(502).json({ error: `Gateway refund disbursement failed: ${gateErr.message}` });
+    await recordAudit(req, {
+      action: 'SUPER_ADMIN_REFUND_PROCESSED',
+      resource: 'REFUND',
+      resourceId: refund._id,
+      companyCode: refund.companyCode,
+      details: {
+        refundId: refund.refundId,
+        pnr: refund.pnr,
+        amount: refund.refundAmount,
+        mode,
+        gatewayRefundId: refund.gatewayRefundId,
+        utrNumber: refund.utrNumber
       }
-    } else {
-      // Manual bank transfer / UPI settlement
-      if (!finalUtr) {
-        return res.status(400).json({ error: 'UTR or Bank Transaction Reference number is required for manual settlement.' });
-      }
-    }
-
-    refund.status = REFUND_STATUS.PROCESSED;
-    refund.refundMode = mode === 'GATEWAY' ? 'GATEWAY' : 'MANUAL_BANK_TRANSFER';
-    refund.processedAt = new Date();
-    refund.processedBy = req.user._id;
-    if (gatewayRefundId) refund.gatewayRefundId = gatewayRefundId;
-    if (finalUtr) refund.utrNumber = finalUtr;
-    if (notes) refund.notes = notes;
-    await refund.save();
-
-    // Update Booking payment status
-    try {
-      await Booking.findByIdAndUpdate(refund.bookingId, {
-        paymentStatus: PAYMENT_STATUS.REFUNDED
-      });
-    } catch (bErr) {
-      console.warn('[Booking Payment Status Update Warning]:', bErr.message);
-    }
-
-    // Record audit log
-    try {
-      await AuditLog.create({
-        action: 'SUPER_ADMIN_REFUND_PROCESSED',
-        performedBy: req.user._id,
-        targetType: 'REFUND',
-        targetId: refund._id.toString(),
-        metadata: {
-          refundId: refund.refundId,
-          pnr: refund.pnr,
-          amount: refund.refundAmount,
-          mode,
-          gatewayRefundId,
-          utrNumber: finalUtr
-        }
-      });
-    } catch (audErr) {}
+    });
 
     res.json({
       success: true,
-      message: `Refund of ₹${refund.refundAmount} for PNR #${refund.pnr} successfully processed and marked settled.`,
+      message: `Refund of ₹${refund.refundAmount} for PNR ${refund.pnr} processed.`,
       refund
     });
   } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });
@@ -1394,8 +1355,8 @@ router.post('/refunds/:id/reject', async (req, res, next) => {
       return res.status(404).json({ error: 'Refund record not found.' });
     }
 
-    if (refund.status === REFUND_STATUS.PROCESSED) {
-      return res.status(400).json({ error: 'Cannot reject a refund that has already been processed.' });
+    if ([REFUND_STATUS.PROCESSED, REFUND_STATUS.PROCESSING].includes(refund.status)) {
+      return res.status(400).json({ error: `Cannot reject a refund that is ${refund.status.toLowerCase()}.` });
     }
 
     refund.status = REFUND_STATUS.REJECTED;
@@ -1409,6 +1370,624 @@ router.post('/refunds/:id/reject', async (req, res, next) => {
       message: `Refund request for PNR #${refund.pnr} has been marked as rejected.`,
       refund
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// -------------------------------------------------------------
+// FINANCE: Razorpay ↔ ledger reconciliation and payout sync (super admin)
+// -------------------------------------------------------------
+router.get('/finance/reconciliation', async (req, res, next) => {
+  try {
+    res.json({ success: true, ...(await reconciliationService.overview()) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/finance/reconciliation/run', async (req, res, next) => {
+  try {
+    const run = await reconciliationService.run({
+      days: Number(req.body?.days) || 2,
+      autoHeal: req.body?.autoHeal !== false,
+      trigger: 'MANUAL',
+      actorId: req.user._id
+    });
+    await recordAudit(req, {
+      action: 'FINANCE_RECONCILIATION_RUN',
+      resource: 'RECONCILIATION',
+      resourceId: run._id,
+      details: { status: run.status, issues: run.counts?.issues, healed: run.counts?.healed }
+    });
+    res.json({ success: run.status === 'COMPLETED', run, error: run.error || undefined });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Re-check every in-flight RazorpayX payout right now (normally done every 10 minutes)
+router.post('/finance/payouts/sync', async (req, res, next) => {
+  try {
+    const result = await payoutService.sweep({ olderThanMs: 0, limit: 200 });
+    res.json({ success: true, message: `Checked ${result.checked} in-flight payout(s).`, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// AGENT WITHDRAWALS — RBS admin pays requests the companies have approved.
+// ---------------------------------------------------------------------------
+const WithdrawalRequest = require('../withdrawals/withdrawal.model');
+
+// RazorpayX balance / mode for the admin pay dialog
+router.get('/withdrawals/payout-config', async (req, res, next) => {
+  try {
+    res.json({ success: true, ...(await payoutService.getAdminConfig()) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// List withdrawals across all companies. ?status=AWAITING|PROCESSING|PAYOUT_FAILED|APPROVED|REJECTED|all  ?companyCode=
+router.get('/withdrawals', async (req, res, next) => {
+  try {
+    const status = String(req.query.status || 'AWAITING');
+    const q = {};
+    if (req.query.companyCode) q.companyCode = Number(req.query.companyCode);
+    if (status === 'AWAITING') { q.status = WITHDRAWAL_STATUS.PROCESSING; q.processingStage = 'AWAITING_ADMIN_PAYMENT'; }
+    else if (status === 'DISBURSING') { q.status = WITHDRAWAL_STATUS.PROCESSING; q.processingStage = 'DISBURSING'; }
+    else if (status !== 'all') q.status = status;
+
+    const withdrawals = await WithdrawalRequest.find(q)
+      .populate('agentId', 'name email phone referralCode kycStatus bankDetails agencyName')
+      .sort({ 'approvals.company.at': -1, createdAt: -1 })
+      .limit(500)
+      .lean();
+
+    const codes = [...new Set(withdrawals.map((w) => w.companyCode))];
+    const companies = await Company.find({ companyCode: { $in: codes } }).select('companyCode name').lean();
+    const nameByCode = new Map(companies.map((c) => [c.companyCode, c.name]));
+    withdrawals.forEach((w) => { w.companyName = nameByCode.get(w.companyCode) || `Company #${w.companyCode}`; });
+
+    const [awaitingAll] = await Promise.all([
+      WithdrawalRequest.aggregate([
+        { $match: { status: WITHDRAWAL_STATUS.PROCESSING, processingStage: 'AWAITING_ADMIN_PAYMENT' } },
+        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$amount' } } }
+      ])
+    ]);
+    res.json({
+      success: true,
+      withdrawals,
+      stats: { awaitingCount: awaitingAll[0]?.count || 0, awaitingAmount: awaitingAll[0]?.amount || 0 }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Pay a company-approved withdrawal: { mode: 'online' | 'manual', utrNumber? }
+router.post('/withdrawals/:id/pay', async (req, res, next) => {
+  try {
+    const mode = req.body?.mode === 'manual' ? 'manual' : 'online';
+    const w = await payoutService.adminPay({
+      withdrawalId: req.params.id,
+      actorId: req.user._id,
+      mode,
+      utrNumber: req.body?.utrNumber,
+      notes: req.body?.notes
+    });
+    await recordAudit(req, { action: 'WITHDRAWAL_PAID', resource: 'WITHDRAWAL', resourceId: w._id, details: { mode, amount: w.amount, status: w.status, utr: w.utrNumber } });
+    const amt = `₹${Number(w.amount).toLocaleString('en-IN')}`;
+    const failed = w.status === WITHDRAWAL_STATUS.PAYOUT_FAILED;
+    const msg = failed
+      ? `Payout of ${amt} failed: ${w.payout?.failureReason || 'unknown reason'}. The company wallet was refunded — retry or reject.`
+      : w.status === WITHDRAWAL_STATUS.APPROVED
+        ? `${amt} paid to the agent${w.utrNumber ? ` (Ref ${w.utrNumber})` : ''}.`
+        : `${amt} payout initiated via RazorpayX. The agent will be credited shortly.`;
+    res.json({ success: !failed, message: failed ? undefined : msg, error: failed ? msg : undefined, withdrawal: w });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code });
+    next(err);
+  }
+});
+
+// Reject a company-approved (not yet paid) or failed withdrawal: refunds agent + company wallet.
+router.post('/withdrawals/:id/reject', async (req, res, next) => {
+  try {
+    const w = await payoutService.reject({ withdrawalId: req.params.id, actorId: req.user._id, reason: req.body?.reason, byAdmin: true });
+    await recordAudit(req, { action: 'WITHDRAWAL_REJECTED', resource: 'WITHDRAWAL', resourceId: w._id, details: { amount: w.amount, reason: w.rejectionReason } });
+    res.json({ success: true, message: 'Withdrawal rejected. The agent and company wallets were refunded.', withdrawal: w });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code });
+    next(err);
+  }
+});
+
+
+// -------------------------------------------------------------
+// ADMIN ACCOUNTS (primary super admin only)
+// -------------------------------------------------------------
+const ADMIN_PUBLIC_FIELDS = 'name email phone role adminLevel isActive createdAt lastLoginAt';
+
+router.get('/admins', requirePrimaryAdmin, async (req, res, next) => {
+  try {
+    const admins = await User.find({ role: ROLES.SUPER_ADMIN }).select(ADMIN_PUBLIC_FIELDS).sort({ createdAt: 1 }).lean();
+    res.json({ success: true, admins });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/admins', requirePrimaryAdmin, async (req, res, next) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const phone = normalisePhone(req.body?.phone, req.body?.countryCode);
+    const password = String(req.body?.password || '');
+
+    if (name.length < 2) return res.status(400).json({ error: 'Name is required.' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'A valid email is required.' });
+    if (!phone) return res.status(400).json({ error: PHONE_ERROR });
+    if (password.length < 10 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
+      return res.status(400).json({ error: 'Password must be at least 10 characters with upper case, lower case and a number.' });
+    }
+    if (await User.exists({ email })) return res.status(409).json({ error: 'An account with this email already exists.' });
+
+    const admin = await User.create({
+      name,
+      email,
+      phone,
+      passwordHash: await bcrypt.hash(password, 12),
+      role: ROLES.SUPER_ADMIN,
+      adminLevel: 'STANDARD',
+      isActive: true
+    });
+    await recordAudit(req, { action: 'ADMIN_ACCOUNT_CREATED', resource: 'USER', resourceId: admin._id, details: { email } });
+    res.status(201).json({ success: true, message: `Super admin ${email} created.`, admin: { _id: admin._id, name, email, phone, adminLevel: 'STANDARD', isActive: true } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Enable / disable a standard admin, or reset its password. The primary account cannot be changed here.
+router.patch('/admins/:id', requirePrimaryAdmin, async (req, res, next) => {
+  try {
+    const target = await User.findOne({ _id: req.params.id, role: ROLES.SUPER_ADMIN });
+    if (!target) return res.status(404).json({ error: 'Admin not found.' });
+    if (target.adminLevel === 'PRIMARY') {
+      return res.status(400).json({ error: 'The primary super admin account cannot be disabled or changed from here.' });
+    }
+
+    const changes = {};
+    if (typeof req.body?.isActive === 'boolean') changes.isActive = req.body.isActive;
+    if (req.body?.password) {
+      const pw = String(req.body.password);
+      if (pw.length < 10 || !/[A-Z]/.test(pw) || !/[a-z]/.test(pw) || !/\d/.test(pw)) {
+        return res.status(400).json({ error: 'Password must be at least 10 characters with upper case, lower case and a number.' });
+      }
+      changes.passwordHash = await bcrypt.hash(pw, 12);
+    }
+    if (!Object.keys(changes).length) return res.status(400).json({ error: 'Nothing to update.' });
+
+    await User.updateOne({ _id: target._id }, { $set: changes });
+    if (changes.isActive === false || changes.passwordHash) {
+      // Force re-login on all devices.
+      await RefreshToken.updateMany({ userId: target._id }, { $set: { isRevoked: true, revokedAt: new Date() } }).catch(() => {});
+    }
+    await recordAudit(req, {
+      action: 'ADMIN_ACCOUNT_UPDATED',
+      resource: 'USER',
+      resourceId: target._id,
+      details: { email: target.email, isActive: changes.isActive, passwordReset: Boolean(changes.passwordHash) }
+    });
+    res.json({ success: true, message: 'Admin account updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// USER DIRECTORY: every super admin can view; only the primary can export
+// -------------------------------------------------------------
+function buildUserQuery(q) {
+  const filter = {};
+  const role = String(q.role || '').toUpperCase();
+  if (role && Object.values(ROLES).includes(role)) filter.role = role;
+  if (q.companyCode && !Number.isNaN(Number(q.companyCode))) filter.companyCode = Number(q.companyCode);
+  if (q.search) {
+    const rx = new RegExp(String(q.search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$or = [{ name: rx }, { email: rx }, { phone: rx }, { referralCode: rx }];
+    // "+91 98765 43210" should still find the stored mobile number.
+    const digits = String(q.search).replace(/\D/g, '');
+    if (digits.length >= 4) filter.$or.push({ phone: new RegExp(digits.length > 10 ? digits.slice(-10) : digits) });
+  }
+  return filter;
+}
+
+const { USER_PLACEHOLDER } = require('../../utils/cleanPlaceholderEmails');
+const USER_LIST_FIELDS = 'name email phone role adminLevel companyCode referralCode kycStatus isActive createdAt';
+
+router.get('/users', async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
+    const filter = buildUserQuery(req.query);
+    const [users, total] = await Promise.all([
+      User.find(filter).select(USER_LIST_FIELDS).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      User.countDocuments(filter)
+    ]);
+    res.json({
+      success: true,
+      users,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+      canExport: isPrimaryAdmin(req.user)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const csvCell = (v) => {
+  const s = v === null || v === undefined ? '' : String(v instanceof Date ? v.toISOString() : v);
+  // Neutralise spreadsheet formula injection and escape quotes.
+  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  return `"${safe.replace(/"/g, '""')}"`;
+};
+
+router.get('/users/export', requirePrimaryAdmin, async (req, res, next) => {
+  try {
+    const filter = buildUserQuery(req.query);
+    const users = await User.find(filter).select(USER_LIST_FIELDS).sort({ createdAt: -1 }).limit(50000).lean();
+    const header = ['Name', 'Email', 'Phone', 'Role', 'Company Code', 'Referral Code', 'KYC', 'Active', 'Created At'];
+    const rows = users.map((u) => [u.name, USER_PLACEHOLDER.test(u.email || '') ? '' : u.email, u.phone, u.role, u.companyCode, u.referralCode, u.kycStatus, u.isActive !== false ? 'Yes' : 'No', u.createdAt]);
+    const csv = [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
+
+    await recordAudit(req, {
+      action: 'USER_DATA_EXPORTED',
+      resource: 'USER',
+      details: { filter: req.query, rows: users.length }
+    });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="rupadiya-users-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send('﻿' + csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// RBS ↔ COMPANY SETTLEMENT STATEMENTS
+// -------------------------------------------------------------
+function resolvePeriod(q) {
+  if (q.preset) return presetPeriod(String(q.preset).toUpperCase());
+  return { from: q.from, to: q.to };
+}
+
+// Preview for one company or all companies (nothing saved)
+router.get('/settlements/preview', async (req, res, next) => {
+  try {
+    const { from, to } = resolvePeriod(req.query);
+    if (req.query.companyCode) {
+      const preview = await settlementService.compute(req.query.companyCode, from, to);
+      return res.json({ success: true, preview });
+    }
+    const companies = await Company.find({}).select('companyCode name').sort({ companyCode: 1 }).lean();
+    const rows = [];
+    for (const c of companies) {
+      const p = await settlementService.compute(c.companyCode, from, to);
+      rows.push({
+        companyCode: c.companyCode,
+        companyName: p.companyName,
+        ticketCount: p.ticketCount,
+        ticketFareOwed: p.ticketFareOwed,
+        clawbacks: p.clawbacks,
+        cashHeldByCompany: p.cashHeldByCompany,
+        net: p.net,
+        direction: p.direction
+      });
+    }
+    res.json({
+      success: true,
+      period: { from, to },
+      companies: rows,
+      totals: {
+        rbsPays: rows.filter((r) => r.net > 0).reduce((s, r) => s + r.net, 0),
+        rbsReceives: rows.filter((r) => r.net < 0).reduce((s, r) => s - r.net, 0)
+      }
+    });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.get('/settlements/preview.csv', async (req, res, next) => {
+  try {
+    const { from, to } = resolvePeriod(req.query);
+    const preview = await settlementService.compute(req.query.companyCode, from, to);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="settlement-preview-${preview.companyCode}.csv"`);
+    res.send('﻿' + settlementService.toCsv(preview));
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.post('/settlements', async (req, res, next) => {
+  try {
+    const { from, to } = resolvePeriod(req.body || {});
+    const s = await settlementService.issue({ companyCode: req.body?.companyCode, from, to, actorId: req.user._id, notes: req.body?.notes });
+    await recordAudit(req, { action: 'SETTLEMENT_ISSUED', resource: 'SETTLEMENT', resourceId: s._id, companyCode: s.companyCode, details: { statementNo: s.statementNo, net: s.net } });
+    res.status(201).json({ success: true, message: `Statement ${s.statementNo} issued.`, settlement: s });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.get('/settlements', async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.query.companyCode) filter.companyCode = Number(req.query.companyCode);
+    if (req.query.status) filter.status = String(req.query.status).toUpperCase();
+    const list = await CompanySettlement.find(filter).select('-lines').sort({ createdAt: -1 }).limit(200).lean();
+    res.json({ success: true, settlements: list });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/settlements/:id', async (req, res, next) => {
+  try {
+    const s = await CompanySettlement.findById(req.params.id).lean();
+    if (!s) return res.status(404).json({ error: 'Statement not found.' });
+    res.json({ success: true, settlement: s });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/settlements/:id/export.csv', async (req, res, next) => {
+  try {
+    const s = await CompanySettlement.findById(req.params.id).lean();
+    if (!s) return res.status(404).json({ error: 'Statement not found.' });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${s.statementNo}.csv"`);
+    res.send('﻿' + settlementService.toCsv(s));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/settlements/:id/settle', async (req, res, next) => {
+  try {
+    const s = await settlementService.markSettled({ settlementId: req.params.id, actorId: req.user._id, utrNumber: req.body?.utrNumber, notes: req.body?.notes });
+    await recordAudit(req, { action: 'SETTLEMENT_SETTLED', resource: 'SETTLEMENT', resourceId: s._id, companyCode: s.companyCode, details: { statementNo: s.statementNo, net: s.net, utr: s.utrNumber } });
+    res.json({ success: true, message: `Statement ${s.statementNo} marked settled.`, settlement: s });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.post('/settlements/:id/void', async (req, res, next) => {
+  try {
+    const s = await settlementService.voidStatement({ settlementId: req.params.id });
+    await recordAudit(req, { action: 'SETTLEMENT_VOIDED', resource: 'SETTLEMENT', resourceId: s._id, companyCode: s.companyCode, details: { statementNo: s.statementNo } });
+    res.json({ success: true, message: `Statement ${s.statementNo} voided. Its tickets are unsettled again.`, settlement: s });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// WHATSAPP (RBS business number) & MESSAGE TEMPLATES — super admin only
+// -------------------------------------------------------------
+const whatsappProvider = () => require('../../providers/whatsapp/BaileysProvider');
+
+router.get('/whatsapp/status', async (req, res, next) => {
+  try {
+    const wa = whatsappProvider();
+    const [stats, lease, hasSavedSession] = await Promise.all([
+      notificationService.whatsappStats(1),
+      notificationService.leaseInfo(),
+      wa.hasSavedSession()
+    ]);
+    res.json({
+      success: true,
+      whatsapp: wa.publicStatus(),
+      hasSavedSession,
+      senderInstance: lease.isLeader,
+      lease,
+      emailConfigured: require('../../providers/email/EmailProvider').isConfigured(),
+      adminNotifyPhones: await notificationService.adminPhones(),
+      queue: { pending: stats.queue.waiting, oldestWaitingAt: stats.queue.oldestWaitingAt, sentToday: stats.today.sent, failedToday: stats.today.failed },
+      today: stats.today
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Message counts only (no message content): today, today by message type, and day-by-day history.
+router.get('/whatsapp/stats', async (req, res, next) => {
+  try {
+    res.json({ success: true, ...(await notificationService.whatsappStats(req.query.days)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Start the session: returns a QR (also pushed live over the admin WebSocket) until the phone scans it.
+// The admin chose this server, so it becomes the sender (an old / dead holder of the lease is replaced).
+router.post('/whatsapp/connect', async (req, res, next) => {
+  try {
+    await notificationService.claimLeadership();
+    const status = await whatsappProvider().connect();
+    await recordAudit(req, { action: 'WHATSAPP_CONNECT', resource: 'WHATSAPP' });
+    res.json({ success: true, whatsapp: status, message: status.status === 'CONNECTED' ? 'WhatsApp is connected.' : 'Starting WhatsApp… scan the QR code with the RBS phone.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Unlink the RBS number from this platform (a new QR scan is needed to reconnect).
+router.post('/whatsapp/logout', async (req, res, next) => {
+  try {
+    await whatsappProvider().logout();
+    await recordAudit(req, { action: 'WHATSAPP_LOGOUT', resource: 'WHATSAPP' });
+    res.json({ success: true, message: 'WhatsApp disconnected and unlinked.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Send a test message now. It is recorded like any other message, so it appears in the counts
+// and its delivered / read receipts are tracked.
+router.post('/whatsapp/test', async (req, res, next) => {
+  try {
+    const phone = normalisePhone(req.body?.phone, req.body?.countryCode);
+    if (!phone) return res.status(400).json({ error: PHONE_ERROR });
+    const text = String(req.body?.message || 'Test message from Rupadiya Bus Samiti ✅').slice(0, 1000);
+    const wa = whatsappProvider();
+    if (!wa.isReady()) return res.status(409).json({ error: 'WhatsApp is not connected. Connect it first.' });
+    const sent = await wa.sendText(phone, text);
+    await NotificationJob.create({
+      event: 'TEST_MESSAGE', audience: 'ADMIN', channel: 'WHATSAPP', to: phone, body: text,
+      status: 'SENT', sentAt: new Date(), attempts: 1, waMessageId: sent?.id || null, refType: 'TEST'
+    }).catch(() => {});
+    res.json({ success: true, message: `Test message sent to ${formatPhone(phone)}. Delivery shows in the counts once the phone receives it.` });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Put every failed / expired WhatsApp message from the last N hours back in the queue.
+router.post('/whatsapp/retry-failed', async (req, res, next) => {
+  try {
+    const hours = Math.min(Math.max(Number(req.body?.hours) || 24, 1), 168);
+    const r = await NotificationJob.updateMany(
+      { channel: 'WHATSAPP', status: { $in: ['FAILED', 'EXPIRED'] }, createdAt: { $gte: new Date(Date.now() - hours * 3600000) } },
+      { $set: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), expiresAt: new Date(Date.now() + 24 * 3600000), lastError: null } }
+    );
+    await recordAudit(req, { action: 'WHATSAPP_RETRY_FAILED', resource: 'WHATSAPP', details: { hours, count: r.modifiedCount } });
+    res.json({ success: true, requeued: r.modifiedCount, message: `${r.modifiedCount} message(s) queued again.` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Numbers that receive admin trip summaries (journey started / completed)
+router.put('/whatsapp/admin-phones', async (req, res, next) => {
+  try {
+    const phones = [...new Set((Array.isArray(req.body?.phones) ? req.body.phones : String(req.body?.phones || '').split(','))
+      .map((p) => normalisePhone(p))
+      .filter(Boolean))].slice(0, 10);
+    await PlatformSetting.updateOne({ key: 'adminNotifyPhones' }, { $set: { value: phones, updatedBy: req.user._id } }, { upsert: true });
+    await recordAudit(req, { action: 'ADMIN_NOTIFY_PHONES_UPDATED', resource: 'WHATSAPP', details: { phones } });
+    res.json({ success: true, phones });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/notifications', async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.query.status) filter.status = String(req.query.status).toUpperCase();
+    if (req.query.channel) filter.channel = String(req.query.channel).toUpperCase();
+    const jobs = await NotificationJob.find(filter).select('-html').sort({ createdAt: -1 }).limit(200).lean();
+    res.json({ success: true, jobs });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/notifications/:id/retry', async (req, res, next) => {
+  try {
+    const job = await NotificationJob.findOneAndUpdate(
+      { _id: req.params.id, status: { $in: ['FAILED', 'EXPIRED', 'SKIPPED'] } },
+      { $set: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), expiresAt: new Date(Date.now() + 24 * 3600000), lastError: null } },
+      { new: true }
+    );
+    if (!job) return res.status(409).json({ error: 'Only failed, expired or skipped messages can be retried.' });
+    res.json({ success: true, job });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/templates', async (req, res, next) => {
+  try {
+    await notificationService.ensureTemplates();
+    const templates = await MessageTemplate.find({}).sort({ event: 1, audience: 1, channel: 1 }).lean();
+    res.json({ success: true, templates });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/templates/:key', async (req, res, next) => {
+  try {
+    const body = String(req.body?.body || '').trim();
+    if (body.length < 5 || body.length > 2000) return res.status(400).json({ error: 'Message must be 5-2000 characters.' });
+    const update = { body, enabled: req.body?.enabled !== false, updatedBy: req.user._id };
+    if (req.body?.subject !== undefined) update.subject = String(req.body.subject).slice(0, 200);
+    const t = await MessageTemplate.findOneAndUpdate({ key: req.params.key }, { $set: update }, { new: true });
+    if (!t) return res.status(404).json({ error: 'Template not found.' });
+    await recordAudit(req, { action: 'MESSAGE_TEMPLATE_UPDATED', resource: 'TEMPLATE', resourceId: t.key, details: { enabled: t.enabled } });
+    res.json({ success: true, template: t });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/templates/preview', async (req, res) => {
+  const sample = {
+    name: 'Sunita Devi', pnr: 'RUP12345678', from: 'Rupaidiha', to: 'Ahmedabad', date: '12 Dec 2026', time: '05:30 pm',
+    arrival: '13 Dec 2026, 07:45 pm', passengerCount: '2', passengerList: 'Sunita Devi (L7), Ramesh Kumar (L8)',
+    changeText: 'Boarding point changed: Rupaidiha Bus Stand → Nanpara Chauraha.', reason: 'Passenger was late', managerPhone: '(+91 98765 43210)',
+    seats: 'L3, L4', boarding: 'Rupaidiha Bus Stand', boardingTime: '05:30 pm', dropping: 'Ahmedabad Geeta Mandir',
+    busNumber: 'UP40AT1234', companyName: 'Rupadiya Travels', amount: '2,150', refundAmount: '1,890',
+    ticketUrl: 'https://rupadiya.example/ticket/BK_123', bookUrl: 'https://rupadiya.example', agentName: 'Ravi Agency',
+    receiptNo: 'CR-20261212-ABC123', utr: 'HDFC412345678', boarded: 34, noShow: 2, total: 36, dropped: 34,
+    managerName: 'Vikram Singh', infants: '1 on lap'
+  };
+  res.json({ success: true, preview: renderTemplate(String(req.body?.body || ''), sample), subject: renderTemplate(String(req.body?.subject || ''), sample) });
+});
+
+// Live journeys: today's trips across all companies with boarding progress (counts only)
+router.get('/journeys', async (req, res, next) => {
+  try {
+    const base = req.query.date ? new Date(`${req.query.date}T00:00:00+05:30`) : new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) + 'T00:00:00+05:30');
+    const trips = await Trip.find({ departureTime: { $gte: base, $lt: new Date(base.getTime() + 86400000) } })
+      .select('companyCode departureTime status journey managerId routeId busId seats.status')
+      .populate('routeId', 'fromCity toCity').populate('busId', 'busNumber').populate('managerId', 'name phone')
+      .sort({ departureTime: 1 }).limit(300).lean();
+    const { tripCounts } = require('../manager/manager.service');
+    const companies = await Company.find({}).select('companyCode name').lean();
+    const names = new Map(companies.map((c) => [c.companyCode, c.name]));
+    const rows = await Promise.all(trips.map(async (t) => ({
+      _id: t._id,
+      companyCode: t.companyCode,
+      companyName: names.get(t.companyCode) || `#${t.companyCode}`,
+      route: `${t.routeId?.fromCity?.name || '?'} → ${t.routeId?.toCity?.name || '?'}`,
+      busNumber: t.busId?.busNumber,
+      departureTime: t.departureTime,
+      status: t.status,
+      journey: t.journey,
+      manager: t.managerId ? { name: t.managerId.name, phone: t.managerId.phone } : null,
+      counts: await tripCounts(t._id)
+    })));
+    res.json({ success: true, date: base, trips: rows });
   } catch (err) {
     next(err);
   }

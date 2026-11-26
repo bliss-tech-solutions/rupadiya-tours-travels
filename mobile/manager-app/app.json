@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Rupadiya Manager",
+    "slug": "rupadiya-manager",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "in.rupadiya.manager",
+      "permissions": ["CAMERA"]
+    },
+    "ios": {
+      "bundleIdentifier": "in.rupadiya.manager",
+      "infoPlist": {
+        "NSCameraUsageDescription": "The camera is used to scan passenger ticket QR codes while boarding."
+      }
+    },
+    "plugins": [
+      ["expo-camera", { "cameraPermission": "The camera is used to scan passenger ticket QR codes while boarding." }],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiUrl": "https://rupadiya-tours-travels.onrender.com/api/v1"
+    }
+  }
+}

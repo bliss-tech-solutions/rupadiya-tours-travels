@@ -10,6 +10,13 @@ async function startServer() {
     // Attempt DB connection with automatic retries
     await connectDB(5, 1500);
 
+    // Make sure there is always exactly one primary super admin.
+    try {
+      await require('./services/adminAccounts.service').ensurePrimaryAdmin();
+    } catch (e) {
+      console.warn('[Admin] ensurePrimaryAdmin failed:', e.message);
+    }
+
     const server = http.createServer(app);
 
     // Initialize Real-time WebSocket Server on /ws
@@ -27,6 +34,30 @@ async function startServer() {
         console.error('[WebSocket] Error broadcasting expired seats:', err.message);
       }
     };
+
+    // WhatsApp / email notification sender (single leader across instances).
+    try {
+      const notificationService = require('./modules/notifications/notification.service');
+      await notificationService.ensureTemplates();
+      if (process.env.DISABLE_NOTIFICATIONS !== 'true') notificationService.start();
+    } catch (e) {
+      console.warn('[Notifications] start failed:', e.message);
+    }
+
+    // RazorpayX payout safety net: re-check payouts whose webhook may have been missed.
+    const payoutService = require('./modules/withdrawals/payout.service');
+    const payoutSweepTimer = setInterval(() => {
+      payoutService.sweep().catch((err) => console.warn('[Payout sweep]', err.message));
+    }, 10 * 60 * 1000);
+    if (payoutSweepTimer.unref) payoutSweepTimer.unref();
+
+    // Razorpay ↔ ledger reconciliation every 6 hours (last 2 days, safe auto-heal).
+    const reconciliationService = require('./modules/finance/reconciliation.service');
+    const reconTimer = setInterval(() => {
+      reconciliationService.run({ days: 2, autoHeal: true, trigger: 'SCHEDULED' })
+        .catch((err) => console.warn('[Reconciliation]', err.message));
+    }, 6 * 60 * 60 * 1000);
+    if (reconTimer.unref) reconTimer.unref();
 
     let keepAliveTimer = null;
     server.listen(env.PORT, () => {
@@ -53,6 +84,14 @@ async function startServer() {
     const shutdown = async (signal) => {
       if (keepAliveTimer) clearInterval(keepAliveTimer);
       console.log(`[Server] Received ${signal}, closing server gracefully...`);
+      // Hand the WhatsApp sender lease back (keeps the linked session) so a restart sends immediately.
+      try {
+        const notificationService = require('./modules/notifications/notification.service');
+        notificationService.stop();
+        await require('./providers/whatsapp/BaileysProvider').stop().catch(() => {});
+        await notificationService.releaseLease();
+      } catch (e) { /* best-effort */ }
+      setTimeout(() => process.exit(0), 3000).unref();
       server.close(() => {
         console.log('[Server] HTTP server closed.');
         process.exit(0);

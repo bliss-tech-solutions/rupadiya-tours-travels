@@ -3,13 +3,28 @@ const { ROLES, KYC_STATUS } = require('../../config/constants');
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
-  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  // Optional: phone-only (OTP / guest) accounts have no email. Never store a made-up address.
+  email: {
+    type: String,
+    unique: true,
+    sparse: true,
+    lowercase: true,
+    trim: true,
+    default: undefined,
+    set: (v) => (v === null || v === undefined || String(v).trim() === '' ? undefined : v)
+  },
   phone: { type: String, required: true, trim: true },
   passwordHash: { type: String, required: true },
   role: {
     type: String,
     enum: Object.values(ROLES),
     default: ROLES.PASSENGER
+  },
+  // Only meaningful for SUPER_ADMIN. PRIMARY = main RBS account (manages admins, exports user data).
+  adminLevel: {
+    type: String,
+    enum: ['PRIMARY', 'STANDARD', null],
+    default: null
   },
   companyId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -52,9 +67,26 @@ const userSchema = new mongoose.Schema({
   bankDetails: {
     accountName: { type: String, default: '' },
     accountNumberMasked: { type: String, default: '' },
+    // Full number is needed by the company owner to send payouts; never returned by default.
+    accountNumber: { type: String, default: '', select: false },
     ifscCode: { type: String, default: '' },
     upiId: { type: String, default: '' },
     bankName: { type: String, default: '' }
+  },
+  // RazorpayX payout beneficiary (cached so each agent is created once)
+  payoutProfile: {
+    contactId: { type: String, default: null },
+    fundAccountId: { type: String, default: null },
+    fingerprint: { type: String, default: null }
+  },
+  // Bus-manager onboarding details (captured on the multi-step "Add manager" flow)
+  managerProfile: {
+    idType: { type: String, default: '' },        // e.g. Aadhaar, Driving Licence
+    idNumber: { type: String, default: '' },
+    idProofUrl: { type: String, default: '' },
+    photoUrl: { type: String, default: '' },
+    address: { type: String, default: '' },
+    notes: { type: String, default: '' }
   },
   agencyName: {
     type: String,

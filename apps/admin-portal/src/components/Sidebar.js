@@ -3,26 +3,31 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  Building2, 
-  Users, 
-  Bus, 
-  Route, 
+import {
+  Banknote,
+  Building2,
+  Users,
+  Bus,
+  Route,
   Compass, 
   FileSpreadsheet, 
   UserCheck, 
   Receipt, 
   CreditCard,
+  Landmark,
+  MessageCircle,
   RotateCcw,
   LayoutDashboard,
   ChevronRight
 } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, isPrimaryAdminSession } from '../lib/api';
 
 export default function AdminSidebar() {
   const pathname = usePathname();
   const [pendingKyc, setPendingKyc] = useState(0);
   const [pendingRefunds, setPendingRefunds] = useState(0);
+  const [isPrimary, setIsPrimary] = useState(false);
+  useEffect(() => { setIsPrimary(isPrimaryAdminSession()); }, []);
 
   useEffect(() => {
     async function loadDash() {
@@ -49,6 +54,13 @@ export default function AdminSidebar() {
     { label: 'KYC Approvals Queue', href: '/kyc', icon: UserCheck, badge: pendingKyc > 0 ? pendingKyc : null },
     { label: 'GST & TCS Tax Reports', href: '/tax', icon: Receipt },
     { label: 'Payment Gateway Rules', href: '/payment-methods', icon: CreditCard },
+    { label: 'Finance & Reconciliation', href: '/finance', icon: Landmark },
+    { label: 'Company Settlements', href: '/settlements', icon: Landmark },
+    { label: 'Agent Withdrawals', href: '/withdrawals', icon: Banknote },
+    { label: 'Live Journeys', href: '/journeys', icon: Bus },
+    { label: 'WhatsApp & Messages', href: '/whatsapp', icon: MessageCircle },
+    { label: 'Users Directory', href: '/users', icon: Users },
+    ...(isPrimary ? [{ label: 'Admin Accounts', href: '/admins', icon: UserCheck }] : []),
   ];
 
   return (

@@ -24,9 +24,12 @@ import {
   ShieldCheck,
   Info,
   Filter,
-  ArrowUpDown
+  ArrowUpDown,
+  UserCog,
+  History
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import SeatFareEditor from '../../components/SeatFareEditor';
 import { formatDeparture, formatDateTime, formatDate } from '../../lib/dateUtils';
 
 const ITEMS_PER_PAGE = 10;
@@ -119,6 +122,31 @@ export default function CompanyTripsPage() {
   const [customDate, setCustomDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'SCHEDULED' | 'BOARDING' | 'DEPARTED'
   const [sortBy, setSortBy] = useState('CREATED_DESC'); // 'CREATED_DESC' (Latest Created First) | 'DEP_ASC' | 'DEP_DESC'
+
+  // Seat price editor (company only)
+  const [fareEditorTripId, setFareEditorTripId] = useState(null);
+
+  // Bus managers (assign per trip; live journey status)
+  const [managers, setManagers] = useState([]);
+  const [assigningTripId, setAssigningTripId] = useState(null);
+  const [managerModalTrip, setManagerModalTrip] = useState(null);
+  useEffect(() => {
+    api.getManagers().then((res) => setManagers((res?.managers || []).filter((m) => m.isActive !== false))).catch(() => {});
+  }, []);
+
+  const handleAssignManager = async (trip, managerId) => {
+    setAssigningTripId(trip.rawTripId);
+    setActionError('');
+    try {
+      const res = await api.assignTripManager(trip.rawTripId, managerId || null);
+      setActionSuccess(res?.message || 'Bus manager updated.');
+      fetchTrips();
+    } catch (e) {
+      setActionError(e.message || 'Could not assign bus manager.');
+    } finally {
+      setAssigningTripId(null);
+    }
+  };
 
   // Seat Sheet Manifest Modal State
   const [manifestModalOpen, setManifestModalOpen] = useState(false);
@@ -446,7 +474,7 @@ export default function CompanyTripsPage() {
             className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition flex items-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>+ Dispatch Daily Trip</span>
+            <span>Dispatch Daily Trip</span>
           </button>
         </div>
       </div>
@@ -692,6 +720,7 @@ export default function CompanyTripsPage() {
                   <th className="py-3 px-4">Base Fare</th>
                   <th className="py-3 px-4 text-center">Occupancy</th>
                   <th className="py-3 px-4 text-center">Chart Status</th>
+                  <th className="py-3 px-4">Bus Manager</th>
                   <th className="py-3 px-4 text-right rounded-r-xl">Actions</th>
                 </tr>
               </thead>
@@ -739,7 +768,11 @@ export default function CompanyTripsPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">₹{t.baseFare}</td>
+                      <td className="py-3.5 px-4 font-bold text-slate-900">
+                        {t.minFare && t.maxFare && t.minFare !== t.maxFare
+                          ? <>₹{t.minFare}–₹{t.maxFare}</>
+                          : <>₹{t.minFare || t.baseFare}</>}
+                      </td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex flex-col items-center gap-1">
                           <span className="font-bold text-slate-800 text-[11px]">
@@ -769,6 +802,43 @@ export default function CompanyTripsPage() {
                           </span>
                         )}
                       </td>
+                      <td className="py-3.5 px-4">
+                        {t.tripStatus === 'DEPARTED' ? (
+                          <div className="text-[11px] space-y-1">
+                            <div className="font-semibold text-slate-800">{t.manager?.name || '—'}</div>
+                            <div className="text-blue-700 font-bold">On the road</div>
+                            <button onClick={() => setManagerModalTrip(t)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-blue-200 text-blue-700 font-bold cursor-pointer">
+                              <UserCog className="w-3 h-3" /> Change / handover
+                            </button>
+                          </div>
+                        ) : t.tripStatus === 'COMPLETED' || isPast ? (
+                          <div className="text-[11px] space-y-1">
+                            <span className="text-slate-500">{t.manager?.name || '—'}</span>
+                            <button onClick={() => setManagerModalTrip(t)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 text-slate-600 font-bold cursor-pointer">
+                              <History className="w-3 h-3" /> Timeline
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <select
+                              value={t.manager?._id || ''}
+                              disabled={assigningTripId === t.rawTripId}
+                              onChange={(e) => handleAssignManager(t, e.target.value)}
+                              aria-label="Assign bus manager"
+                              className="max-w-[140px] px-2 py-1 rounded-lg border border-slate-200 bg-white text-[11px] font-semibold"
+                            >
+                              <option value="">Not assigned</option>
+                              {managers.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}
+                            </select>
+                            <button onClick={() => setManagerModalTrip(t)}
+                              className="block text-[10px] text-slate-500 hover:text-blue-700 font-semibold cursor-pointer">
+                              Change / timeline
+                            </button>
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {isPast ? (
@@ -793,6 +863,16 @@ export default function CompanyTripsPage() {
                             <span className="px-2 py-1 text-[10px] font-bold text-blue-700 bg-blue-50 rounded-lg">
                               Chart Locked
                             </span>
+                          )}
+                          {!isPast && !t.chartPrepared && (
+                            <button
+                              type="button"
+                              onClick={() => setFareEditorTripId(t.rawTripId)}
+                              className="px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] border border-emerald-200 flex items-center gap-1 transition cursor-pointer"
+                              title="Change prices of selected seats (e.g. upper vs lower berths)"
+                            >
+                              <span>₹ Seat Prices</span>
+                            </button>
                           )}
                           <button
                             type="button"
@@ -1341,6 +1421,130 @@ export default function CompanyTripsPage() {
           </div>
         </div>
       )}
+      {fareEditorTripId && (
+        <SeatFareEditor
+          tripId={fareEditorTripId}
+          onClose={() => setFareEditorTripId(null)}
+          onSaved={(msg) => {
+            setActionSuccess(msg || 'Seat prices updated.');
+            fetchTrips();
+          }}
+        />
+      )}
+      {managerModalTrip && (
+        <ManagerTimelineModal
+          trip={managerModalTrip}
+          managers={managers}
+          onClose={() => setManagerModalTrip(null)}
+          onSaved={(msg) => { setManagerModalTrip(null); setActionSuccess(msg || 'Bus manager updated.'); fetchTrips(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Change a trip's bus manager — including a mid-route handover at a stop — and show the
+ * timeline of who managed the bus from where on the trip's day.
+ */
+function ManagerTimelineModal({ trip, managers, onClose, onSaved }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  const [managerId, setManagerId] = useState('');
+  const [handoverPoint, setHandoverPoint] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.getTripManagerTimeline(trip.rawTripId).then((res) => { setData(res); setManagerId(res.currentManagerId || ''); }).catch((e) => setErr(e.message));
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [trip.rawTripId]);
+
+  const editable = ['SCHEDULED', 'BOARDING', 'DEPARTED'].includes(data?.trip?.status);
+  const midRoute = data?.trip?.status === 'DEPARTED';
+  const needsHandover = midRoute || (data?.timeline?.length || 0) > 0;
+  const changed = managerId && managerId !== (data?.currentManagerId || '');
+
+  const save = async () => {
+    if (!changed) { setErr('Pick a different manager to change.'); return; }
+    if (needsHandover && !handoverPoint) { setErr('Select the stop where the new manager takes over.'); return; }
+    setBusy(true); setErr('');
+    try {
+      const res = await api.assignTripManager(trip.rawTripId, { managerId, handoverPoint: needsHandover ? handoverPoint : undefined, note: note.trim() || undefined });
+      if (res?.success === false) throw new Error(res.error);
+      onSaved(res?.message);
+    } catch (e) { setErr(e.message); setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={busy ? undefined : onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 sticky top-0 bg-white">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Trip manager</h3>
+            {data ? <p className="text-xs text-slate-500">{data.trip.route} · {data.trip.busNumber} · {new Date(data.trip.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p> : null}
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 cursor-pointer"><X className="w-5 h-5 text-slate-400" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          {err ? <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">{err}</div> : null}
+
+          <div>
+            <div className="text-[11px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><History className="w-3.5 h-3.5" /> Manager timeline</div>
+            {!data ? <p className="text-xs text-slate-400">Loading…</p> : !data.timeline.length ? (
+              <p className="text-xs text-slate-400">No manager assigned yet.</p>
+            ) : (
+              <div className="space-y-0">
+                {data.timeline.map((seg, i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-600 mt-1.5" />
+                      {i < data.timeline.length - 1 && <div className="w-0.5 flex-1 bg-slate-200" />}
+                    </div>
+                    <div className="pb-3">
+                      <div className="text-sm font-bold text-slate-800">{seg.managerName}</div>
+                      <div className="text-xs text-slate-500">{seg.from} → {seg.until}</div>
+                      {seg.note ? <div className="text-[11px] text-slate-400 italic">“{seg.note}”</div> : null}
+                      <div className="text-[10px] text-slate-400">{new Date(seg.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}{seg.assignedBy ? ` · by ${seg.assignedBy}` : ''}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {editable && (
+            <div className="border-t border-slate-100 pt-4 space-y-3">
+              <div className="text-[11px] font-bold text-slate-500 uppercase">{midRoute ? 'Hand over to another manager' : 'Assign / change manager'}</div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">Bus manager</label>
+                <select value={managerId} onChange={(e) => setManagerId(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold">
+                  <option value="">Not assigned</option>
+                  {managers.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}
+                </select>
+              </div>
+              {changed && needsHandover && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Takes over at stop *</label>
+                  <select value={handoverPoint} onChange={(e) => setHandoverPoint(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold">
+                    <option value="">Select the handover stop</option>
+                    {(data?.stops || []).map((s) => <option key={s.id || s.name} value={s.name}>{s.name}</option>)}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">The passenger-facing timeline records from where each manager runs the bus.</p>
+                </div>
+              )}
+              {changed && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Note (optional)</label>
+                  <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. driver change at depot" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs" />
+                </div>
+              )}
+              <button onClick={save} disabled={busy || !changed} className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold cursor-pointer disabled:opacity-50">
+                {busy ? 'Saving…' : midRoute ? 'Hand over bus' : 'Save manager'}
+              </button>
+            </div>
+          )}
+          {!editable && data ? <p className="text-xs text-slate-400 border-t border-slate-100 pt-4">This trip is {String(data.trip.status).toLowerCase()} — the manager can no longer be changed.</p> : null}
+        </div>
+      </div>
     </div>
   );
 }

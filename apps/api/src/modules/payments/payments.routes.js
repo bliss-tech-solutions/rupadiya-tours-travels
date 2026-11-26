@@ -1,142 +1,215 @@
 const express = require('express');
 const router = express.Router();
 const paymentService = require('./payment.service');
-const { authenticateToken } = require('../../middleware/auth.middleware');
+const { authenticateToken, optionalAuth } = require('../../middleware/auth.middleware');
 const { paymentLimiter } = require('../../middleware/rateLimit.middleware');
 const PaymentMethodConfig = require('./paymentMethodConfig.model');
 const { authorizeRoles } = require('../../middleware/rbac.middleware');
 const { ROLES } = require('../../config/constants');
-const jwt = require('jsonwebtoken');
-const env = require('../../config/env');
 const holdStore = require('../../config/holdStore');
 const bookingService = require('../bookings/booking.service');
 
-function resolveUserFromRequest(req) {
-  const token = req.cookies?.rupadiya_access_token || 
-    (req.headers['authorization']?.startsWith('Bearer ') ? req.headers['authorization'].split(' ')[1] : null);
-  if (!token) return null;
-  try {
-    return jwt.verify(token, env.AUTH_ACCESS_SECRET);
-  } catch {
-    return null;
-  }
-}
+const Trip = require('../trips/trip.model');
+const { assertGenderPolicy } = require('../../services/seatPolicy');
+const { normalisePassengers } = require('../bookings/booking.service');
+const { normalisePhone, PHONE_ERROR } = require('../../utils/phone');
 
-// Public config: Returns the active Razorpay Key ID
+// Public config: Returns the active Razorpay Key ID (never the secret)
 router.get('/config', (req, res) => {
   res.json({
     success: true,
-    keyId: paymentService.keyId || 'rzp_test_rupadiya_demo',
+    keyId: paymentService.keyId || null,
     isTestMode: !paymentService.isConfigured()
   });
 });
 
-// Create Razorpay Order
-// Allows authenticated users (Agents, Owners, Passengers) and guest public passengers
-router.post('/create-order', paymentLimiter, async (req, res, next) => {
+/**
+ * Create Razorpay Order.
+ *
+ * TICKET_BOOKING orders are built entirely from server-side state:
+ *  - the caller must own an active seat hold,
+ *  - seats come from the hold, fare comes from the server quote,
+ *  - passenger manifest is validated (incl. the ladies-seat rule) BEFORE money is taken.
+ * The client-supplied amount is only used to detect a stale UI and is never trusted.
+ */
+router.post('/create-order', paymentLimiter, optionalAuth, async (req, res, next) => {
   try {
-    const user = resolveUserFromRequest(req);
+    const user = req.user || null;
+    const { amount, currency = 'INR', purpose = 'TICKET_BOOKING', metadata = {}, notes = {} } = req.body || {};
 
-    const {
-      amount,
-      currency = 'INR',
-      purpose = 'TICKET_BOOKING',
-      metadata = {},
-      notes = {}
-    } = req.body;
+    if (!['TICKET_BOOKING', 'WALLET_DEPOSIT', 'COMPANY_WALLET_DEPOSIT'].includes(purpose)) {
+      return res.status(400).json({ success: false, error: 'Unsupported payment purpose.' });
+    }
+    if (String(currency).toUpperCase() !== 'INR') {
+      return res.status(400).json({ success: false, error: 'Only INR payments are supported.' });
+    }
 
-    // Security Gate 1: Wallet deposits strictly require authenticated session
+    // Wallet top-ups: authenticated owner of the wallet only.
     if (purpose === 'WALLET_DEPOSIT' || purpose === 'COMPANY_WALLET_DEPOSIT') {
       if (!user) {
-        return res.status(401).json({
-          error: 'Authentication required. Only authenticated agents or owners can create wallet reload orders.'
-        });
+        return res.status(401).json({ success: false, error: 'Please sign in to add money to your wallet.' });
       }
+      if (purpose === 'WALLET_DEPOSIT' && user.role !== ROLES.AGENT) {
+        return res.status(403).json({ success: false, error: 'Only agents can top up an agent wallet.' });
+      }
+      if (purpose === 'COMPANY_WALLET_DEPOSIT' && user.role !== ROLES.COMPANY_OWNER) {
+        return res.status(403).json({ success: false, error: 'Only company owners can top up a company wallet.' });
+      }
+      const depositAmount = Math.round(Number(amount) * 100) / 100;
+      if (!depositAmount || depositAmount < 100 || depositAmount > 500000) {
+        return res.status(400).json({ success: false, error: 'Deposit amount must be between ₹100 and ₹5,00,000.' });
+      }
+      const order = await paymentService.createOrder({
+        amount: depositAmount,
+        purpose,
+        userId: user._id,
+        companyCode: user.companyCode || null,
+        metadata: { userId: String(user._id), companyCode: user.companyCode || null },
+        notes: { purpose, userId: String(user._id) }
+      });
+      return res.status(201).json(order);
     }
 
-    const resolvedUserId = user?.id || user?._id || user?.userId || req.body?.userId || metadata?.userId || null;
-    const resolvedCompanyCode = user?.companyCode || req.body?.companyCode || metadata?.companyCode || 1;
+    // ---- TICKET_BOOKING ----
+    const holdToken = metadata.holdToken || metadata.holdId || req.body.holdToken || req.body.holdId;
+    const tabId = req.tabId || req.headers['x-tab-id'] || null;
+    const hold = holdToken ? holdStore.getHold(holdToken) : null;
 
-    // Security Gate 2: Server-side validation against price tampering for ticket bookings
-    let finalAmount = Number(amount);
-    const holdToken = metadata?.holdToken || metadata?.holdId || req.body?.holdToken || req.body?.holdId;
-    if (purpose === 'TICKET_BOOKING' && holdToken) {
+    try {
+      bookingService.assertHoldOwnership(hold, { passengerId: user?._id || null, tabId });
+    } catch (ownErr) {
+      return res.status(ownErr.statusCode || 410).json({ success: false, error: ownErr.message, code: ownErr.code });
+    }
+
+    const trip = await Trip.findById(hold.tripId).select('seats companyCode departureTime status');
+    if (!trip) return res.status(404).json({ success: false, error: 'Trip not found.' });
+
+    let passengers;
+    try {
+      passengers = normalisePassengers(
+        hold.seatNumbers,
+        metadata.passengers?.length ? metadata.passengers : hold.passengerDetails,
+        { required: true }
+      );
+      assertGenderPolicy(trip, passengers);
+      bookingService.normaliseEmergencyContact(metadata.emergencyContact);
+    } catch (vErr) {
+      return res.status(vErr.statusCode || 400).json({ success: false, error: vErr.message, code: vErr.code });
+    }
+
+    const contactPhone = normalisePhone(metadata.contactPhone || metadata.primaryContact?.phone || '');
+    if (!contactPhone) {
+      return res.status(400).json({ success: false, error: `Contact mobile: ${PHONE_ERROR}` });
+    }
+    const contactEmail = String(metadata.contactEmail || metadata.primaryContact?.email || '').trim().toLowerCase();
+
+    const isAgentChannel = user?.role === ROLES.AGENT;
+    let referralCode = null;
+    if (!isAgentChannel && metadata.referralCode) {
       try {
-        const activeHold = await holdStore.getHold(holdToken);
-        if (activeHold && activeHold.tripId && activeHold.seatNumbers) {
-          const quote = await bookingService.calculateQuote({
-            tripId: activeHold.tripId,
-            seatNumbers: activeHold.seatNumbers,
-            offerCode: metadata.couponCode || metadata.offerCode || null,
-            insuranceOpted: Boolean(metadata.insuranceOpted)
-          });
-
-          if (quote && quote.totalPayable) {
-            // If client supplied an amount and it deviates by > 1, block tampering
-            if (amount !== undefined && amount !== null && Math.abs(Number(amount) - quote.totalPayable) > 1) {
-              return res.status(400).json({
-                success: false,
-                error: `Payment Security Violation: Amount tampering detected. Expected ₹${quote.totalPayable}, but client requested ₹${amount}.`,
-                code: 'AMOUNT_TAMPERING_DETECTED'
-              });
-            }
-            finalAmount = quote.totalPayable;
-          }
-        }
-      } catch (quoteErr) {
-        console.warn('[Server Quote Verification Note]', quoteErr.message);
+        const agent = await bookingService.resolveReferralAgent(metadata.referralCode, { strict: true });
+        referralCode = agent ? String(metadata.referralCode).toUpperCase().trim() : null;
+      } catch (refErr) {
+        return res.status(400).json({ success: false, error: refErr.message, code: refErr.code });
       }
     }
 
-    if (!finalAmount || isNaN(finalAmount) || finalAmount < 1) {
-      return res.status(400).json({ error: 'Valid payment amount is required.' });
+    // Agents may only sell their own company's buses.
+    if (isAgentChannel) {
+      try {
+        bookingService.assertAgentCompanyScope(user, { companyCode: trip.companyCode });
+      } catch (scopeErr) {
+        return res.status(scopeErr.statusCode || 403).json({ success: false, error: scopeErr.message, code: scopeErr.code });
+      }
     }
 
-    const orderResult = await paymentService.createOrder({
-      amount: finalAmount,
-      currency,
-      purpose,
-      userId: resolvedUserId,
-      companyCode: resolvedCompanyCode,
-      metadata: {
-        ...metadata,
-        verifiedAmount: finalAmount,
-        userId: resolvedUserId,
-        companyCode: resolvedCompanyCode
-      },
-      notes
+    // Online agent bookings carry the agent's own service charge (capped by the agent's settings).
+    const agentChargeCap = isAgentChannel ? Math.min(200, Number(user.serviceCharges?.bookingCharge ?? 0) || 0) : 0;
+    const agentServiceCharge = isAgentChannel
+      ? Math.max(0, Math.min(agentChargeCap, Number(metadata.agentServiceCharge ?? agentChargeCap) || 0))
+      : 0;
+
+    const offerCode = metadata.offerCode || metadata.couponCode || null;
+    const quote = await bookingService.calculateQuote({
+      tripId: hold.tripId,
+      seatNumbers: hold.seatNumbers,
+      offerCode,
+      insuranceOpted: Boolean(metadata.insuranceOpted),
+      insurancePerPassenger: metadata.insurancePerPassenger,
+      seatFares: hold.seatFares,
+      paymentChannel: 'ONLINE',
+      agentServiceCharge
     });
 
-    res.status(201).json(orderResult);
+    if (offerCode && !quote.appliedOffer) {
+      return res.status(400).json({
+        success: false,
+        error: `Coupon ${String(offerCode).toUpperCase()} is not valid for this booking.`,
+        code: 'INVALID_COUPON'
+      });
+    }
+
+    if (amount !== undefined && amount !== null && Math.abs(Number(amount) - quote.totalPayable) > 1) {
+      return res.status(409).json({
+        success: false,
+        error: `The fare has been updated to ₹${quote.totalPayable}. Please review and pay again.`,
+        code: 'FARE_CHANGED',
+        quote
+      });
+    }
+
+    const safeNotes = (notes && typeof notes === 'object')
+      ? Object.fromEntries(Object.entries(notes).slice(0, 5).map(([k, v]) => [String(k).slice(0, 40), String(v).slice(0, 200)]))
+      : {};
+
+    const order = await paymentService.createOrder({
+      amount: quote.totalPayable,
+      purpose,
+      userId: user?._id || null,
+      companyCode: trip.companyCode,
+      metadata: {
+        holdToken: hold.holdToken,
+        tripId: String(hold.tripId),
+        seatNumbers: hold.seatNumbers,
+        seatFares: quote.seatFares,
+        passengers,
+        boardingPoint: metadata.boardingPoint || null,
+        droppingPoint: metadata.droppingPoint || null,
+        contactPhone,
+        contactEmail,
+        referralCode,
+        offerCode: quote.appliedOffer?.code || null,
+        insuranceOpted: quote.insuranceOpted,
+        insurancePerPassenger: quote.insurancePerPassenger,
+        emergencyContact: metadata.emergencyContact || null,
+        channel: isAgentChannel ? 'AGENT_PORTAL' : 'USER_WEB',
+        agentServiceCharge,
+        verifiedAmount: quote.totalPayable
+      },
+      notes: { ...safeNotes, purpose, seats: hold.seatNumbers.join(','), tripId: String(hold.tripId) }
+    });
+
+    res.status(201).json({ ...order, quote });
   } catch (err) {
     next(err);
   }
 });
 
-// Verify Payment and Fulfill Purpose
-router.post('/verify', paymentLimiter, async (req, res, next) => {
+// Verify payment (browser callback) and fulfil it exactly once
+router.post('/verify', paymentLimiter, optionalAuth, async (req, res, next) => {
   try {
-    const user = resolveUserFromRequest(req);
-
-    const {
-      orderId,
-      paymentId,
-      signature,
-      paymentMethod
-    } = req.body;
-
-    const resolvedUserId = user?.id || user?._id || user?.userId || req.body.userId || req.body.metadata?.userId || null;
-
+    const { orderId, paymentId, signature } = req.body || {};
     const result = await paymentService.verifyAndFulfill({
       orderId,
       paymentId,
       signature,
-      userId: resolvedUserId,
-      paymentMethod
+      userId: req.user?._id || null
     });
-
     res.json(result);
   } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ success: false, error: err.message });
+    }
     next(err);
   }
 });
@@ -324,11 +397,31 @@ router.put('/methods/config', authenticateToken, authorizeRoles(ROLES.SUPER_ADMI
 });
 
 // Single Payment Status Lookup
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', authenticateToken, async (req, res, next) => {
   try {
     const payment = await paymentService.getPaymentDetails(req.params.id);
-    if (!payment) return res.status(404).json({ error: 'Payment record not found' });
-    res.json({ success: true, payment });
+    const isAdmin = req.user.role === ROLES.SUPER_ADMIN;
+    if (!payment || (!isAdmin && String(payment.userId) !== String(req.user._id))) {
+      return res.status(404).json({ error: 'Payment record not found' });
+    }
+    res.json({
+      success: true,
+      payment: {
+        orderId: payment.orderId,
+        paymentId: payment.paymentId,
+        amount: payment.amount,
+        currency: payment.currency,
+        status: payment.status,
+        purpose: payment.purpose,
+        paymentMethod: payment.paymentMethod,
+        fulfillmentStatus: payment.fulfillmentStatus,
+        consumedByBooking: payment.consumedByBooking,
+        failureReason: payment.failureReason,
+        refundDetails: payment.refundDetails,
+        createdAt: payment.createdAt,
+        verifiedAt: payment.verifiedAt
+      }
+    });
   } catch (err) {
     next(err);
   }

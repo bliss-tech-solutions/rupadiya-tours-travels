@@ -313,8 +313,12 @@ export const api = {
   // 8. Booking Engine
   searchTrips: (from, to, date) => request(`/trips?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`),
   getTrip: (id) => request(`/trips/${id}`),
-  holdSeats: (tripId, seatNumbers, passengers) => request('/bookings/hold', { method: 'POST', body: JSON.stringify({ tripId, seatNumbers, passengers }) }),
+  holdSeats: (tripId, seatNumbers, passengers, clientRef) => request('/bookings/hold', { method: 'POST', body: JSON.stringify({ tripId, seatNumbers, passengers, clientRef }) }),
+  // paymentChannel decides the 2.5% Razorpay charge (ONLINE only); it must reach the server or it quotes as WALLET.
+  getQuote: ({ tripId, seatNumbers, insuranceOpted, insurancePerPassenger, offerCode, holdToken, paymentChannel }) => request('/bookings/quote', { method: 'POST', body: JSON.stringify({ tripId, seatNumbers, insuranceOpted, insurancePerPassenger, offerCode, holdToken, paymentChannel }) }),
+  releaseHold: (holdToken) => request('/bookings/hold/release', { method: 'POST', body: JSON.stringify({ holdToken, holdId: holdToken }) }),
   bookWithWallet: (payload) => request('/agent/bookings/wallet-pay', { method: 'POST', body: JSON.stringify(payload) }),
+  getCashSummary: () => request('/agent/cash/summary'),
 
   // 9. Track a Bus (Upcoming Trips Only)
   getUpcomingTrips: () => request('/agent/trips/upcoming'),

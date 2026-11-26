@@ -2,11 +2,11 @@ const crypto = require('crypto');
 const Payment = require('./payment.model');
 const { Wallet, WalletLedger } = require('../wallets/wallet.model');
 const DepositRequest = require('../wallets/deposit.model');
-const Trip = require('../trips/trip.model');
 const Booking = require('../bookings/booking.model');
 const bookingService = require('../bookings/booking.service');
 const env = require('../../config/env');
-const { TRANSACTION_TYPES, SEAT_STATUS } = require('../../config/constants');
+const walletLedger = require('../../services/walletLedger.service');
+const { TRANSACTION_TYPES } = require('../../config/constants');
 
 class PaymentService {
   constructor() {
@@ -69,7 +69,10 @@ class PaymentService {
       }
       orderId = data.id;
     } else {
-      // Resilient test / demo sandbox simulation order
+      if (env.NODE_ENV === 'production') {
+        throw httpError('Online payments are temporarily unavailable (gateway not configured).', 503);
+      }
+      // Development sandbox order (never reachable in production)
       orderId = `order_test_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     }
 
@@ -98,400 +101,385 @@ class PaymentService {
   }
 
   /**
-   * 2. Verify Razorpay cryptographic signature and idempotently fulfill the purpose
+   * Fetch the authoritative payment entity from Razorpay.
+   */
+  async fetchGatewayPayment(paymentId) {
+    const authHeader = Buffer.from(`${this.keyId}:${this.keySecret}`).toString('base64');
+    const res = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+      headers: { Authorization: `Basic ${authHeader}` }
+    });
+    if (!res.ok) {
+      throw new Error(`Unable to fetch payment ${paymentId} from Razorpay (HTTP ${res.status}).`);
+    }
+    return res.json();
+  }
+
+  describeMethod(entity) {
+    let method = 'RAZORPAY';
+    let detail = '';
+    let account = '';
+    if (!entity) return { method, detail, account };
+    const m = String(entity.method || '').toUpperCase();
+    if (['UPI', 'CARD', 'NETBANKING', 'WALLET'].includes(m)) method = m;
+    if (entity.vpa) {
+      detail = `UPI (${entity.vpa})`;
+      account = entity.vpa;
+    } else if (entity.card) {
+      detail = `${entity.card.network || 'Card'} ${entity.card.last4 ? `*${entity.card.last4}` : ''}`.trim();
+      account = detail;
+    } else if (entity.bank) {
+      detail = `NetBanking (${entity.bank})`;
+      account = entity.bank;
+    } else if (entity.wallet) {
+      detail = `Wallet (${entity.wallet})`;
+      account = entity.wallet;
+    }
+    return { method, detail, account };
+  }
+
+  /**
+   * 2. Verify a payment and fulfil what it paid for — exactly once.
+   *
+   * Security model:
+   *  - Browser callbacks must carry a valid HMAC signature (orderId|paymentId).
+   *  - Webhook callbacks are trusted only after the webhook HMAC was verified by
+   *    handleWebhook (trustedWebhook = true).
+   *  - The gateway's own record is cross-checked: same order, same amount, captured.
+   *  - CREATED → CAPTURED is an atomic transition, so a browser callback racing the
+   *    webhook can never credit a wallet or issue a ticket twice.
+   *  - Without gateway keys, only explicit simulation in non-production is allowed.
    */
   async verifyAndFulfill({
     orderId,
     paymentId,
     signature,
     userId = null,
-    paymentMethod = null,
-    gatewayEntity = null
+    gatewayEntity = null,
+    trustedWebhook = false
   }) {
     if (!orderId || !paymentId) {
-      throw new Error('Order ID and Payment ID are required for verification.');
+      throw httpError('Order ID and Payment ID are required for verification.', 400);
     }
 
     const payment = await Payment.findOne({ orderId });
-    if (!payment) {
-      throw new Error(`No payment order found for order ID: ${orderId}`);
+    if (!payment) throw httpError('Payment order not found.', 404);
+
+    // Callers may only verify their own orders (guest orders have no owner).
+    if (!trustedWebhook && payment.userId && userId && String(payment.userId) !== String(userId)) {
+      throw httpError('This payment belongs to another account.', 403);
     }
 
-    // Idempotency check: if already captured, return fulfilled result immediately
-    if (payment.status === 'CAPTURED') {
-      return {
-        success: true,
-        alreadyProcessed: true,
-        message: 'Payment was already verified and fulfilled.',
-        payment
-      };
+    if (payment.status === 'CAPTURED' || payment.status === 'REFUNDED') {
+      return this.buildIdempotentResult(payment);
     }
 
-    // Simulation security guard
-    const allowSimulation = process.env.NODE_ENV !== 'production' && process.env.ALLOW_PAYMENT_SIMULATION === 'true';
-    if ((paymentId?.startsWith('pay_sim_') || signature?.startsWith('sig_sim_')) && !allowSimulation) {
-      payment.status = 'FAILED';
-      payment.failureReason = 'Payment simulation is disabled. Real gateway verification required.';
-      await payment.save();
-      throw new Error('Payment simulation rejected. Please use a live payment method.');
-    }
+    let entity = gatewayEntity;
 
-    // Cryptographic signature check with timing-safe comparison to prevent timing attacks
-    if (this.isConfigured() && !paymentId?.startsWith('pay_sim_') && !signature?.startsWith('sig_sim_')) {
-      if (!signature) {
-        throw new Error('Razorpay signature is required for verification.');
-      }
-      const expectedSignature = crypto
-        .createHmac('sha256', this.keySecret)
-        .update(`${orderId}|${paymentId}`)
-        .digest('hex');
-
-      const expectedBuf = Buffer.from(expectedSignature, 'utf8');
-      const sigBuf = Buffer.from(signature, 'utf8');
-
-      if (expectedBuf.length !== sigBuf.length || !crypto.timingSafeEqual(expectedBuf, sigBuf)) {
-        payment.status = 'FAILED';
-        payment.failureReason = 'Cryptographic HMAC signature mismatch';
-        await payment.save();
-        throw new Error('Invalid payment signature. Payment verification rejected.');
-      }
-    }
-
-    // Mark payment as captured atomically
-    payment.status = 'CAPTURED';
-    payment.paymentId = paymentId;
-    payment.signature = signature || 'TEST_SIMULATED_SIG';
-    payment.verifiedAt = new Date();
-    await payment.save();
-
-    // Discover detailed Razorpay payment method (UPI, Card, Netbanking, Wallet)
-    let rzpMethod = 'RAZORPAY';
-    let rzpDetailInfo = '';
-    let depositorAccount = '';
-
-    if (gatewayEntity && gatewayEntity.method) {
-      const m = String(gatewayEntity.method).toUpperCase();
-      if (['UPI', 'CARD', 'NETBANKING', 'WALLET'].includes(m)) rzpMethod = m;
-      if (gatewayEntity.vpa) {
-        rzpDetailInfo = `UPI (${gatewayEntity.vpa})`;
-        depositorAccount = gatewayEntity.vpa;
-      } else if (gatewayEntity.card) {
-        const net = gatewayEntity.card.network || 'Card';
-        const l4 = gatewayEntity.card.last4 ? `*${gatewayEntity.card.last4}` : '';
-        rzpDetailInfo = `${net} ${l4}`.trim();
-        depositorAccount = rzpDetailInfo;
-      } else if (gatewayEntity.bank) {
-        rzpDetailInfo = `NetBanking (${gatewayEntity.bank})`;
-        depositorAccount = gatewayEntity.bank;
-      } else if (gatewayEntity.wallet) {
-        rzpDetailInfo = `Wallet (${gatewayEntity.wallet})`;
-        depositorAccount = gatewayEntity.wallet;
-      }
-    } else if (this.isConfigured() && !paymentId?.startsWith('pay_sim_')) {
-      try {
-        const authHeader = Buffer.from(`${this.keyId}:${this.keySecret}`).toString('base64');
-        const pRes = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}`, {
-          headers: { 'Authorization': `Basic ${authHeader}` }
-        });
-        if (pRes.ok) {
-          const pData = await pRes.json();
-          const m = (pData.method || '').toUpperCase();
-          if (['UPI', 'CARD', 'NETBANKING', 'WALLET'].includes(m)) rzpMethod = m;
-          if (pData.vpa) {
-            rzpDetailInfo = `UPI (${pData.vpa})`;
-            depositorAccount = pData.vpa;
-          } else if (pData.card) {
-            const net = pData.card.network || 'Card';
-            const l4 = pData.card.last4 ? `*${pData.card.last4}` : '';
-            rzpDetailInfo = `${net} ${l4}`.trim();
-            depositorAccount = rzpDetailInfo;
-          } else if (pData.bank) {
-            rzpDetailInfo = `NetBanking (${pData.bank})`;
-            depositorAccount = pData.bank;
-          } else if (pData.wallet) {
-            rzpDetailInfo = `Wallet (${pData.wallet})`;
-            depositorAccount = pData.wallet;
-          }
-          payment.rawGatewayResponse = pData;
-          payment.paymentMethod = ['UPI', 'CARD', 'NETBANKING', 'WALLET'].includes(rzpMethod) ? rzpMethod : 'RAZORPAY';
-          await payment.save();
+    if (this.isConfigured()) {
+      if (!trustedWebhook) {
+        if (!signature) throw httpError('Razorpay signature is required for verification.', 400);
+        const expected = crypto.createHmac('sha256', this.keySecret).update(`${orderId}|${paymentId}`).digest('hex');
+        const a = Buffer.from(expected, 'utf8');
+        const b = Buffer.from(String(signature), 'utf8');
+        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+          // Do not mark FAILED: a forged callback must not be able to block the genuine one.
+          throw httpError('Invalid payment signature. Payment verification rejected.', 400);
         }
-      } catch (fErr) {
-        console.warn('Could not fetch Razorpay payment mode:', fErr.message);
       }
-    } else if (paymentMethod) {
-      const pm = String(paymentMethod).toUpperCase();
-      if (['UPI', 'CARD', 'NETBANKING', 'WALLET', 'UPI_QR'].includes(pm)) {
-        rzpMethod = pm;
-        rzpDetailInfo = `${pm} Instant`;
+
+      if (!entity) {
+        try {
+          entity = await this.fetchGatewayPayment(paymentId);
+        } catch (fetchErr) {
+          // Signature is valid; the amount check below falls back to the order amount.
+          console.warn('[Razorpay fetch payment]', fetchErr.message);
+        }
+      }
+
+      if (entity) {
+        if (entity.order_id && entity.order_id !== orderId) {
+          throw httpError('Payment does not belong to this order.', 400);
+        }
+        if (entity.amount !== undefined && Number(entity.amount) !== Math.round(payment.amount * 100)) {
+          throw httpError('Paid amount does not match the order amount.', 400);
+        }
+        if (entity.status && !['captured', 'authorized'].includes(entity.status)) {
+          throw httpError(`Payment is ${entity.status}; it cannot be used.`, 400);
+        }
+      }
+    } else {
+      const allowSimulation = env.NODE_ENV !== 'production';
+      if (!allowSimulation) {
+        throw httpError('Payment gateway is not configured. Please contact support.', 503);
       }
     }
 
-
-    let fulfillmentResult = {};
-
-    // -----------------------------------------------------------------
-    // FULFILLMENT HANDLERS BY PURPOSE
-    // -----------------------------------------------------------------
-
-    // A. AGENT / USER WALLET DEPOSIT
-    if (payment.purpose === 'WALLET_DEPOSIT') {
-      let targetUserId = payment.userId || userId;
-      if (!targetUserId) {
-        throw new Error('Authenticated User ID is strictly required to credit wallet deposit.');
-      }
-
-      let wallet = await Wallet.findOne({ userId: targetUserId });
-      if (!wallet) {
-        wallet = await Wallet.create({
-          userId: targetUserId,
-          companyCode: payment.companyCode || 1,
-          availableBalance: 0,
-          reservedBalance: 0
-        });
-      }
-
-      wallet.availableBalance += payment.amount;
-      await wallet.save();
-
-      const depositRef = `DEP_${Date.now()}`;
-      const idempotencyKey = `PAY_DEP_${paymentId}`;
-
-      // Insert immutable audit ledger
-      const ledger = await WalletLedger.create({
-        walletId: wallet._id,
-        userId: targetUserId,
-        companyCode: payment.companyCode || 1,
-        entryType: 'CREDIT',
-        amount: payment.amount,
-        balanceAfter: wallet.availableBalance,
-        transactionType: TRANSACTION_TYPES.WALLET_DEPOSIT,
-        referenceType: 'DEPOSIT',
-        referenceId: depositRef,
-        description: `Wallet reload via Razorpay (${rzpDetailInfo ? rzpDetailInfo : rzpMethod}) - Ref: ${paymentId}`,
-        idempotencyKey
-      });
-
-      // Update or create DepositRequest record
-      await DepositRequest.create({
-        depositId: depositRef,
-        userId: targetUserId,
-        companyCode: payment.companyCode || 1,
-        amount: payment.amount,
-        paymentMethod: ['UPI', 'CARD', 'NETBANKING', 'WALLET', 'UPI_QR'].includes(rzpMethod) ? rzpMethod : 'RAZORPAY',
-        referenceId: paymentId,
-        bankDetails: {
-          bankName: rzpDetailInfo ? `Razorpay ${rzpDetailInfo}` : 'Razorpay Gateway',
-          senderAccount: depositorAccount || 'Online Terminal',
-          notes: `Order ID: ${orderId} | Gateway: Razorpay (${rzpMethod})`
-        },
-        status: 'COMPLETED',
-        verifiedBy: `RAZORPAY_${rzpMethod}`,
-        verifiedAt: new Date()
-      });
-
-      fulfillmentResult = {
-        wallet: {
-          availableBalance: wallet.availableBalance,
-          reservedBalance: wallet.reservedBalance
-        },
-        deposit: {
-          depositId: depositRef,
-          amount: payment.amount,
-          status: 'COMPLETED'
-        },
-        ledger
-      };
-    }
-
-    // B. PASSENGER TICKET BOOKING (User Web or Agent Booking)
-    else if (payment.purpose === 'TICKET_BOOKING') {
-      const meta = payment.metadata || {};
-      
-      const confirmPayload = {
-        holdToken: meta.holdToken || meta.holdId,
-        passengerId: payment.userId || userId,
-        contactEmail: meta.contactEmail || meta.primaryContact?.email,
-        contactPhone: meta.contactPhone || meta.primaryContact?.phone,
-        passengers: meta.passengers || [],
-        boardingPoint: meta.boardingPoint,
-        droppingPoint: meta.droppingPoint,
-        paymentProvider: 'razorpay',
-        paymentDetails: {
+    // Atomic claim of the capture transition.
+    const { method, detail, account } = this.describeMethod(entity);
+    const captured = await Payment.findOneAndUpdate(
+      { _id: payment._id, status: { $in: ['CREATED', 'ATTEMPTED', 'FAILED'] } },
+      {
+        $set: {
+          status: 'CAPTURED',
           paymentId,
-          orderId,
-          signature,
-          status: 'SUCCESS',
-          verified: true,
-          alreadyVerified: true
-        },
-        referralCode: meta.referralCode,
-        tripId: meta.tripId,
-        seatNumbers: meta.seatNumbers || meta.selectedSeats,
-        insuranceOpted: meta.insuranceOpted ?? false,
-        insuranceAmount: meta.insuranceAmount ?? 0
-      };
-
-      const bookingResult = await bookingService.confirmBooking(confirmPayload);
-      payment.consumedByBooking = bookingResult.bookingId || bookingResult.pnr || 'CONFIRMED';
-      await payment.save();
-      fulfillmentResult = { bookingResult };
-    }
-
-    // C. COMPANY FRANCHISE WALLET DEPOSIT
-    else if (payment.purpose === 'COMPANY_WALLET_DEPOSIT') {
-      let targetUserId = payment.userId || userId || payment.metadata?.userId;
-      const targetCompanyCode = payment.companyCode || 1;
-
-      let companyWallet = null;
-      if (targetUserId) {
-        companyWallet = await Wallet.findOne({ companyCode: targetCompanyCode, userId: targetUserId });
-      }
-      if (!companyWallet) {
-        companyWallet = await Wallet.findOne({ companyCode: targetCompanyCode });
-      }
-
-      if (!companyWallet) {
-        if (!targetUserId) {
-          const User = require('../users/user.model');
-          const ownerUser = await User.findOne({ companyCode: targetCompanyCode, role: 'COMPANY_OWNER' });
-          if (ownerUser) targetUserId = ownerUser._id;
+          signature: trustedWebhook ? 'WEBHOOK_VERIFIED' : (signature || 'SIMULATED'),
+          verifiedAt: new Date(),
+          paymentMethod: ['UPI', 'CARD', 'NETBANKING', 'WALLET'].includes(method) ? method : 'RAZORPAY',
+          ...(entity ? { rawGatewayResponse: entity } : {})
         }
-        companyWallet = await Wallet.create({
-          userId: targetUserId,
-          companyCode: targetCompanyCode,
-          availableBalance: 0,
-          reservedBalance: 0
-        });
-      }
+      },
+      { new: true }
+    );
 
-      companyWallet.availableBalance += payment.amount;
-      await companyWallet.save();
-
-      const idempotencyKey = `PAY_COMP_${paymentId}`;
-      const ledger = await WalletLedger.create({
-        walletId: companyWallet._id,
-        userId: companyWallet.userId || targetUserId,
-        companyCode: targetCompanyCode,
-        entryType: 'CREDIT',
-        amount: payment.amount,
-        balanceAfter: companyWallet.availableBalance,
-        transactionType: TRANSACTION_TYPES.WALLET_DEPOSIT,
-        referenceType: 'DEPOSIT',
-        referenceId: `COMP_DEP_${Date.now()}`,
-        description: `Company Franchise Wallet reload via Razorpay (Payment ID: ${paymentId})`,
-        idempotencyKey
-      });
-
-      fulfillmentResult = {
-        companyWallet: {
-          availableBalance: companyWallet.availableBalance
-        },
-        wallet: {
-          availableBalance: companyWallet.availableBalance
-        },
-        ledger
-      };
+    if (!captured) {
+      // Lost the race to a concurrent verifier (browser vs webhook).
+      return this.buildIdempotentResult(await Payment.findById(payment._id));
     }
 
-    payment.metadata = {
-      ...payment.metadata,
-      fulfillmentResult
-    };
-    await payment.save();
+    const fulfillmentResult = await this.fulfill(captured, { method, detail, account });
 
-    return {
-      success: true,
-      verified: true,
-      payment,
-      ...fulfillmentResult
-    };
+    // Razorpay's real charge for this payment (fee includes GST; both in paise).
+    await this.recordActualGatewayFee(captured, entity, fulfillmentResult?.bookingResult?.bookingId);
+
+    await Payment.updateOne(
+      { _id: captured._id },
+      { $set: { fulfillmentStatus: 'FULFILLED', 'metadata.fulfillmentResult': summariseFulfillment(fulfillmentResult) } }
+    );
+
+    return { success: true, verified: true, payment: publicPayment(captured), ...fulfillmentResult };
   }
 
   /**
-   * 3. Handle asynchronous Razorpay Webhook events with persistent idempotency and strict signature verification
+   * Store the real gateway fee Razorpay deducted (entity.fee includes entity.tax), on the payment
+   * and on the booking breakdown, so tickets and reports show the actual charge.
    */
-  async handleWebhook(rawBody, signature, parsedBody = null) {
-    if (env.NODE_ENV === 'production' && !this.webhookSecret) {
-      throw new Error('[SECURITY FATAL] Razorpay webhook secret is unconfigured in production.');
-    }
-
-    if (this.webhookSecret) {
-      if (!signature) {
-        throw new Error('Razorpay webhook signature is required in production.');
+  async recordActualGatewayFee(payment, entity, bookingId) {
+    try {
+      let e = entity;
+      if ((!e || e.fee === undefined) && this.isConfigured() && payment.paymentId && String(payment.paymentId).startsWith('pay_')) {
+        e = await this.fetchGatewayPayment(payment.paymentId).catch(() => null);
       }
-      const rawString = Buffer.isBuffer(rawBody) 
-        ? rawBody.toString('utf8') 
-        : (typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody));
+      if (!e || e.fee === undefined || e.fee === null) return;
+      const fee = Math.round(Number(e.fee)) / 100;
+      const tax = Math.round(Number(e.tax || 0)) / 100;
+      await Payment.updateOne({ _id: payment._id }, { $set: { gatewayFee: fee, gatewayTax: tax } });
+      if (bookingId) {
+        await Booking.updateOne(
+          { bookingId },
+          { $set: { 'fareBreakdown.gatewayFeeActual': fee, 'fareBreakdown.gatewayTaxActual': tax } }
+        );
+      }
+    } catch (err) {
+      console.warn('[Gateway fee capture]', err.message);
+    }
+  }
 
-      const expectedSignature = crypto
-        .createHmac('sha256', this.webhookSecret)
-        .update(rawString)
-        .digest('hex');
-
-      const expectedBuf = Buffer.from(expectedSignature, 'utf8');
-      const sigBuf = Buffer.from(signature, 'utf8');
-
-      if (expectedBuf.length !== sigBuf.length || !crypto.timingSafeEqual(expectedBuf, sigBuf)) {
-        throw new Error('Invalid Razorpay webhook signature');
+  async buildIdempotentResult(payment) {
+    const result = { success: true, alreadyProcessed: true, verified: true, payment: publicPayment(payment) };
+    if (payment.purpose === 'TICKET_BOOKING' && payment.consumedByBooking) {
+      const booking = await Booking.findOne({ bookingId: payment.consumedByBooking })
+        .populate([{ path: 'tripId', select: '-seats', populate: [{ path: 'busId' }, { path: 'routeId' }] }, { path: 'routeId' }, { path: 'busId' }]);
+      if (booking) {
+        const b = booking.toObject();
+        b.trip = b.tripId; b.bus = b.busId; b.route = b.routeId; b.totalAmount = b.fareBreakdown?.totalPayable;
+        result.bookingResult = b;
       }
     }
+    if (payment.status === 'REFUNDED' || payment.fulfillmentStatus === 'FAILED_REFUNDED') {
+      result.success = false;
+      result.refunded = true;
+      result.error = payment.failureReason || 'This payment was refunded.';
+    }
+    return result;
+  }
 
-    const event = parsedBody || (Buffer.isBuffer(rawBody) 
-      ? JSON.parse(rawBody.toString('utf8')) 
-      : (typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody));
+  /**
+   * Performs the business action paid for. Runs once per captured payment.
+   */
+  async fulfill(payment, { method, detail, account }) {
+    const meta = payment.metadata || {};
 
-    const eventId = event.id || `evt_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-    const WebhookEvent = require('./webhookEvent.model');
+    if (payment.purpose === 'WALLET_DEPOSIT' || payment.purpose === 'COMPANY_WALLET_DEPOSIT') {
+      const isCompany = payment.purpose === 'COMPANY_WALLET_DEPOSIT';
+      let targetUserId = payment.userId;
+      if (!targetUserId && isCompany) {
+        const User = require('../users/user.model');
+        const owner = await User.findOne({ companyCode: payment.companyCode, role: 'COMPANY_OWNER' }).select('_id');
+        targetUserId = owner?._id;
+      }
+      if (!targetUserId) throw httpError('Wallet owner could not be resolved for this deposit.', 400);
 
-    // Durable idempotency check: never process duplicate webhook event
-    const existing = await WebhookEvent.findOne({ eventId });
-    if (existing) {
-      return { status: 'ok', event: event.event, alreadyProcessed: true };
+      const depositRef = `DEP_${payment.paymentId}`;
+      const { ledger, wallet } = await walletLedger.credit({
+        userId: targetUserId,
+        amount: payment.amount,
+        ownerType: isCompany ? 'COMPANY' : 'AGENT',
+        companyCode: payment.companyCode || null,
+        transactionType: TRANSACTION_TYPES.WALLET_DEPOSIT,
+        referenceType: 'DEPOSIT',
+        referenceId: depositRef,
+        description: `${isCompany ? 'Company wallet' : 'Wallet'} top-up via Razorpay ${detail || method} · Payment ${payment.paymentId}`,
+        idempotencyKey: `PAY_DEP_${payment.paymentId}`
+      });
+
+      if (!isCompany) {
+        await DepositRequest.create({
+          depositId: depositRef,
+          userId: targetUserId,
+          companyCode: payment.companyCode || 1,
+          amount: payment.amount,
+          paymentMethod: ['UPI', 'CARD', 'NETBANKING', 'WALLET'].includes(method) ? method : 'RAZORPAY',
+          referenceId: payment.paymentId,
+          bankDetails: {
+            bankName: detail ? `Razorpay ${detail}` : 'Razorpay Gateway',
+            senderAccount: account || 'Online',
+            notes: `Order ${payment.orderId}`
+          },
+          status: 'COMPLETED',
+          verifiedBy: `RAZORPAY_${method}`,
+          verifiedAt: new Date()
+        }).catch((e) => console.warn('[DepositRequest record]', e.message));
+      }
+
+      const freshWallet = wallet || await Wallet.findOne({ userId: targetUserId });
+      const walletView = {
+        availableBalance: freshWallet?.availableBalance ?? 0,
+        reservedBalance: freshWallet?.reservedBalance ?? 0
+      };
+      return isCompany
+        ? { companyWallet: walletView, wallet: walletView, ledger }
+        : { wallet: walletView, deposit: { depositId: depositRef, amount: payment.amount, status: 'COMPLETED' }, ledger };
     }
 
-    const { event: eventType, payload } = event;
-
-    if (eventType === 'payment.captured' || eventType === 'order.paid') {
-      const paymentEntity = payload.payment?.entity;
-      const orderId = paymentEntity?.order_id;
-      const paymentId = paymentEntity?.id;
-
-      if (orderId && paymentId) {
-        await this.verifyAndFulfill({
-          orderId,
-          paymentId,
-          signature: 'WEBHOOK_VERIFIED',
-          gatewayEntity: paymentEntity
+    if (payment.purpose === 'TICKET_BOOKING') {
+      try {
+        const bookingResult = await bookingService.confirmBooking({
+          holdToken: meta.holdToken,
+          passengerId: payment.userId || null,
+          contactEmail: meta.contactEmail,
+          contactPhone: meta.contactPhone,
+          passengers: meta.passengers || [],
+          boardingPoint: meta.boardingPoint,
+          droppingPoint: meta.droppingPoint,
+          paymentProvider: 'razorpay',
+          paymentDetails: {
+            orderId: payment.orderId,
+            paymentId: payment.paymentId,
+            recoverSeats: { tripId: meta.tripId, seatNumbers: meta.seatNumbers }
+          },
+          referralCode: meta.referralCode,
+          offerCode: meta.offerCode || null,
+          insuranceOpted: Boolean(meta.insuranceOpted),
+          insurancePerPassenger: meta.insurancePerPassenger,
+          emergencyContact: meta.emergencyContact || null,
+          agentUserId: meta.channel === 'AGENT_PORTAL' ? payment.userId : null,
+          agentServiceCharge: meta.agentServiceCharge || 0,
+          channel: meta.channel || 'USER_WEB',
+          trustedPayment: true
         });
-      }
-    } else if (eventType === 'payment.failed') {
-      const paymentEntity = payload.payment?.entity;
-      const orderId = paymentEntity?.order_id;
-      if (orderId) {
-        await Payment.findOneAndUpdate(
-          { orderId },
-          { status: 'FAILED', failureReason: paymentEntity.error_description || 'Gateway Payment Failed' }
+        return { bookingResult };
+      } catch (bookErr) {
+        // Money was taken but no ticket could be issued (seat taken, hold expired…):
+        // refund the full amount automatically.
+        const reason = `Ticket could not be issued: ${bookErr.message}`;
+        let refunded = false;
+        try {
+          await this.processRefund({
+            paymentId: payment.paymentId,
+            amount: payment.amount,
+            notes: { reason: 'BOOKING_FAILED', orderId: payment.orderId }
+          });
+          refunded = true;
+        } catch (refErr) {
+          console.error('[CRITICAL] Auto-refund failed for', payment.orderId, refErr.message);
+        }
+        await Payment.updateOne(
+          { _id: payment._id },
+          {
+            $set: {
+              fulfillmentStatus: refunded ? 'FAILED_REFUNDED' : 'FAILED_REFUND_PENDING',
+              failureReason: reason,
+              ...(refunded ? { status: 'REFUNDED' } : {})
+            }
+          }
+        );
+        throw httpError(
+          refunded
+            ? `${bookErr.message} Your payment of ₹${payment.amount} has been refunded to the original payment method.`
+            : `${bookErr.message} Your payment of ₹${payment.amount} will be refunded within 5-7 working days.`,
+          bookErr.statusCode || 409
         );
       }
     }
 
-    // Persist processed webhook event for audit trail and idempotency
-    try {
-      await WebhookEvent.create({
-        eventId,
-        eventType,
-        orderId: payload.payment?.entity?.order_id || null,
-        paymentId: payload.payment?.entity?.id || null,
-        processed: true,
-        processedAt: new Date()
-      });
-    } catch (e) {
-      console.warn('[Webhook Event Persistence Warning]', e.message);
+    throw httpError(`Unsupported payment purpose ${payment.purpose}`, 400);
+  }
+
+  /**
+   * 3. Razorpay webhook: verified with the webhook secret, idempotent per event id.
+   */
+  async handleWebhook(rawBody, signature, parsedBody = null) {
+    if (!this.webhookSecret) {
+      if (env.NODE_ENV === 'production') {
+        throw new Error('[SECURITY] Razorpay webhook secret is not configured.');
+      }
+      throw new Error('Webhook secret not configured; webhook ignored.');
     }
+    if (!signature) throw new Error('Razorpay webhook signature is required.');
+
+    const rawString = Buffer.isBuffer(rawBody)
+      ? rawBody.toString('utf8')
+      : (typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody));
+
+    const expected = crypto.createHmac('sha256', this.webhookSecret).update(rawString).digest('hex');
+    const a = Buffer.from(expected, 'utf8');
+    const b = Buffer.from(String(signature), 'utf8');
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      throw new Error('Invalid Razorpay webhook signature');
+    }
+
+    const event = JSON.parse(rawString);
+    const eventId = event.id || crypto.createHash('sha256').update(rawString).digest('hex');
+    const WebhookEvent = require('./webhookEvent.model');
+
+    if (await WebhookEvent.findOne({ eventId })) {
+      return { status: 'ok', event: event.event, alreadyProcessed: true };
+    }
+
+    const { event: eventType, payload } = event;
+    const entity = payload?.payment?.entity;
+
+    if ((eventType === 'payment.captured' || eventType === 'order.paid') && entity?.order_id && entity?.id) {
+      try {
+        await this.verifyAndFulfill({
+          orderId: entity.order_id,
+          paymentId: entity.id,
+          gatewayEntity: entity,
+          trustedWebhook: true
+        });
+      } catch (err) {
+        // Business failures (e.g. seat already taken → auto refunded) are final; acknowledge.
+        console.warn('[Webhook fulfillment]', entity.order_id, err.message);
+      }
+    } else if (eventType === 'payment.failed' && entity?.order_id) {
+      await Payment.updateOne(
+        { orderId: entity.order_id, status: { $in: ['CREATED', 'ATTEMPTED'] } },
+        { $set: { status: 'FAILED', failureReason: entity.error_description || 'Gateway payment failed' } }
+      );
+    }
+
+    await WebhookEvent.create({
+      eventId,
+      eventType,
+      orderId: entity?.order_id || null,
+      paymentId: entity?.id || null,
+      processed: true,
+      processedAt: new Date()
+    }).catch((e) => console.warn('[Webhook Event Persistence]', e.message));
 
     return { status: 'ok', event: eventType };
   }
+
 
   /**
    * 4. Retrieve single payment details
@@ -510,104 +498,84 @@ class PaymentService {
   }
 
   /**
-   * 6. Process Gateway Refund via Razorpay REST API (or resilient sandbox simulation)
+   * 6. Gateway refund. Simulation is only possible outside production.
    */
   async processRefund({ paymentId, amount, notes = {}, refundSpeed = 'optimum' }) {
-    if (!paymentId) {
-      throw new Error('Payment ID is required to process refund');
-    }
-
+    if (!paymentId) throw httpError('Payment ID is required to process refund', 400);
     const numAmount = Number(amount);
-    if (!numAmount || numAmount <= 0) {
-      throw new Error('Valid refund amount is required');
-    }
+    if (!numAmount || numAmount <= 0) throw httpError('Valid refund amount is required', 400);
 
-    let gatewayRefundId = null;
-    let gatewayResponse = null;
+    let gatewayRefundId;
+    let gatewayResponse;
+    const isProd = env.NODE_ENV === 'production';
 
-    if (this.isConfigured() && paymentId.startsWith('pay_')) {
-      try {
-        const authHeader = Buffer.from(`${this.keyId}:${this.keySecret}`).toString('base64');
-        const refundPayload = {
-          amount: Math.round(numAmount * 100), // amount in paise
+    if (this.isConfigured() && String(paymentId).startsWith('pay_')) {
+      const authHeader = Buffer.from(`${this.keyId}:${this.keySecret}`).toString('base64');
+      const response = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Basic ${authHeader}` },
+        body: JSON.stringify({
+          amount: Math.round(numAmount * 100),
           speed: refundSpeed,
-          notes: {
-            ...notes,
-            processedAt: new Date().toISOString()
-          }
-        };
-
-        const response = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refund`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Basic ${authHeader}`
-          },
-          body: JSON.stringify(refundPayload)
-        });
-
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error ? data.error.description : 'Razorpay refund request failed');
-        }
-
-        gatewayRefundId = data.id;
-        gatewayResponse = data;
-      } catch (err) {
-        console.error('[Razorpay Refund API Error]:', err.message);
-        // If gateway call fails on demo/test mock payment ID in development, fallback to simulated sandbox refund
-        if (process.env.NODE_ENV !== 'production' || paymentId.includes('test') || paymentId.includes('mock') || paymentId.includes('sim')) {
-          console.warn('[Falling back to simulated refund for mock/test payment]:', err.message);
-          gatewayRefundId = `rfnd_sim_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-          gatewayResponse = {
-            id: gatewayRefundId,
-            payment_id: paymentId,
-            amount: Math.round(numAmount * 100),
-            status: 'processed',
-            speed_processed: refundSpeed,
-            simulated: true,
-            gatewayNotice: err.message
-          };
-        } else {
-          throw err;
-        }
+          notes: { ...notes, processedAt: new Date().toISOString() }
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw httpError(data?.error?.description || 'Razorpay refund request failed', 502);
       }
-    } else {
-      // Resilient test / demo sandbox simulation refund
+      gatewayRefundId = data.id;
+      gatewayResponse = data;
+    } else if (!isProd) {
       gatewayRefundId = `rfnd_sim_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-      gatewayResponse = {
-        id: gatewayRefundId,
-        payment_id: paymentId,
-        amount: Math.round(numAmount * 100),
-        status: 'processed',
-        speed_processed: refundSpeed,
-        simulated: true
-      };
+      gatewayResponse = { id: gatewayRefundId, payment_id: paymentId, amount: Math.round(numAmount * 100), status: 'processed', simulated: true };
+    } else {
+      throw httpError('Gateway refund is unavailable for this payment. Use manual bank transfer.', 502);
     }
 
-    // Update payment record in database if found
-    try {
-      await Payment.findOneAndUpdate(
-        { $or: [{ paymentId }, { orderId: paymentId }] },
-        {
+    await Payment.updateOne(
+      { paymentId },
+      {
+        $set: {
           status: 'REFUNDED',
           'refundDetails.refundId': gatewayRefundId,
-          'refundDetails.amount': numAmount,
-          'refundDetails.status': 'processed',
+          'refundDetails.status': gatewayResponse?.status || 'processed',
           'refundDetails.refundedAt': new Date()
-        }
-      );
-    } catch (dbErr) {
-      console.warn('[Payment Record Update Warning on Refund]:', dbErr.message);
-    }
+        },
+        $inc: { 'refundDetails.amount': numAmount }
+      }
+    ).catch((dbErr) => console.warn('[Payment refund record update]', dbErr.message));
 
-    return {
-      success: true,
-      refundId: gatewayRefundId,
-      amount: numAmount,
-      rawResponse: gatewayResponse
-    };
+    return { success: true, refundId: gatewayRefundId, amount: numAmount, rawResponse: gatewayResponse };
   }
+}
+
+function httpError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+function publicPayment(p) {
+  if (!p) return null;
+  return {
+    orderId: p.orderId,
+    paymentId: p.paymentId,
+    amount: p.amount,
+    currency: p.currency,
+    status: p.status,
+    purpose: p.purpose,
+    paymentMethod: p.paymentMethod,
+    fulfillmentStatus: p.fulfillmentStatus,
+    verifiedAt: p.verifiedAt
+  };
+}
+
+function summariseFulfillment(r) {
+  if (!r) return null;
+  if (r.bookingResult) return { bookingId: r.bookingResult.bookingId, pnr: r.bookingResult.pnr };
+  if (r.wallet) return { availableBalance: r.wallet.availableBalance };
+  return null;
 }
 
 module.exports = new PaymentService();

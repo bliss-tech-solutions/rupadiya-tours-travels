@@ -4,7 +4,7 @@ const path = require('path');
 const s3UploadService = require('../../services/s3Upload.service');
 const { authenticateToken } = require('../../middleware/auth.middleware');
 
-const ALLOWED_FOLDERS = ['documents', 'kyc', 'buses', 'profiles', 'tickets'];
+const ALLOWED_FOLDERS = ['documents', 'kyc', 'buses', 'profiles', 'tickets', 'managers'];
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
 
@@ -93,6 +93,7 @@ router.post('/direct', async (req, res, next) => {
     }
 
     const cleanMime = contentType.toLowerCase().trim();
+  
     if (!ALLOWED_MIME_TYPES.includes(cleanMime)) {
       return res.status(400).json({ error: `Invalid MIME type. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}` });
     }

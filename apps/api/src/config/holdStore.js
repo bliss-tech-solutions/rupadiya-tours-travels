@@ -3,6 +3,7 @@ const net = require('net');
 const tls = require('tls');
 const env = require('./env');
 const redisService = require('./redis');
+const { normalisePhone } = require('../utils/phone');
 
 /**
  * Hold Store - Manages 10-minute temporary seat reservations with atomic consistency
@@ -40,6 +41,7 @@ class HoldStore {
     holdToken = null,
     tabId = null,
     passengerId = null,
+    seatFares = null,
     ttlSeconds = 600
   }) {
     this.cleanupExpiredHolds();
@@ -110,6 +112,8 @@ class HoldStore {
       tripId: String(tripId),
       seatNumbers: normalizedSeats,
       passengerDetails,
+      // Seat prices locked at hold time so a price change during checkout never alters the amount shown.
+      seatFares: Array.isArray(seatFares) ? seatFares : null,
       tabId,
       passengerId,
       createdAt: new Date(now),
@@ -168,8 +172,8 @@ class HoldStore {
     }
 
     if (phone && details.phone) {
-      const clean1 = String(phone).replace(/\D/g, '').slice(-10);
-      const clean2 = String(details.phone).replace(/\D/g, '').slice(-10);
+      const clean1 = normalisePhone(phone) || String(phone).replace(/\D/g, '');
+      const clean2 = normalisePhone(details.phone) || String(details.phone).replace(/\D/g, '');
       if (clean1 && clean2 && clean1 !== clean2) {
         return { valid: false, reason: 'Hold contact phone mismatch' };
       }

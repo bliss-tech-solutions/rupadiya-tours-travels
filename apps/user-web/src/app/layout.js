@@ -6,6 +6,7 @@ import SplashScreen from '../components/ui/SplashScreen';
 import { ToastProvider } from '../components/ui/Toast';
 import { LanguageProvider } from '../context/LanguageContext';
 import { AuthProvider } from '../context/AuthContext';
+import AutoTranslate from '../i18n/AutoTranslate';
 
 export const viewport = {
   width: 'device-width',
@@ -26,6 +27,7 @@ export default function RootLayout({ children }) {
         <AuthProvider>
           <LanguageProvider>
             <ToastProvider>
+              <AutoTranslate />
               <SplashScreen />
               <Navbar />
               <main className="flex-1">

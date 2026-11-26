@@ -1,6 +1,7 @@
 const authService = require('./auth.service');
 const { isValidEmail } = require('../../config/validation');
 const env = require('../../config/env');
+const { normalisePhone, PHONE_ERROR } = require('../../utils/phone');
 const { v4: uuidv4 } = require('uuid');
 const { generateGuestToken } = require('../../middleware/tabGuest.middleware');
 
@@ -91,8 +92,8 @@ class AuthController {
 
   async sendOtp(req, res, next) {
     try {
-      const { phone } = req.body;
-      const result = await authService.sendPhoneOtp({ phone });
+      const { phone, countryCode } = req.body;
+      const result = await authService.sendPhoneOtp({ phone, countryCode });
       res.json(result);
     } catch (err) {
       res.status(400).json({ success: false, error: err.message });
@@ -101,9 +102,9 @@ class AuthController {
 
   async verifyOtp(req, res, next) {
     try {
-      const { phone, otp, name, email } = req.body;
+      const { phone, otp, name, email, countryCode } = req.body;
       const meta = getRequestMeta(req);
-      const result = await authService.verifyPhoneOtp({ phone, otp, name, email }, meta);
+      const result = await authService.verifyPhoneOtp({ phone, otp, name, email, countryCode }, meta);
 
       setAuthCookies(res, result);
 
@@ -165,10 +166,17 @@ class AuthController {
 
       setAuthCookies(res, result);
 
+      // The bus-manager mobile app cannot use httpOnly cookies: it keeps the refresh token in secure storage.
+      const isMobileApp = req.headers['x-rupadiya-client'] === 'manager-app';
+      if (isMobileApp && result.user?.role !== 'BUS_MANAGER') {
+        return res.status(403).json({ success: false, error: 'This app is only for bus managers.' });
+      }
+
       res.json({ 
         success: true, 
         accessToken: result.accessToken,
         token: result.accessToken,
+        ...(isMobileApp ? { refreshToken: result.refreshToken } : {}),
         user: result.user,
         wallet: result.wallet,
         data: {
@@ -196,6 +204,7 @@ class AuthController {
         success: true, 
         accessToken: tokens.accessToken,
         token: tokens.accessToken,
+        ...(req.headers['x-rupadiya-client'] === 'manager-app' ? { refreshToken: tokens.refreshToken } : {}),
         user: tokens.user 
       });
     } catch (err) {
@@ -259,9 +268,9 @@ class AuthController {
         user.name = name.trim();
       }
       if (phone && phone.trim()) {
-        const cleanPhone = phone.trim().replace(/\D/g, '');
-        if (cleanPhone.length < 10) {
-          return res.status(400).json({ success: false, error: 'Phone number must be at least 10 digits' });
+        const cleanPhone = normalisePhone(phone);
+        if (!cleanPhone) {
+          return res.status(400).json({ success: false, error: PHONE_ERROR });
         }
         user.phone = cleanPhone;
       }

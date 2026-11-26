@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import PhoneInput from '../../components/ui/PhoneInput';
 import Link from "next/link";
 import {
   Users,
@@ -265,7 +266,7 @@ export default function CompanyAgentsPage() {
           className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-2 self-start sm:self-auto cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>+ Add New Agent</span>
+          <span>Add New Agent</span>
         </Link>
       </div>
 
@@ -595,16 +596,8 @@ export default function CompanyAgentsPage() {
                     <label className="text-slate-700 font-bold block mb-1">
                       Phone Number *
                     </label>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="0000000000"
-                      value={formData.phone}
-                      onChange={(e) =>
-                        setFormData({ ...formData, phone: e.target.value })
-                      }
-                      className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
+                    <PhoneInput size="sm" required value={formData.phone}
+                      onChange={(v) => setFormData({ ...formData, phone: v })} />
                   </div>
                 </div>
 

@@ -15,6 +15,8 @@ import {
   ArrowRight,
   Utensils
 } from 'lucide-react';
+import PhoneInput from '../../../components/ui/PhoneInput';
+import { isValidPhone, PHONE_ERROR } from '../../../lib/phone';
 import { api } from '../../../lib/api';
 import { useToast } from '../../../components/ui/Toast';
 import { getLocalDateString, formatDate } from '../../../lib/dateUtils';
@@ -91,8 +93,8 @@ export default function TourDetailPage() {
 
   const handleBookTour = async (e) => {
     e.preventDefault();
-    if (!leadName.trim() || !leadPhone.trim()) {
-      addToast('Please enter lead traveler name and contact phone.', 'warning', 'Required');
+    if (!leadName.trim() || !isValidPhone(leadPhone)) {
+      addToast(leadName.trim() ? PHONE_ERROR : 'Please enter lead traveler name and contact phone.', 'warning', 'Required');
       return;
     }
 
@@ -342,14 +344,7 @@ export default function TourDetailPage() {
                     />
                   </div>
                   <div>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="10-digit mobile number for coordinator SMS *"
-                      value={leadPhone}
-                      onChange={(e) => setLeadPhone(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:border-sky-500"
-                    />
+                    <PhoneInput required value={leadPhone} onChange={setLeadPhone} />
                   </div>
                 </div>
 

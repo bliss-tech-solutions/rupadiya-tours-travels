@@ -16,6 +16,7 @@ import {
   FileText,
   Lock
 } from 'lucide-react';
+import { formatPhone } from '../../lib/phone';
 import { api } from '../../lib/api';
 import { useWallet } from '../../context/WalletContext';
 
@@ -218,7 +219,7 @@ export default function AgentProfilePage() {
                   <input
                     type="tel"
                     disabled
-                    value={phone}
+                    value={formatPhone(phone)}
                     className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-medium text-slate-600 cursor-not-allowed"
                   />
                   <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />

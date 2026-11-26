@@ -21,7 +21,7 @@ export default function AgentSettingsPage() {
   const [success, setSuccess] = useState('');
 
   // Fee state with user specified limits: max ₹200 booking charge, max ₹50 cancellation fee per seat
-  const [bookingCharge, setBookingCharge] = useState(20);
+  const [bookingCharge, setBookingCharge] = useState(0);
   const [cancellationCharge, setCancellationCharge] = useState(50);
 
   const fetchSettings = async () => {
@@ -30,7 +30,7 @@ export default function AgentSettingsPage() {
     try {
       const res = await api.getSettings();
       const s = res.data?.serviceCharges || res.settings || {};
-      setBookingCharge(Math.min(200, Number(s.bookingCharge ?? 20)));
+      setBookingCharge(0);
       setCancellationCharge(Math.min(50, Number(s.cancellationCharge ?? 50)));
     } catch (err) {
       setError(err.message || 'Error loading settings');
@@ -42,11 +42,6 @@ export default function AgentSettingsPage() {
   useEffect(() => {
     fetchSettings();
   }, []);
-
-  const handleBookingChargeChange = (val) => {
-    const num = Math.min(200, Math.max(0, Number(val || 0)));
-    setBookingCharge(num);
-  };
 
   const handleCancellationChargeChange = (val) => {
     const num = Math.min(50, Math.max(0, Number(val || 0)));
@@ -61,7 +56,7 @@ export default function AgentSettingsPage() {
 
     try {
       const payload = {
-        bookingCharge: Math.min(200, Math.max(0, Number(bookingCharge))),
+        bookingCharge: 0,
         bookingChargeType: 'FIXED',
         cancellationCharge: Math.min(50, Math.max(0, Number(cancellationCharge))),
         cancellationChargeType: 'FIXED'
@@ -89,7 +84,8 @@ export default function AgentSettingsPage() {
   // Sample ₹1,000 calculation
   const sampleBase = 1000;
   const sampleGst = 50; // 5%
-  const sampleTotal = sampleBase + sampleGst + Number(bookingCharge);
+  const samplePlatform = Math.round(sampleBase * 0.05); // 5%
+  const sampleTotal = sampleBase + sampleGst + samplePlatform;
   const sampleRefund = Math.max(0, sampleBase - 100 - Number(cancellationCharge)); // 10% operator deduction + agent cancellation fee
 
   if (loading) {
@@ -111,7 +107,7 @@ export default function AgentSettingsPage() {
           </span>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Agent Settings</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Configure passenger facilitation fee (Max ₹200) and cancellation fee (Max ₹50 per seat)
+            Configure your cancellation fee (Max ₹50 per seat). A 5% platform fee applies to all bookings.
           </p>
         </div>
       </div>
@@ -134,33 +130,6 @@ export default function AgentSettingsPage() {
         {/* Fee Form */}
         <div className="md:col-span-7 h-fit bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
           <form onSubmit={handleSave} className="space-y-6">
-            {/* Agent Booking Service Charge */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-900 block">
-                  Agent Booking Service Charge
-                </label>
-                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                  Max Limit: ₹200
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Added to passenger ticket fare as your agency facilitation fee.
-              </p>
-
-              <div className="relative mt-2">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₹</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="200"
-                  value={bookingCharge}
-                  onChange={(e) => handleBookingChargeChange(e.target.value)}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-            </div>
-
             {/* Cancellation Fee Per Seat */}
             <div className="space-y-2 pt-4 border-t border-slate-100">
               <div className="flex items-center justify-between">
@@ -235,9 +204,9 @@ export default function AgentSettingsPage() {
                 <span>GST (5%):</span>
                 <span>₹{sampleGst}</span>
               </div>
-              <div className="flex justify-between text-emerald-700 font-semibold">
-                <span>Agent Service Fee:</span>
-                <span>+₹{bookingCharge}</span>
+              <div className="flex justify-between text-slate-600">
+                <span>Platform fee (5%):</span>
+                <span>₹{samplePlatform}</span>
               </div>
               <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
                 <span>Customer Total:</span>
@@ -264,7 +233,7 @@ export default function AgentSettingsPage() {
 
           <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-[11px] text-emerald-800 flex items-start gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-            <span>Fees strictly capped at ₹200 booking charge and ₹50 cancellation fee per seat.</span>
+            <span>Cancellation fee is capped at ₹50 per seat. A 5% platform fee applies to all bookings.</span>
           </div>
         </div>
       </div>

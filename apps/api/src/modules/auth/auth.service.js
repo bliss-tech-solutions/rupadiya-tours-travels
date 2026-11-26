@@ -7,6 +7,7 @@ const { Wallet } = require('../wallets/wallet.model');
 const env = require('../../config/env');
 const { ROLES } = require('../../config/constants');
 const { generateUniqueReferralCode } = require('../../utils/referralCode');
+const { normalisePhone, formatPhone, PHONE_ERROR } = require('../../utils/phone');
 
 class AuthService {
   constructor() {
@@ -58,11 +59,11 @@ class AuthService {
   /**
    * Send OTP to mobile phone for simple 1-click passwordless auth
    */
-  async sendPhoneOtp({ phone }) {
+  async sendPhoneOtp({ phone, countryCode }) {
     if (!phone) throw new Error('Mobile number is required');
-    const cleanPhone = phone.toString().replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      throw new Error('Please enter a valid 10-digit mobile number');
+    const cleanPhone = normalisePhone(phone, countryCode);
+    if (!cleanPhone) {
+      throw new Error(PHONE_ERROR);
     }
 
     const isDemo = process.env.NODE_ENV !== 'production' && (process.env.ALLOW_DEMO_OTP === 'true' || !process.env.ALLOW_DEMO_OTP);
@@ -75,7 +76,7 @@ class AuthService {
       phone: cleanPhone,
       otp: demoOtp,
       expiresAt,
-      message: `OTP sent successfully to +91 ${cleanPhone}. (Use demo code ${demoOtp})`
+      message: `OTP sent successfully to ${formatPhone(cleanPhone)}. (Use demo code ${demoOtp})`
     };
   }
 
@@ -83,11 +84,12 @@ class AuthService {
    * Verify mobile OTP and log in / register passenger
    * Links all historical guest bookings made with this phone number
    */
-  async verifyPhoneOtp({ phone, otp, name, email }, meta = {}) {
+  async verifyPhoneOtp({ phone, otp, name, email, countryCode }, meta = {}) {
     if (!phone || !otp) {
       throw new Error('Mobile number and OTP are required');
     }
-    const cleanPhone = phone.toString().replace(/\D/g, '');
+    const cleanPhone = normalisePhone(phone, countryCode);
+    if (!cleanPhone) throw new Error(PHONE_ERROR);
     const cleanOtp = otp.toString().trim();
 
     const stored = this.otpStore.get(cleanPhone);
@@ -117,9 +119,10 @@ class AuthService {
     if (!user) {
       const priorBooking = await Booking.findOne({ 'contactDetails.phone': cleanPhone }).sort({ createdAt: -1 });
       const travelerName = name || priorBooking?.passengers?.[0]?.name || 'Traveler';
-      const userEmail = email ? email.toLowerCase().trim() : `${cleanPhone}@rupadiya.com`;
+      // Phone-only accounts have no email (never store a made-up address).
+      const userEmail = email ? email.toLowerCase().trim() : undefined;
 
-      const existingEmail = await User.findOne({ email: userEmail });
+      const existingEmail = userEmail ? await User.findOne({ email: userEmail }) : null;
       if (existingEmail) {
         user = existingEmail;
         user.phone = cleanPhone;

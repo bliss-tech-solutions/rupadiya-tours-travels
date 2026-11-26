@@ -1,19 +1,40 @@
 const bookingService = require('./booking.service');
 const Booking = require('./booking.model');
-const Offer = require('../offers/offer.model');
 const holdStore = require('../../config/holdStore');
 const websocketService = require('../../services/websocket.service');
 const { validateSeatHoldRequest } = require('../../config/validation');
+const { normalisePhone } = require('../../utils/phone');
 
 class BookingController {
   async quote(req, res, next) {
     try {
-      const { tripId, seatNumbers, offerCode } = req.body;
-      if (!tripId || !Array.isArray(seatNumbers) || seatNumbers.length === 0) {
-        return res.status(400).json({ error: 'tripId and seatNumbers are required' });
+      const { tripId, seatNumbers, offerCode, couponCode, insuranceOpted, insurancePerPassenger, paymentChannel } = req.body;
+      const isAgent = req.user?.role === 'AGENT';
+      const agentChargeCap = isAgent ? Math.min(200, Number(req.user.serviceCharges?.bookingCharge ?? 0) || 0) : 0;
+      const agentServiceCharge = isAgent
+        ? Math.max(0, Math.min(agentChargeCap, Number(req.body.agentServiceCharge ?? agentChargeCap) || 0))
+        : 0;
+      if (!tripId || !Array.isArray(seatNumbers) || seatNumbers.length === 0 || seatNumbers.length > 6) {
+        return res.status(400).json({ error: 'tripId and 1-6 seatNumbers are required' });
       }
 
-      const quote = await bookingService.calculateQuote({ tripId, seatNumbers, offerCode });
+      const code = offerCode || couponCode || null;
+      // Within an active hold the seat prices are locked to what was shown when the seats were held.
+      const hold = req.body.holdToken ? holdStore.getHold(req.body.holdToken) : null;
+      const seatFares = hold && String(hold.tripId) === String(tripId) ? hold.seatFares : null;
+      const quote = await bookingService.calculateQuote({
+        tripId,
+        seatNumbers,
+        offerCode: code,
+        insuranceOpted,
+        insurancePerPassenger,
+        seatFares,
+        paymentChannel: isAgent ? (paymentChannel || 'WALLET') : 'ONLINE',
+        agentServiceCharge
+      });
+      if (code && !quote.appliedOffer) {
+        return res.status(400).json({ success: false, error: `Coupon ${String(code).toUpperCase()} is not valid for this booking.`, code: 'INVALID_COUPON', quote });
+      }
       res.json({ success: true, quote });
     } catch (err) {
       next(err);
@@ -22,27 +43,38 @@ class BookingController {
 
   async hold(req, res, next) {
     try {
-      const validation = validateSeatHoldRequest(req.body);
+      const body = req.body || {};
+      // The user website sends the manifest inside passengerContext; the agent portal sends it top-level.
+      const passengers = Array.isArray(body.passengers) && body.passengers.length > 0
+        ? body.passengers
+        : (Array.isArray(body.passengerContext?.passengers) ? body.passengerContext.passengers : undefined);
+
+      const validation = validateSeatHoldRequest({ ...body, passengers });
       if (!validation.isValid) {
-        return res.status(400).json({ error: validation.errors.join(', ') });
+        return res.status(400).json({ success: false, error: validation.errors.join(', ') });
       }
 
-      const { tripId, seatNumbers, passengers, referralCode } = req.body;
-      const passengerId = req.user ? req.user._id : null;
-      const tabId = req.tabId || req.body.tabId || req.headers['x-tab-id'] || null;
-
       const hold = await bookingService.holdSeats({
-        tripId,
-        seatNumbers,
+        tripId: body.tripId,
+        seatNumbers: body.seatNumbers,
         passengers,
-        passengerId,
-        referralCode,
-        tabId,
-        browserSessionId: req.browserSessionId
+        passengerId: req.user ? req.user._id : null,
+        actor: req.user || null,
+        tabId: req.tabId || req.headers['x-tab-id'] || null,
+        clientRef: typeof body.clientRef === 'string' ? body.clientRef : null
       });
 
       res.status(201).json({ success: true, ...hold });
     } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({
+          success: false,
+          error: err.message,
+          code: err.code,
+          conflictingSeats: err.conflictingSeats,
+          restrictedSeats: err.restrictedSeats
+        });
+      }
       next(err);
     }
   }
@@ -94,93 +126,46 @@ class BookingController {
     }
   }
 
+  /**
+   * Direct confirmation endpoint.
+   * Real money never flows through here: Razorpay tickets are issued by
+   * /payments/verify (or the webhook) and agent wallet tickets by
+   * /agent/bookings/wallet-pay. This endpoint only serves the development sandbox.
+   */
   async confirm(req, res, next) {
     try {
-      const holdTokenParam = req.body.holdToken || req.body.holdId;
-      const emailParam = req.body.contactEmail || req.body.primaryContact?.email || 'passenger@rupadiya.test';
-      const phoneParam = req.body.contactPhone || req.body.primaryContact?.phone;
-      const tabId = req.tabId || req.body.tabId || req.headers['x-tab-id'] || null;
-
-      const {
-        holdToken = holdTokenParam,
-        contactEmail = emailParam,
-        contactPhone = phoneParam,
-        passengers,
-        boardingPoint,
-        droppingPoint,
-        paymentProvider = 'dummy',
-        paymentDetails = { status: 'SUCCESS' },
-        referralCode,
-        tripId,
-        selectedSeats,
-        seatNumbers
-      } = req.body;
-
-      if (!holdToken && !tripId) {
-        return res.status(400).json({ error: 'holdToken or tripId is required' });
-      }
-      if (!contactEmail || !contactPhone) {
-        return res.status(400).json({ error: 'contactEmail and contactPhone are required' });
-      }
-
-      // If user is authenticated, use their id; otherwise guest id from contact
-      let passengerId = req.user ? req.user._id : null;
-      if (!passengerId) {
-        // Create or find a guest user by phone or email without requiring sign-in
-        const User = require('../users/user.model');
-        const cleanPhone = contactPhone ? contactPhone.replace(/\D/g, '') : null;
-        let guestUser = await User.findOne({
-          $or: [
-            ...(cleanPhone ? [{ phone: cleanPhone }] : []),
-            { email: contactEmail.toLowerCase() }
-          ]
+      const body = req.body || {};
+      const provider = body.paymentProvider || 'dummy';
+      if (provider !== 'dummy') {
+        return res.status(400).json({
+          success: false,
+          error: provider === 'razorpay'
+            ? 'Online payments are confirmed automatically after payment verification.'
+            : 'Wallet bookings must be made from the agent portal.'
         });
-        if (!guestUser) {
-          guestUser = await User.create({
-            name: passengers?.[0]?.name || 'Guest Passenger',
-            email: contactEmail.toLowerCase(),
-            phone: cleanPhone || '9999999999',
-            passwordHash: 'guest-no-login',
-            role: 'PASSENGER'
-          });
-        }
-        passengerId = guestUser._id;
       }
 
       const booking = await bookingService.confirmBooking({
-        holdToken: holdToken || req.body.holdId,
-        passengerId,
-        contactEmail,
-        contactPhone,
-        passengers,
-        boardingPoint,
-        droppingPoint,
-        paymentProvider,
-        paymentDetails,
-        referralCode,
-        tabId,
-        tripId: tripId || req.body.tripId,
-        seatNumbers: selectedSeats || seatNumbers || req.body.selectedSeats || req.body.seatNumbers,
-        insuranceOpted: Boolean(req.body.insuranceOpted === true || req.body.insuranceOpted === 'true' || req.body.insuranceOpted === 1),
-        insuranceAmount: req.body.insuranceAmount
+        holdToken: body.holdToken || body.holdId,
+        passengerId: req.user ? req.user._id : null,
+        contactEmail: body.contactEmail || body.primaryContact?.email,
+        contactPhone: body.contactPhone || body.primaryContact?.phone,
+        passengers: body.passengers,
+        boardingPoint: body.boardingPoint,
+        droppingPoint: body.droppingPoint,
+        paymentProvider: 'dummy',
+        paymentDetails: body.paymentDetails || { status: 'SUCCESS' },
+        referralCode: body.referralCode,
+        offerCode: body.offerCode || body.couponCode || null,
+        insuranceOpted: body.insuranceOpted === true || body.insuranceOpted === 'true',
+        tabId: req.tabId || req.headers['x-tab-id'] || null
       });
 
-      // Only return legitimate active promotional offer from database
-      const activeOffer = await Offer.findOne({
-        isActive: true,
-        validUntil: { $gte: new Date() }
-      }).lean();
-
-      const cashbackCoupon = activeOffer ? {
-        code: activeOffer.code,
-        discountAmount: activeOffer.maxDiscountAmount || 100,
-        minBookingAmount: activeOffer.minBookingAmount || 500,
-        title: activeOffer.title || 'Promotional Offer',
-        description: activeOffer.description || 'Special offer for your journey'
-      } : null;
-
-      res.status(201).json({ success: true, booking, cashbackCoupon });
+      res.status(201).json({ success: true, booking });
     } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ success: false, error: err.message, code: err.code });
+      }
       next(err);
     }
   }
@@ -252,6 +237,7 @@ class BookingController {
       b.totalAmount = b.fareBreakdown?.totalPayable ?? b.totalAmount ?? 0;
       b.totalFare = b.totalAmount;
       b.seats = b.seatNumbers?.map(num => ({ seatNumber: num })) || (b.passengers?.map(p => ({ seatNumber: p.seatNumber })) || []);
+      b.qrToken = require('../../services/ticketQr.service').sign(b.bookingId, String(bookingDoc.tripId?._id || bookingDoc.tripId));
 
       // IDOR & Privacy Protection:
       // If requester is not the verified passenger or privileged admin, mask personal data
@@ -266,7 +252,7 @@ class BookingController {
         (bookingDoc.companyId && bookingDoc.companyId.toString() === req.user.companyId?.toString())
       );
       const isOwner = Boolean(isSuperAdmin || isPassenger || isBookingAgent || isCompanyOwner);
-      const cleanQueryPhone = req.query.phone ? req.query.phone.replace(/\D/g, '') : null;
+      const cleanQueryPhone = req.query.phone ? (normalisePhone(req.query.phone) || req.query.phone.replace(/\D/g, '')) : null;
       const isMatchingPhone = cleanQueryPhone && bookingDoc.contactDetails?.phone === cleanQueryPhone;
 
       if (!isOwner && !isMatchingPhone) {
@@ -307,7 +293,8 @@ class BookingController {
         (booking.companyId && booking.companyId.toString() === req.user.companyId?.toString())
       );
       const isOwner = Boolean(isSuperAdmin || isPassenger || isBookingAgent || isCompanyOwner);
-      const reqPhone = (req.body.contactPhone || req.body.phone || '').replace(/\D/g, '');
+      const rawReqPhone = req.body.contactPhone || req.body.phone || '';
+      const reqPhone = normalisePhone(rawReqPhone) || String(rawReqPhone).replace(/\D/g, '');
       const isPhoneVerified = reqPhone && booking.contactDetails?.phone === reqPhone;
 
       if (!isOwner && !isPhoneVerified) {
@@ -319,13 +306,16 @@ class BookingController {
       }
 
       const result = await bookingService.cancelBooking({
-        bookingId,
+        bookingId: booking.bookingId,
         reason,
         cancelledByUserId: req.user ? req.user._id : null
       });
 
       res.json({ success: true, ...result });
     } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ success: false, error: err.message });
+      }
       next(err);
     }
   }

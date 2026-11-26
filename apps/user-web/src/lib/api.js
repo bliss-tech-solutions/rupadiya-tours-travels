@@ -130,6 +130,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ tripId, seatNumbers, passengerContext })
     }),
+  getQuote: ({ tripId, seatNumbers, insuranceOpted, offerCode, holdToken }) =>
+    request('/bookings/quote', {
+      method: 'POST',
+      body: JSON.stringify({ tripId, seatNumbers, insuranceOpted, offerCode, holdToken })
+    }),
   releaseHold: (holdId) =>
     request('/bookings/hold/release', {
       method: 'POST',

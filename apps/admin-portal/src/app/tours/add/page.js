@@ -541,7 +541,7 @@ export default function AddTourPackagePage() {
                   className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs border border-purple-200 flex items-center gap-1 transition cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Add Day</span>
+                  <span>Add Day</span>
                 </button>
               </div>
 

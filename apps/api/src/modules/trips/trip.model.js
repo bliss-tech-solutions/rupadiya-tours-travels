@@ -82,9 +82,42 @@ const tripSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
+  },
+  // Bus manager who travels with this trip and boards / drops passengers
+  managerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true
+  },
+  // Who managed this bus and from where — a manager can be changed mid-route (handed over at a stop).
+  // The last entry's manager is the current one; managerId mirrors it.
+  managerTimeline: [{
+    managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    managerName: { type: String, default: '' },
+    handoverPoint: { type: String, default: '' },   // stop where this manager took over ('' = from origin)
+    note: { type: String, default: '' },
+    assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    at: { type: Date, default: Date.now }
+  }],
+  journey: {
+    startedAt: { type: Date, default: null },
+    startedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    completedAt: { type: Date, default: null },
+    completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
   }
 }, {
   timestamps: true
+});
+
+// New trips inherit the bus's default bus manager (companies can still change it per trip).
+tripSchema.pre('save', async function assignDefaultManager() {
+  if (!this.isNew || this.managerId || !this.busId) return;
+  try {
+    const Bus = mongoose.model('Bus');
+    const bus = await Bus.findById(this.busId).select('defaultManagerId').lean();
+    if (bus?.defaultManagerId) this.managerId = bus.defaultManagerId;
+  } catch (e) { /* bus model not loaded / lookup failed: leave unassigned */ }
 });
 
 tripSchema.index({ routeId: 1, departureTime: 1 });

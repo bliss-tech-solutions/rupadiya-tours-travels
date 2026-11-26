@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import PhoneInput from '../../components/ui/PhoneInput';
 import Link from 'next/link';
 import { 
   Bus, 
@@ -668,14 +669,7 @@ export default function CompanyFleetPage() {
 
                   <div>
                     <label className="text-slate-600 font-medium block mb-1">Driver Phone Number *</label>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="0000000000"
-                      value={formData.driverPhone}
-                      onChange={(e) => setFormData({ ...formData, driverPhone: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500"
-                    />
+                    <PhoneInput size="sm" required value={formData.driverPhone} onChange={(v) => setFormData({ ...formData, driverPhone: v })} />
                   </div>
                 </div>
 
@@ -693,13 +687,7 @@ export default function CompanyFleetPage() {
 
                   <div>
                     <label className="text-slate-600 font-medium block mb-1">Conductor / Alternate Phone</label>
-                    <input
-                      type="tel"
-                      placeholder="9876543211"
-                      value={formData.alternatePhone}
-                      onChange={(e) => setFormData({ ...formData, alternatePhone: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500"
-                    />
+                    <PhoneInput size="sm" value={formData.alternatePhone} onChange={(v) => setFormData({ ...formData, alternatePhone: v })} />
                   </div>
                 </div>
               </div>

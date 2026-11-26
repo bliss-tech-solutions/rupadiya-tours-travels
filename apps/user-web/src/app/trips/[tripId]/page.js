@@ -20,6 +20,7 @@ import { api } from '../../../lib/api';
 import { formatDate, formatTime } from '../../../lib/dateUtils';
 import { useToast } from '../../../components/ui/Toast';
 
+import { seatFareList, sumFares, fareLineLabel } from '../../../lib/fares';
 // SVGs for Steering Wheel and Passenger Silhouettes matching RedBus style
 const SteeringWheelIcon = () => (
   <svg className="w-6 h-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -178,6 +179,20 @@ export default function TripSeatSelectionPage() {
                   return s;
                 });
                 return { ...prev, seats: nextSeats };
+              });
+            } else if (evtType === 'SEAT_FARES_UPDATED') {
+              // Company changed seat prices: refresh labels live.
+              const fareMap = new Map((data?.seatFares || []).map(f => [String(f.seatNumber).trim().toLowerCase(), f.fare]));
+              if (fareMap.size === 0) return;
+              setTrip(prev => {
+                if (!prev || !prev.seats) return prev;
+                return {
+                  ...prev,
+                  seats: prev.seats.map(s => {
+                    const f = fareMap.get(String(s.seatNumber || '').trim().toLowerCase());
+                    return f ? { ...s, fare: f } : s;
+                  })
+                };
               });
             } else if (evtType === 'SEATS_BOOKED') {
               const bookedNumbers = (data?.seatNumbers || []).map(s => String(s).trim().toLowerCase());
@@ -406,7 +421,9 @@ export default function TripSeatSelectionPage() {
       trip,
       selectedSeats,
       baseFare,
-      totalPrice: selectedSeats.length * baseFare,
+      seatFares: seatFareList(selectedSeats, seats, baseFare),
+      baseTotal: sumFares(seatFareList(selectedSeats, seats, baseFare)),
+      totalPrice: sumFares(seatFareList(selectedSeats, seats, baseFare)),
       routeLabel: `${trip.route?.fromCity?.name || 'Rupaidiha'} → ${trip.route?.toCity?.name || 'Ahmedabad'}`
     };
 
@@ -460,7 +477,7 @@ export default function TripSeatSelectionPage() {
 
     let containerStyle = '';
     let pillowStyle = '';
-    let label = `₹${baseFare}`;
+    let label = `₹${seatObj.fare || baseFare}`;
     let isSold = false;
 
     if (isSelected) {
@@ -535,16 +552,12 @@ export default function TripSeatSelectionPage() {
               {trip.bus?.busType || 'AC Sleeper 2+1'} · Step 1: Select Seats
             </p>
           </div>
-          
-          {/* Coach View Toggle Button */}
-          <button
-            onClick={() => setLayoutMode(prev => prev === 'sleeper' ? 'seater' : 'sleeper')}
-            className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1"
-            title="Toggle between Sleeper & Seater Coach View"
-          >
+
+          {/* Coach type shown automatically from the bus — no manual toggle. */}
+          <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold flex items-center gap-1">
             <Layers className="w-3.5 h-3.5 text-sky-500" />
-            <span className="hidden sm:inline">{layoutMode === 'sleeper' ? 'Sleeper View' : 'Seater View'}</span>
-          </button>
+            <span className="hidden sm:inline">{layoutMode === 'sleeper' ? 'Sleeper coach' : 'Seater coach'}</span>
+          </span>
         </div>
       </div>
 

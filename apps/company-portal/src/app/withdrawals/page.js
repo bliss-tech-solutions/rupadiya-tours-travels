@@ -22,6 +22,15 @@ import ConfirmationModal from '../../components/ConfirmationModal';
 
 const ITEMS_PER_PAGE = 10;
 
+const STATUS_LABEL = {
+  ALL: 'All',
+  PENDING: 'Pending',
+  PROCESSING: 'Under processing (RBS)',
+  PAYOUT_FAILED: 'Payout failed (with RBS)',
+  APPROVED: 'Paid',
+  REJECTED: 'Rejected'
+};
+
 export default function CompanyWithdrawalsPage() {
   const [withdrawals, setWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +39,17 @@ export default function CompanyWithdrawalsPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [approveModalData, setApproveModalData] = useState(null);
+  const [payoutUtr, setPayoutUtr] = useState('');
+  const [payoutConfig, setPayoutConfig] = useState(null); // { mode: 'RAZORPAYX'|'MANUAL', companyWalletBalance }
+  const isAutoPayout = payoutConfig?.mode === 'RAZORPAYX';
+
+  const loadPayoutConfig = async () => {
+    try {
+      const res = await api.getPayoutConfig();
+      if (res?.success) setPayoutConfig(res);
+    } catch (e) {}
+  };
+  const [approveError, setApproveError] = useState('');
 
   // Reject modal
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
@@ -57,30 +77,38 @@ export default function CompanyWithdrawalsPage() {
 
   useEffect(() => {
     fetchWithdrawals();
+    loadPayoutConfig();
   }, []);
 
+  // Opens the approve dialog.
   const handleOpenApproveModal = (w) => {
-    setApproveModalData(w);
+    setPayoutUtr('');
+    setApproveError('');
+    loadPayoutConfig();
+    setApproveModalData({ ...w });
   };
 
   const handleExecuteApprove = async () => {
     if (!approveModalData) return;
+    setApproveError('');
     setActionLoading(true);
     setActionSuccess('');
     try {
       const res = await api.approveWithdrawal(approveModalData._id);
       if (res.success) {
-        setActionSuccess(`Withdrawal of ₹${Number(approveModalData.amount).toLocaleString('en-IN')} successfully approved and settled.`);
+        setActionSuccess(res.message || `Withdrawal of ₹${Number(approveModalData.amount).toLocaleString('en-IN')} approved.`);
         setApproveModalData(null);
+        loadPayoutConfig();
         setTimeout(() => {
           setActionSuccess('');
           fetchWithdrawals();
         }, 1200);
       } else {
-        alert(res?.error || 'Approval failed');
+        setApproveError(res?.error || 'Approval failed');
+        fetchWithdrawals();
       }
     } catch (err) {
-      alert(err.message || 'Approval failed');
+      setApproveError(err.message || 'Approval failed');
     } finally {
       setActionLoading(false);
     }
@@ -127,7 +155,7 @@ export default function CompanyWithdrawalsPage() {
   const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filtered.length);
   const paginated = filtered.slice(startIndex, endIndex);
 
-  const pendingCount = withdrawals.filter(w => w.status === 'PENDING').length;
+  const pendingCount = withdrawals.filter(w => ['PENDING', 'PAYOUT_FAILED'].includes(w.status)).length;
   const approvedSum = withdrawals.filter(w => w.status === 'APPROVED').reduce((sum, w) => sum + w.amount, 0);
 
   return (
@@ -169,7 +197,7 @@ export default function CompanyWithdrawalsPage() {
       )}
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Pending Review</span>
           <div className="text-2xl font-bold text-amber-600">{pendingCount} Requests</div>
@@ -183,20 +211,37 @@ export default function CompanyWithdrawalsPage() {
         </div>
 
         <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs space-y-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Security Standard</span>
-          <div className="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>Maker-Checker Compliant</span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Company Wallet</span>
+            <Wallet className="w-4 h-4 text-indigo-600" />
           </div>
-          <span className="text-[11px] text-slate-500 block">Withdrawals require verified KYC</span>
+          <div className="text-2xl font-bold text-indigo-600">
+            ₹{Number(payoutConfig?.companyWalletBalance || 0).toLocaleString('en-IN')}
+          </div>
+          <span className="text-[11px] text-slate-500 block">Available balance to fund agent payouts</span>
+        </div>
+
+        <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">RazorpayX Gateway</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              payoutConfig?.isSimulated ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              {payoutConfig?.isSimulated ? 'Simulated' : (payoutConfig?.razorpayXConfigured ? 'Active' : 'Manual')}
+            </span>
+          </div>
+          <div className="text-2xl font-bold text-slate-900">
+            ₹{Number(payoutConfig?.razorpayXBalance || 0).toLocaleString('en-IN')}
+          </div>
+          <span className="text-[11px] text-slate-500 block">Instant bank & UPI disbursement balance</span>
         </div>
       </div>
 
       {/* Queue Table Card */}
       <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map(st => (
+          <div className="flex flex-wrap items-center gap-2">
+            {['ALL', 'PENDING', 'PROCESSING', 'PAYOUT_FAILED', 'APPROVED', 'REJECTED'].map(st => (
               <button
                 key={st}
                 onClick={() => {
@@ -209,7 +254,7 @@ export default function CompanyWithdrawalsPage() {
                     : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-200'
                 }`}
               >
-                {st}
+                {STATUS_LABEL[st] || st}
               </button>
             ))}
           </div>
@@ -302,23 +347,37 @@ export default function CompanyWithdrawalsPage() {
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                           w.status === 'APPROVED'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : w.status === 'REJECTED'
+                            : w.status === 'REJECTED' || w.status === 'PAYOUT_FAILED'
                             ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
+                            : w.status === 'PROCESSING'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200 animate-pulse'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}>
-                          {w.status}
+                          {STATUS_LABEL[w.status] || w.status}
                         </span>
+                        {w.status === 'PAYOUT_FAILED' && w.payout?.failureReason && (
+                          <div className="text-[10px] text-rose-600 mt-1 max-w-[180px] mx-auto">{w.payout.failureReason}</div>
+                        )}
+                        {w.status === 'PROCESSING' && w.payout?.status === 'queued' && (
+                          <div className="text-[10px] text-amber-700 mt-1">Queued: RazorpayX balance low</div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         {w.status === 'PENDING' ? (
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              disabled={actionLoading}
-                              onClick={() => handleOpenApproveModal(w)}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs transition cursor-pointer"
-                            >
-                              Approve
-                            </button>
+                            {(() => {
+                              const verified = w.agentId?.kycStatus === 'VERIFIED';
+                              return (
+                                <button
+                                  disabled={actionLoading}
+                                  onClick={() => handleOpenApproveModal(w)}
+                                  title={verified ? '' : 'Agent KYC must be verified first'}
+                                  className={`px-3 py-1.5 rounded-xl font-bold text-[11px] shadow-xs transition cursor-pointer ${verified ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-amber-100 text-amber-700 border border-amber-300'}`}
+                                >
+                                  {verified ? 'Approve' : 'KYC pending'}
+                                </button>
+                              );
+                            })()}
                             <button
                               disabled={actionLoading}
                               onClick={() => {
@@ -332,7 +391,7 @@ export default function CompanyWithdrawalsPage() {
                           </div>
                         ) : (
                           <span className="text-[11px] text-slate-400 font-medium">
-                            {w.status === 'APPROVED' ? 'Settled' : 'Refunded to Agent'}
+                            {w.status === 'APPROVED' ? 'Paid' : w.status === 'PROCESSING' ? 'RBS is paying the agent' : w.status === 'PAYOUT_FAILED' ? 'RBS will retry' : 'Refunded to Agent'}
                           </span>
                         )}
                       </td>
@@ -452,19 +511,58 @@ export default function CompanyWithdrawalsPage() {
           onConfirm={handleExecuteApprove}
           variant="success"
           icon={CheckCircle2}
-          title={`Settle Payout of ₹${Number(approveModalData.amount).toLocaleString('en-IN')}`}
-          message="Confirm approval and disbursement of this agent withdrawal request. The payout will be settled and ledger status finalized."
-          confirmText={`Approve & Settle ₹${Number(approveModalData.amount).toLocaleString('en-IN')}`}
+          title={`Approve Withdrawal of ₹${Number(approveModalData.amount).toLocaleString('en-IN')}`}
+          message={"Confirm the agent's KYC and bank details below are correct. The amount is reserved from your company wallet now, and Rupadiya Bus Samiti (RBS) then pays the agent. You can track it as “Under processing”."}
+          confirmText={`Approve ₹${Number(approveModalData.amount).toLocaleString('en-IN')}`}
           cancelText="Cancel"
           loading={actionLoading}
           details={[
-            { label: 'Agent Name', value: approveModalData.agentId?.name || approveModalData.userId?.name || 'Agent', highlight: true },
-            { label: 'Agency Reference', value: approveModalData.agentId?.agencyName || approveModalData.agentId?.referralCode || 'Direct Agent' },
-            { label: 'Settlement Amount', value: `₹${Number(approveModalData.amount).toLocaleString('en-IN')}`, variant: 'success', highlight: true },
-            { label: 'Beneficiary Bank', value: approveModalData.payoutDetails?.bankName || approveModalData.bankDetails?.bankName || approveModalData.agentId?.bankDetails?.bankName || 'Direct Payout' },
-            { label: 'Account / UPI', value: approveModalData.payoutDetails?.accountNumberMasked || approveModalData.payoutDetails?.upiId || approveModalData.bankDetails?.accountNumber || approveModalData.bankDetails?.upiId || 'On Record' }
+            { label: 'Agent Name', value: approveModalData.agentId?.name || 'Agent', highlight: true },
+            { label: 'Agent Code', value: approveModalData.agentId?.referralCode || '—' },
+            { label: 'Amount to Pay', value: `₹${Number(approveModalData.amount).toLocaleString('en-IN')}`, variant: 'success', highlight: true },
+            ...(approveModalData.payoutDetails?.method === 'upi'
+              ? [
+                  { label: 'Payout Method', value: 'UPI' },
+                  { label: 'UPI ID', value: approveModalData.payoutDetails?.upiId || '—', highlight: true },
+                  { label: 'Name', value: approveModalData.payoutDetails?.accountName || '—' }
+                ]
+              : [
+                  { label: 'Account Holder', value: approveModalData.payoutDetails?.accountName || '—', highlight: true },
+                  { label: 'Account Number', value: approveModalData.payoutDetails?.accountNumber || approveModalData.payoutDetails?.accountNumberMasked || '—', highlight: true },
+                  { label: 'IFSC', value: approveModalData.payoutDetails?.ifscCode || '—' },
+                  { label: 'Bank', value: approveModalData.payoutDetails?.bankName || '—' }
+                ])
           ]}
-        />
+        >
+          <div className="space-y-2 text-left">
+            {(() => {
+              const kyc = approveModalData.agentId?.kycStatus || 'NOT_SUBMITTED';
+              const ok = kyc === 'VERIFIED';
+              return (
+                <div className={`flex justify-between items-center text-xs px-3 py-2 rounded-xl border ${ok ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                  <span>Agent KYC documents</span>
+                  <span className="font-bold">{ok ? 'Verified ✓' : `${kyc.replace(/_/g, ' ')} — verify first`}</span>
+                </div>
+              );
+            })()}
+            {payoutConfig && (
+              <div className={`flex justify-between text-xs px-3 py-2 rounded-xl border ${
+                Number(payoutConfig.companyWalletBalance) < Number(approveModalData.amount)
+                  ? 'bg-rose-50 border-rose-200 text-rose-700'
+                  : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}>
+                <span>Company wallet balance</span>
+                <span className="font-bold">₹{Number(payoutConfig.companyWalletBalance || 0).toLocaleString('en-IN')}</span>
+              </div>
+            )}
+            {payoutConfig && Number(payoutConfig.companyWalletBalance) < Number(approveModalData.amount) && (
+              <p className="text-xs font-semibold text-rose-600">Add funds to the company wallet before approving this payout.</p>
+            )}
+            {approveError && (
+              <p className="text-xs font-semibold text-rose-600">{approveError}</p>
+            )}
+          </div>
+        </ConfirmationModal>
       )}
     </div>
   );

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { formatPhone } from '../../../lib/phone';
 import Link from 'next/link';
 import { 
   ArrowLeft, 
@@ -26,7 +27,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../../components/ui/Toast';
 import { api } from '../../../lib/api';
-import { downloadTicketPdf } from '../../../lib/pdfGenerator';
+import { downloadTicketPdf, fareLinesFrom } from '../../../lib/pdfGenerator';
+import TicketQr from '../../../components/ui/TicketQr';
 import { formatDate, formatTime } from '../../../lib/dateUtils';
 
 export default function TicketConfirmationPage() {
@@ -100,12 +102,8 @@ export default function TicketConfirmationPage() {
   const toCity = route?.toCity?.name || trip?.destinationCity || booking?.toCity || 'Ahmedabad';
 
   const busName = bus?.operatorName || bus?.name || 'Rupadiya Intercity Express';
-  const busNumber = bus?.busNumber || bus?.registrationNumber || 'UP-40-TC-1001';
-  const busModel = bus?.busType || 'Setra Coach Bus (2+2 AC Seater)';
-  const layoutType = bus?.layoutType || (busModel.includes('2+1') ? '2+1 Sleeper' : '2+2 Seater');
-  const driverName = bus?.driverName || bus?.driverDetails?.name || 'Verified Captain (Dinesh Kumar)';
-  const driverPhone = bus?.driverPhone || bus?.driverDetails?.phone || '+91 98765 43210';
-  const amenities = bus?.amenities || ['Climate Control AC', 'USB Charging Port', 'Night Reading Lamp', 'Water Bottle', 'Clean Blanket', 'GPS Radar'];
+  const busNumber = bus?.busNumber || bus?.registrationNumber || '—';
+  const busModel = bus?.busType || '';
   
   const departureDate = trip?.departureTime || booking?.createdAt;
   const dateStr = departureDate 
@@ -145,8 +143,19 @@ export default function TicketConfirmationPage() {
     ?? 1733
   );
   const totalPaid = finalTotalPaid;
-  const insuranceAmount = Number(booking?.insurancePremium ?? fb.insuranceAmount ?? (booking?.insuranceOpted ? seatCount * 5 : 0));
+  const insuranceAmount = Number(booking?.insurancePremium ?? fb.insuranceAmount ?? (booking?.insuranceOpted ? seatCount * 28 : 0));
   const insuranceOpted = Boolean(booking?.insuranceOpted || insuranceAmount > 0);
+  const platformFee = Number(fb.platformFee || 0);
+  const gatewayFeeShown = Number(fb.gatewayFeeActual ?? fb.gatewayFee ?? 0);
+  const insurancePerPax = Number(fb.insurancePerPassenger || 28);
+  const showQr = Boolean(booking?.qrToken && booking?.status !== 'CANCELLED');
+
+  // Real driver details only (no placeholders on the printed / PDF ticket).
+  const realDriverName = bus?.driverName || bus?.driverDetails?.name || '';
+  const realDriverPhone = bus?.driverPhone || bus?.driverDetails?.phone || '';
+  const contactPhone = booking?.contactDetails?.phone || booking?.customerPhone || '';
+  const contactEmail = booking?.contactDetails?.email || booking?.customerEmail || '';
+  const operatorName = bus?.operatorName && bus?.operatorName !== bus?.name ? bus.operatorName : '';
 
   const discountAmount = Number(fb.discountAmount || 0);
 
@@ -167,6 +176,11 @@ export default function TicketConfirmationPage() {
     baseFarePerSeat = baseFarePerSeat || Math.round(subtotal / seatCount);
   }
 
+  // Same fare lines on screen print and PDF.
+  const fareLines = Object.keys(fb).length
+    ? fareLinesFrom({ ...fb, subtotal, gstAmount, baseFare: baseFarePerSeat, seatCount }, { insuranceAmount: insuranceOpted ? insuranceAmount : 0, discountAmount })
+    : [['Base fare', subtotal], ['GST (5%)', gstAmount], ['Travel insurance', insuranceOpted ? insuranceAmount : 0], ['Discount', -discountAmount]].filter(([, v]) => Number(v));
+
   const paymentProvider = booking?.paymentProvider === 'razorpay' ? 'Razorpay Gateway' : (booking?.paymentProvider?.toUpperCase() || 'Razorpay Gateway');
   const paymentReference = booking?.paymentReference || booking?.paymentDetails?.paymentId || (booking?.paymentStatus === 'SUCCESS' ? `pay_${String(displayBookingId).replace(/\D/g, '') || '91283'}` : 'RZP-PAID');
   const paymentStatus = booking?.paymentStatus || 'SUCCESS';
@@ -183,18 +197,15 @@ export default function TicketConfirmationPage() {
     }
   };
 
-  // Download official PDF ticket named Ticket-[BookingId].pdf
+  // Download the ticket as a PDF (same details as the printed ticket).
   const handleDownloadPdf = () => {
     try {
       setIsGeneratingPdf(true);
-      addToast(`Generating Ticket-${displayBookingId}.pdf...`, 'info', 'Downloading');
-      
       downloadTicketPdf({
-        bookingId: displayBookingId,
         pnr: booking?.pnr || displayBookingId,
-        travelerName,
-        travelerPhone: booking?.customerPhone || booking?.contactDetails?.phone || booking?.passengers?.[0]?.phone || '+91 98765 43210',
-        travelerEmail: booking?.customerEmail || booking?.contactDetails?.email || '',
+        status: booking?.status,
+        qrToken: showQr ? booking.qrToken : null,
+        bookedAt: paymentDateStr,
         fromCity,
         toCity,
         dateStr,
@@ -202,32 +213,35 @@ export default function TicketConfirmationPage() {
         arrTimeStr,
         boardingName,
         droppingName,
-        busName,
+        busName: bus?.name || busName,
+        companyName: operatorName,
         busNumber,
         busModel,
-        layoutType,
-        driverName,
-        driverPhone,
-        amenities,
+        driverName: realDriverName,
+        driverPhone: realDriverPhone ? formatPhone(realDriverPhone) : '',
+        amenities: bus?.amenities || [],
         seatsStr,
         passengers: passengerList,
-        totalFare: totalPaid,
-        baseFare: subtotal,
-        gstAmount,
-        insuranceAmount: insuranceOpted ? insuranceAmount : 0,
+        travelerName,
+        travelerPhone: contactPhone ? formatPhone(contactPhone) : '',
+        travelerEmail: contactEmail,
+        emergencyContact: booking?.emergencyContact?.phone
+          ? { ...booking.emergencyContact, phone: formatPhone(booking.emergencyContact.phone) }
+          : null,
+        fareLines: fareLines,
+        totalFare: finalTotalPaid,
         paymentProvider,
         paymentReference,
-        paymentStatus
+        paymentStatus,
+        filename: `Ticket-${displayBookingId}.pdf`
       });
-
-      setTimeout(() => {
-        setIsGeneratingPdf(false);
-        addToast(`Ticket-${displayBookingId}.pdf downloaded successfully!`, 'success', 'Ready');
-      }, 400);
+      addToast(`Ticket-${displayBookingId}.pdf downloaded successfully!`, 'success', 'Ready');
     } catch (err) {
       console.error(err);
-      setIsGeneratingPdf(false);
+      addToast('Could not create the PDF here — opening print instead.', 'warning', 'Download');
       window.print();
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -283,7 +297,6 @@ export default function TicketConfirmationPage() {
             border-radius: 14px !important;
             box-shadow: none !important;
             background: #ffffff !important;
-            page-break-inside: avoid !important;
           }
 
           @page {
@@ -367,7 +380,7 @@ export default function TicketConfirmationPage() {
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
                 Rupadiya Intercity Booking ID:{' '}
                 <span className="font-bold text-sky-600 font-mono">#{displayBookingId}</span>
-                {' '}· Boarding pass ready for travel
+                {' '}· Ticket ready for travel
               </p>
             </div>
           </div>
@@ -411,6 +424,13 @@ export default function TicketConfirmationPage() {
                   <p className="text-xs text-slate-300 font-medium">{busModel}</p>
                 </div>
               </div>
+
+              {showQr && (
+                <div className="flex flex-col items-center gap-1.5 pt-5">
+                  <TicketQr value={booking.qrToken} size={150} className="border border-slate-200 rounded-2xl p-2 bg-white" />
+                  <span className="text-[11px] font-semibold text-slate-500">Show this QR to the bus manager while boarding</span>
+                </div>
+              )}
 
               {/* 2. Middle Info Grid */}
               <div className="p-6 pt-5">
@@ -600,10 +620,13 @@ export default function TicketConfirmationPage() {
                           {idx + 1}
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-slate-900">{p.name}</p>
+                          <p className="text-sm font-bold text-slate-900">{p.name}{p.isChild ? <span className="ml-1 text-[10px] text-sky-700">(child)</span> : null}</p>
                           <p className="text-xs text-slate-400">
                             {p.age ? `${p.age} years` : 'Adult'} · {p.gender ? p.gender.toUpperCase() : 'General'}
                           </p>
+                          {(p.infants || []).map((inf, i) => (
+                            <p key={i} className="text-[11px] text-sky-700">+ Infant on lap: {inf.name} ({inf.age} yr)</p>
+                          ))}
                         </div>
                       </div>
 
@@ -734,7 +757,7 @@ export default function TicketConfirmationPage() {
                     <div className="flex items-center gap-1.5">
                       <span className="font-semibold text-slate-800">Passenger Travel Insurance</span>
                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
-                        {insuranceOpted ? '✓ Covered (₹5/pax)' : 'Not Opted'}
+                        {insuranceOpted ? `✓ Covered (₹${insurancePerPax}/pax)` : 'Not Opted'}
                       </span>
                     </div>
                     <span className="text-[11px] text-slate-400">
@@ -745,6 +768,25 @@ export default function TicketConfirmationPage() {
                     {insuranceOpted ? `+₹${insuranceAmount.toLocaleString('en-IN')}` : '₹0'}
                   </span>
                 </div>
+                {platformFee > 0 && (
+                  <div className="flex items-center justify-between text-slate-700">
+                    <span className="font-semibold text-slate-800">Platform fee (5%)</span>
+                    <span className="font-bold text-sm text-slate-800">+₹{platformFee.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {gatewayFeeShown > 0 && (
+                  <div className="flex items-center justify-between text-slate-700">
+                    <span className="font-semibold text-slate-800">
+                      Payment gateway charge{fb.gatewayFeeActual != null ? ' (actual Razorpay charge)' : ''}
+                    </span>
+                    <span className="font-bold text-sm text-slate-800">+₹{gatewayFeeShown.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {booking?.emergencyContact?.phone && (
+                  <div className="text-[11px] text-slate-500">
+                    Emergency contact: {booking.emergencyContact.name} ({booking.emergencyContact.relation}) · {booking.emergencyContact.phone}
+                  </div>
+                )}
                 {/* 3. Promo / Coupon Discount (if applied) */}
                 {discountAmount > 0 && (
                   <div className="flex items-center justify-between text-emerald-700 bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200/60">
@@ -1130,10 +1172,10 @@ export default function TicketConfirmationPage() {
       </div>
 
       {/* ======================================================== */}
-      {/* OFFICIAL PRINTABLE BOARDING PASS (Visible Only in Print) */}
+      {/* PRINTABLE TICKET (visible only when printing)             */}
       {/* ======================================================== */}
       <div id="printable-ticket" className="hidden print:block bg-white text-slate-900 font-sans">
-        {/* 1. Official Header Banner */}
+        {/* 1. Header */}
         <div className="flex items-center justify-between pb-3.5 border-b-2 border-slate-900">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-sky-600 text-white flex items-center justify-center font-black text-lg">
@@ -1141,159 +1183,135 @@ export default function TicketConfirmationPage() {
             </div>
             <div>
               <h1 className="text-xl font-black tracking-tight text-slate-950 uppercase">
-                Rupadiya Intercity Express
+                Rupadiya Bus Samiti
               </h1>
               <p className="text-[11px] font-bold text-sky-700 tracking-wider uppercase">
-                Official Passenger E-Ticket & Boarding Pass
+                Passenger E-Ticket{operatorName ? ` · ${operatorName}` : ''}
               </p>
             </div>
           </div>
           <div className="text-right">
-            <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase mb-1">
-              ✓ Confirmed & Paid
-            </span>
+            {booking?.status === 'CANCELLED' ? (
+              <span className="inline-block px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold uppercase mb-1">
+                Cancelled · not valid for travel
+              </span>
+            ) : (
+              <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase mb-1">
+                ✓ {booking?.status || 'Confirmed'}
+              </span>
+            )}
             <p className="text-sm font-mono font-black text-slate-950">
-              PNR: #{displayBookingId}
+              PNR: {booking?.pnr || displayBookingId}
             </p>
             <p className="text-[10px] text-slate-500 font-medium">
-              Issue Date: {paymentDateStr}
+              Booked: {paymentDateStr}
             </p>
           </div>
         </div>
 
-        {/* 2. Journey Corridor & Timings Bar */}
-        <div className="my-3.5 p-3.5 rounded-xl bg-sky-50/70 border border-sky-200/80 flex items-center justify-between gap-4">
-          <div className="flex-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800 block mb-0.5">
-              Origin Hub
-            </span>
-            <span className="text-base font-black text-slate-950 uppercase block">
-              {fromCity}
-            </span>
-            <span className="text-xs font-semibold text-slate-700 block mt-0.5">
-              {dateStr} · {timeStr}
-            </span>
-          </div>
-
-          <div className="flex flex-col items-center px-4">
-            <span className="text-[9px] font-bold uppercase tracking-widest text-sky-700 mb-1">
-              Direct Intercity Corridor
-            </span>
-            <div className="w-36 h-0.5 bg-sky-400 relative flex items-center justify-end">
-              <div className="w-2 h-2 border-t-2 border-r-2 border-sky-600 rotate-45 -mr-1" />
+        {/* 2. Journey + QR */}
+        <div className="my-3.5 flex items-stretch gap-3.5">
+          <div className="flex-1 p-3.5 rounded-xl bg-sky-50/70 border border-sky-200/80">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800 block mb-0.5">From</span>
+                <span className="text-base font-black text-slate-950 uppercase block">{fromCity}</span>
+                <span className="text-xs font-semibold text-slate-700 block mt-0.5">Departure: {timeStr}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800 block mb-0.5">To</span>
+                <span className="text-base font-black text-slate-950 uppercase block">{toCity}</span>
+                <span className="text-xs font-semibold text-slate-700 block mt-0.5">Arrival: {arrTimeStr}</span>
+              </div>
             </div>
-            <span className="text-[9px] font-medium text-slate-500 mt-1">
-              Nonstop Express Service
-            </span>
+            <div className="mt-2.5 pt-2.5 border-t border-sky-200/80 flex items-center justify-between text-xs">
+              <span><span className="text-[10px] font-bold uppercase text-slate-500">Date of journey: </span><b>{dateStr}</b></span>
+              <span><span className="text-[10px] font-bold uppercase text-slate-500">Seat(s): </span><b className="text-sky-700">{seatsStr}</b></span>
+            </div>
           </div>
-
-          <div className="flex-1 text-right">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800 block mb-0.5">
-              Destination
-            </span>
-            <span className="text-base font-black text-slate-950 uppercase block">
-              {toCity}
-            </span>
-            <span className="text-xs font-semibold text-slate-700 block mt-0.5">
-              Expected: {arrTimeStr}
-            </span>
-          </div>
+          {showQr && (
+            <div className="flex flex-col items-center justify-center">
+              <TicketQr value={booking.qrToken} size={104} className="border border-slate-200 rounded-lg p-1 bg-white" />
+              <span className="text-[9px] text-slate-500 mt-1">Show this QR while boarding</span>
+            </div>
+          )}
         </div>
 
-        {/* 3. Bus Fleet Specifications & Driver Contact */}
+        {/* 3. Bus details */}
         <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 mb-3.5">
           <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                Assigned Fleet & Coach
-              </span>
-              <span className="text-sm font-bold text-slate-900">
-                {busName}
-              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Bus</span>
+              <span className="text-sm font-bold text-slate-900">{bus?.name || busName}</span>
             </div>
             <div className="text-right">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                Vehicle Plate Number
-              </span>
-              <span className="text-sm font-mono font-black text-slate-950 tracking-wider">
-                {busNumber}
-              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Bus number</span>
+              <span className="text-sm font-mono font-black text-slate-950 tracking-wider">{busNumber}</span>
             </div>
           </div>
-
           <div className="grid grid-cols-3 gap-3 pt-2 text-xs">
             <div>
-              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Coach Class & Layout</span>
+              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Coach type</span>
               <span className="font-bold text-slate-800 block">{busModel}</span>
-              <span className="text-[10px] text-slate-500">Layout: {layoutType}</span>
             </div>
             <div>
-              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Assigned Captain / Pilot</span>
-              <span className="font-bold text-slate-800 block">{driverName}</span>
-              <span className="text-[10px] text-slate-600 font-mono font-semibold">{driverPhone}</span>
+              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Driver</span>
+              <span className="font-bold text-slate-800 block">{realDriverName || 'Shared before departure'}</span>
+              {realDriverPhone ? <span className="text-[10px] text-slate-600 font-mono font-semibold">{formatPhone(realDriverPhone)}</span> : null}
             </div>
             <div>
-              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Total Capacity & Safety</span>
-              <span className="font-bold text-slate-800 block">36 Confirmed Berths</span>
-              <span className="text-[10px] text-emerald-700 font-bold">24x7 Realtime GPS Tracked</span>
+              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Operator</span>
+              <span className="font-bold text-slate-800 block">{operatorName || bus?.name || busName}</span>
             </div>
           </div>
-
-          <div className="mt-2 pt-2 border-t border-slate-200/70 flex flex-wrap items-center gap-1.5 text-[10px]">
-            <span className="font-bold uppercase text-slate-500 mr-1">Onboard Amenities:</span>
-            {(amenities || []).map((am, idx) => (
-              <span key={idx} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 font-medium">
-                ✓ {am}
-              </span>
-            ))}
-          </div>
+          {Array.isArray(bus?.amenities) && bus.amenities.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-slate-200/70 flex flex-wrap items-center gap-1.5 text-[10px]">
+              <span className="font-bold uppercase text-slate-500 mr-1">Amenities:</span>
+              {bus.amenities.map((am, idx) => (
+                <span key={idx} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 font-medium">✓ {am}</span>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* 4. Boarding & Dropping Points */}
+        {/* 4. Boarding & dropping */}
         <div className="grid grid-cols-2 gap-3.5 mb-3.5">
           <div className="p-3 rounded-xl border border-slate-200 bg-white">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-0.5">
-              Boarding Point (Departure)
-            </span>
-            <span className="text-xs font-bold text-slate-900 block mb-1">
-              {boardingName}
-            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-0.5">Boarding point</span>
+            <span className="text-xs font-bold text-slate-900 block mb-1">{boardingName}</span>
             <div className="p-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-bold">
-              ⚠️ Reporting Time: Please report 15 minutes before {timeStr}
+              Please report 15 minutes before {timeStr}
             </div>
           </div>
-
           <div className="p-3 rounded-xl border border-slate-200 bg-white">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-0.5">
-              Dropping Point (Arrival)
-            </span>
-            <span className="text-xs font-bold text-slate-900 block mb-1">
-              {droppingName}
-            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-0.5">Dropping point</span>
+            <span className="text-xs font-bold text-slate-900 block mb-1">{droppingName}</span>
             <p className="text-[10px] text-slate-500 mt-1">
-              Primary Contact: {travelerName} · {booking?.customerPhone || booking?.contactDetails?.phone || '+91 98765 43210'}
+              Contact: {travelerName}{contactPhone ? ` · ${formatPhone(contactPhone)}` : ''}{contactEmail ? ` · ${contactEmail}` : ''}
             </p>
+            {booking?.emergencyContact?.phone && (
+              <p className="text-[10px] text-slate-500">
+                Emergency: {booking.emergencyContact.name}{booking.emergencyContact.relation ? ` (${booking.emergencyContact.relation})` : ''} · {formatPhone(booking.emergencyContact.phone)}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* 5. Passenger Manifest Table */}
+        {/* 5. Passengers */}
         <div className="mb-3.5">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Passenger Manifest ({passengerList.length} Traveler{passengerList.length > 1 ? 's' : ''})
+              Passengers ({passengerList.length})
             </span>
-            <span className="text-xs font-mono font-bold text-sky-700">
-              Confirmed Seats: [{seatsStr}]
-            </span>
+            <span className="text-xs font-mono font-bold text-sky-700">Seats: {seatsStr}</span>
           </div>
-
           <table className="w-full text-left text-xs border border-slate-200 rounded-lg overflow-hidden">
             <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px]">
               <tr>
                 <th className="py-2 px-3">#</th>
-                <th className="py-2 px-3">Passenger Name</th>
+                <th className="py-2 px-3">Passenger name</th>
                 <th className="py-2 px-3">Age / Gender</th>
-                <th className="py-2 px-3">Seat Number</th>
+                <th className="py-2 px-3">Seat</th>
                 <th className="py-2 px-3 text-right">Status</th>
               </tr>
             </thead>
@@ -1301,61 +1319,53 @@ export default function TicketConfirmationPage() {
               {passengerList.map((p, idx) => (
                 <tr key={idx} className="text-slate-800">
                   <td className="py-2 px-3 text-slate-400 font-mono">{idx + 1}</td>
-                  <td className="py-2 px-3 font-bold text-slate-900">{p.name || `Passenger ${idx + 1}`}</td>
-                  <td className="py-2 px-3 text-slate-600">{p.age ? `${p.age} yrs` : '—'} • {p.gender ? p.gender.toUpperCase() : '—'}</td>
-                  <td className="py-2 px-3 font-mono font-black text-sky-700">Seat: {p.seatNumber || seatsList[idx] || (idx + 1)}</td>
-                  <td className="py-2 px-3 text-right text-emerald-700 font-bold">Confirmed</td>
+                  <td className="py-2 px-3 font-bold text-slate-900">
+                    {p.name || `Passenger ${idx + 1}`}{p.isChild ? <span className="ml-1 text-[10px] text-sky-700">(child)</span> : null}
+                    {(p.infants || []).map((inf, i) => (
+                      <div key={i} className="text-[10px] font-medium text-slate-500">+ Infant on lap: {inf.name} ({inf.age} yr)</div>
+                    ))}
+                  </td>
+                  <td className="py-2 px-3 text-slate-600">{p.age ? `${p.age} yrs` : '—'} / {p.gender ? String(p.gender).toUpperCase() : '—'}</td>
+                  <td className="py-2 px-3 font-mono font-black text-sky-700">{p.seatNumber || seatsList[idx] || (idx + 1)}</td>
+                  <td className={`py-2 px-3 text-right font-bold ${booking?.status === 'CANCELLED' ? 'text-rose-600' : 'text-emerald-700'}`}>
+                    {booking?.status === 'CANCELLED' ? 'Cancelled' : 'Confirmed'}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        {/* 6. Fare Breakdown & Payment Audit */}
-        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-4 mb-3.5">
-          <div className="text-xs space-y-0.5">
-            <span className="text-[10px] font-bold uppercase text-slate-400 block">Payment Audit & Fare Details</span>
-            <p className="text-slate-700 font-semibold">
-              Base Fare: ₹{subtotal.toLocaleString('en-IN')} | GST (5%): ₹{gstAmount.toLocaleString('en-IN')} {insuranceOpted ? `| Insurance: ₹${insuranceAmount}` : ''}
-            </p>
-            <p className="text-[10px] text-slate-500">
-              Gateway: {paymentProvider} · Ref: <span className="font-mono">{paymentReference}</span> · {paymentDateStr}
-            </p>
+        {/* 6. Fare details & payment */}
+        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 grid grid-cols-2 gap-4 mb-3.5 text-xs">
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold uppercase text-slate-400 block">Payment</span>
+            <p><span className="text-slate-500">Paid via:</span> <b>{paymentProvider}</b></p>
+            <p><span className="text-slate-500">Reference:</span> <span className="font-mono font-bold">{paymentReference}</span></p>
+            <p><span className="text-slate-500">Status:</span> <b className="text-emerald-700">{paymentStatus}</b></p>
           </div>
-
-          <div className="text-right">
-            <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Amount Paid</span>
-            <span className="text-lg font-black text-slate-950">
-              ₹{finalTotalPaid.toLocaleString('en-IN')}
-            </span>
-            <span className="text-[10px] font-bold text-emerald-700 block uppercase">
-              ✓ Fully Settled · 0 Due
-            </span>
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold uppercase text-slate-400 block">Fare details</span>
+            {fareLines.map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-3 text-slate-600">
+                <span>{k}</span>
+                <span className="font-mono font-semibold text-slate-800">{Number(v) < 0 ? '−' : ''}₹{Math.abs(Number(v)).toLocaleString('en-IN')}</span>
+              </div>
+            ))}
+            <div className="flex justify-between gap-3 pt-1 border-t border-slate-300 text-slate-950 font-black text-sm">
+              <span>Total amount paid</span>
+              <span className="font-mono">₹{finalTotalPaid.toLocaleString('en-IN')}</span>
+            </div>
           </div>
         </div>
 
-        {/* 7. Guidelines & Barcode */}
-        <div className="flex items-end justify-between pt-2 border-t border-slate-200 text-xs">
-          <div className="text-[10px] text-slate-500 space-y-0.5 max-w-md">
-            <p>• <strong>Reporting:</strong> Passengers must arrive at the boarding location 15 minutes before departure.</p>
-            <p>• <strong>Identity Proof:</strong> Valid Govt Photo ID (Aadhaar / Voter ID / DL) is mandatory for boarding.</p>
-            <p>• <strong>24/7 Helpline:</strong> +91 98765 43210 | Support: support@rupadiya.com</p>
-          </div>
-
-          <div className="flex flex-col items-end">
-            <div className="h-9 flex items-center gap-[1.5px] px-2 bg-white">
-              {[3, 1, 4, 1, 2, 5, 1, 2, 4, 2, 1, 3, 5, 2, 1, 4, 2, 3, 1, 5, 2, 1, 3, 4, 1, 2, 4, 3, 1, 5, 2, 4].map((w, idx) => (
-                <div
-                  key={idx}
-                  style={{ width: `${w * 1.5}px` }}
-                  className="h-full bg-slate-900 rounded-sm"
-                />
-              ))}
-            </div>
-            <span className="text-[9px] font-mono tracking-widest text-slate-500 mt-1">
-              * PNR: {displayBookingId} *
-            </span>
-          </div>
+        {/* 7. Guidelines */}
+        <div className="pt-2 border-t border-slate-200 text-[10px] text-slate-500 space-y-0.5">
+          <p>• <strong>Reporting:</strong> reach the boarding point at least 15 minutes before departure.</p>
+          <p>• <strong>ID proof:</strong> carry a valid government photo ID (Aadhaar / Voter ID / Driving Licence / Passport).</p>
+          <p>• <strong>Boarding:</strong> show the QR code or tell the PNR to the bus manager.</p>
+          <p>• <strong>Luggage:</strong> up to 2 pieces (20 kg) per passenger. Inflammable items are not allowed.</p>
+          <p>• <strong>Cancellation refund:</strong> more than 48 h before departure 90% · 24–48 h 75% · 12–24 h 50% · under 12 h none.</p>
         </div>
       </div>
     </div>

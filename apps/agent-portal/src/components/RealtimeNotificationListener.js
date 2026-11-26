@@ -45,6 +45,11 @@ export default function RealtimeAgentListener() {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+          // Authenticate the socket before joining private notification rooms.
+          try {
+            const authToken = localStorage.getItem('agent_token');
+            if (authToken) ws.send(JSON.stringify({ action: 'auth', token: authToken }));
+          } catch (e) {}
           if (agentId) {
             ws.send(JSON.stringify({ action: 'subscribe', room: `agent:${agentId}` }));
           }

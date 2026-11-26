@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import PhoneInput from '../../../components/ui/PhoneInput';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -601,13 +602,7 @@ function FleetAddContent() {
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Driver Phone Number</label>
-                <input
-                  type="tel"
-                  value={driverPhone}
-                  onChange={(e) => setDriverPhone(e.target.value)}
-                  placeholder="+91 0000000000"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                />
+                <PhoneInput size="sm" value={driverPhone} onChange={setDriverPhone} />
               </div>
 
               <div>
@@ -623,13 +618,7 @@ function FleetAddContent() {
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Alternate / Emergency Phone</label>
-                <input
-                  type="tel"
-                  value={alternatePhone}
-                  onChange={(e) => setAlternatePhone(e.target.value)}
-                  placeholder="+91 9123456789"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                />
+                <PhoneInput size="sm" value={alternatePhone} onChange={setAlternatePhone} />
               </div>
             </div>
           </div>

@@ -46,7 +46,7 @@ const walletLedgerSchema = new mongoose.Schema({
   },
   referenceType: {
     type: String,
-    enum: ['BOOKING', 'WITHDRAWAL', 'DEPOSIT', 'COMMISSION', 'ADMIN_ADJUSTMENT'],
+    enum: ['BOOKING', 'WITHDRAWAL', 'DEPOSIT', 'COMMISSION', 'ADMIN_ADJUSTMENT', 'TRANSFER'],
     required: true
   },
   referenceId: {

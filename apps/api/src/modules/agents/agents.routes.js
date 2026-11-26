@@ -1,4 +1,6 @@
 const express = require('express');
+const cashCollection = require('../../services/cashCollection.service');
+const cashPolicy = require('../../services/cashPolicy.service');
 const router = express.Router();
 const crypto = require('crypto');
 const { authenticateToken } = require('../../middleware/auth.middleware');
@@ -96,12 +98,12 @@ function buildLeanTicketDTO(bookingDoc) {
     bus: {
       name: bus.name || bus.operatorName || 'Rupadiya Intercity Coach',
       operatorName: bus.operatorName || 'Rupadiya Intercity Travels',
-      busNumber: bus.busNumber || 'UP-40-TC-1001',
+      busNumber: bus.busNumber || '',
       busType: bus.busType || 'AC Sleeper (2+1)',
       layoutType: bus.layoutType || '2+1',
       totalSeats: bus.totalSeats || 36,
-      driverName: bus.driverDetails?.name || bus.driverName || 'Verified Pilot',
-      driverPhone: bus.driverDetails?.phone || bus.driverPhone || '+91 98765 43210',
+      driverName: bus.driverDetails?.name || bus.driverName || '',
+      driverPhone: bus.driverDetails?.phone || bus.driverPhone || '',
       amenities: bus.amenities && bus.amenities.length > 0 
         ? bus.amenities 
         : ['Charging Point', 'Night Reading Lamp', 'Water Bottle', 'AC', 'Blanket']
@@ -127,14 +129,39 @@ function buildLeanTicketDTO(bookingDoc) {
       name: p.name,
       age: p.age,
       gender: p.gender,
-      seatNumber: p.seatNumber
+      seatNumber: p.seatNumber,
+      isChild: Boolean(p.isChild),
+      infants: p.infants || [],
+      journeyStatus: p.journeyStatus || 'NOT_BOARDED'
     })),
     fareBreakdown: {
       baseFare: b.fareBreakdown?.baseFare || 0,
-      tax: b.fareBreakdown?.gst || b.fareBreakdown?.tax || 0,
-      totalPayable: b.fareBreakdown?.totalPayable ?? b.totalAmount ?? 0,
-      insurance: b.fareBreakdown?.insurance || 0
+      seatCount: b.fareBreakdown?.seatCount || (b.seatNumbers || []).length,
+      subtotal: b.fareBreakdown?.subtotal || 0,
+      gstAmount: b.fareBreakdown?.gstAmount || 0,
+      tax: b.fareBreakdown?.gstAmount || 0,
+      insuranceAmount: b.fareBreakdown?.insuranceAmount || 0,
+      insurance: b.fareBreakdown?.insuranceAmount || 0,
+      discountAmount: b.fareBreakdown?.discountAmount || 0,
+      platformFee: b.fareBreakdown?.platformFee || 0,
+      gatewayFee: b.fareBreakdown?.gatewayFee || 0,
+      gatewayFeeActual: b.fareBreakdown?.gatewayFeeActual ?? null,
+      insurancePerPassenger: b.fareBreakdown?.insurancePerPassenger || 0,
+      customerTotal: b.fareBreakdown?.customerTotal ?? null,
+      totalPayable: b.fareBreakdown?.totalPayable ?? b.totalAmount ?? 0
     },
+    agentServiceCharge: b.agentServiceCharge || 0,
+    qrToken: require('../../services/ticketQr.service').sign(b.bookingId, String(trip._id || b.tripId)),
+    emergencyContact: b.emergencyContact || null,
+    paymentChannel: b.fareBreakdown?.paymentChannel || null,
+    cashCollection: b.cashCollection?.status ? { status: b.cashCollection.status, amountDue: b.cashCollection.amountDue, receiptNo: b.cashCollection.receiptNo } : null,
+    channel: b.channel || null,
+    cancellationDetails: b.status === 'CANCELLED' ? {
+      cancelledAt: b.cancellationDetails?.cancelledAt || null,
+      refundAmount: b.cancellationDetails?.refundAmount || 0,
+      cancellationFee: b.cancellationDetails?.cancellationFee || 0,
+      refundRouting: b.cancellationDetails?.refundRouting || null
+    } : null,
     totalAmount: b.fareBreakdown?.totalPayable ?? b.totalAmount ?? 0,
     contactDetails: {
       name: b.contactDetails?.name || '',
@@ -704,7 +731,8 @@ router.post('/tickets/cancel', agentOnly, async (req, res, next) => {
     }
 
     // Strict Agent Scoping: Agents can ONLY cancel bookings booked or referred by their own agency account
-    const isAgentBooking = 
+    const isAgentBooking =
+      (booking.bookedByAgentId && booking.bookedByAgentId.toString() === agentId.toString()) ||
       (booking.referralAgentId && booking.referralAgentId.toString() === agentId.toString()) ||
       (booking.passengerId && booking.passengerId.toString() === agentId.toString());
 
@@ -730,7 +758,7 @@ router.post('/tickets/cancel', agentOnly, async (req, res, next) => {
 
     // Process dual financial settlement via central BookingService engine
     const result = await bookingService.cancelBooking({
-      bookingId: booking.pnr || booking.bookingId,
+      bookingId: booking.bookingId,
       reason: reason || 'Agent requested cancellation',
       cancelledByUserId: agentId
     });
@@ -746,9 +774,13 @@ router.post('/tickets/cancel', agentOnly, async (req, res, next) => {
       feePercentage: Math.round(100 - result.refundPercent),
       refundAmount: result.refundAmount,
       refundRouting: result.refundRouting,
+      refundStatus: result.refundStatus,
       balanceAfter
     });
   } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ success: false, error: err.message });
+    }
     next(err);
   }
 });
@@ -839,11 +871,9 @@ router.get('/rewards', agentOnly, async (req, res, next) => {
 // -------------------------------------------------------------
 router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
   try {
-    const agentId = req.user._id;
+    const agent = req.user;
     const {
-      tripId,
-      selectedSeats,
-      seatNumbers,
+      holdToken,
       passengers,
       boardingPoint,
       droppingPoint,
@@ -851,94 +881,71 @@ router.post('/bookings/wallet-pay', agentOnly, async (req, res, next) => {
       contactEmail,
       contactDetails,
       insuranceOpted,
-      holdToken
-    } = req.body;
+      insurancePerPassenger,
+      agentServiceCharge,
+      emergencyContact,
+      paymentMode = 'WALLET'
+    } = req.body || {};
+    const isCash = String(paymentMode).toUpperCase() === 'CASH';
 
-    const seatsToBook = (selectedSeats && selectedSeats.length > 0) ? selectedSeats : (seatNumbers || []);
-    const normalizedSeats = seatsToBook.map(s => String(s).trim());
-
-    if (!tripId || normalizedSeats.length === 0) {
-      return res.status(400).json({ success: false, error: 'Trip and seats are required' });
+    if (!holdToken) {
+      return res.status(400).json({ success: false, error: 'Seat hold is required. Please select seats again.' });
+    }
+    if (agent.kycStatus && agent.kycStatus === 'REJECTED') {
+      return res.status(403).json({ success: false, error: 'Your KYC was rejected. Ticket booking is disabled until it is re-verified.' });
     }
 
-    const trip = await Trip.findById(tripId).populate('routeId').populate('busId');
-    if (!trip) return res.status(404).json({ success: false, error: 'Trip not found' });
+    const settings = agent.serviceCharges || {};
+    const maxCharge = Math.min(200, Number(settings.bookingCharge ?? 0) || 0);
+    const serviceCharge = Math.max(0, Math.min(maxCharge, Number(agentServiceCharge ?? maxCharge) || 0));
 
-    const isInsurance = Boolean(insuranceOpted === true || insuranceOpted === 'true' || insuranceOpted === 1);
-    const finalPhone = contactPhone || contactDetails?.phone || req.user.phone || '0000000000';
-    const finalEmail = contactEmail || contactDetails?.email || req.user.email || 'passenger@rupadiya.test';
-
-    const formattedPassengers = (passengers && passengers.length > 0)
-      ? passengers.map(p => ({
-          seatNumber: String(p.seatNumber).trim(),
-          name: p.name || 'Passenger',
-          age: Number(p.age || 25),
-          gender: p.gender || 'male',
-          fare: trip.baseFare || 510
-        }))
-      : normalizedSeats.map(num => ({
-          seatNumber: num,
-          name: 'Customer Traveler',
-          age: 25,
-          gender: 'male',
-          fare: trip.baseFare || 510
-        }));
-
-    // Pre-hold seats via holdStore if not already held with this token
-    let token = holdToken;
-    if (!token) {
-      token = 'HOLD_AGT_' + crypto.randomBytes(8).toString('hex').toUpperCase();
-    }
-
-    const existingHold = holdStore.getHold(token);
-    if (!existingHold) {
-      const holdResult = await holdStore.holdSeats({
-        tripId: trip._id.toString(),
-        seatNumbers: normalizedSeats,
-        passengerDetails: formattedPassengers,
-        holdToken: token,
-        passengerId: agentId.toString(),
-        ttlSeconds: 600
-      });
-      if (!holdResult.success) {
-        return res.status(409).json({
-          success: false,
-          error: holdResult.message || `Seats [${(holdResult.conflictingSeats || holdResult.conflictedSeats || []).join(', ')}] are already held or booked.`,
-          conflictingSeats: holdResult.conflictingSeats || holdResult.conflictedSeats
-        });
-      }
-    }
-
-    // Call unified booking engine (atomic seat lock + wallet debit + ledger + commission distribution)
+    // The hold must belong to this agent; the debited wallet is always the authenticated agent's.
     const booking = await bookingService.confirmBooking({
-      holdToken: token,
-      passengerId: agentId,
-      contactEmail: finalEmail,
-      contactPhone: finalPhone,
-      passengers: formattedPassengers,
+      holdToken,
+      passengerId: agent._id,
+      agentUserId: agent._id,
+      contactEmail: contactEmail || contactDetails?.email || '',
+      contactPhone: contactPhone || contactDetails?.phone,
+      passengers,
       boardingPoint,
       droppingPoint,
-      paymentProvider: 'agent_wallet',
-      referralCode: req.user.referralCode,
-      tripId: trip._id.toString(),
-      seatNumbers: normalizedSeats,
-      insuranceOpted: isInsurance
+      paymentProvider: isCash ? 'agent_cash' : 'agent_wallet',
+      insuranceOpted: insuranceOpted === true || insuranceOpted === 'true',
+      insurancePerPassenger,
+      emergencyContact,
+      agentServiceCharge: serviceCharge,
+      channel: 'AGENT_PORTAL'
     });
 
-    const commRecords = await CommissionRecord.find({ bookingId: booking.bookingId }).lean();
-    const updatedWallet = await Wallet.findOne({ userId: agentId });
+    const commRecords = await CommissionRecord.find({ bookingId: booking._id }).lean();
+    const updatedWallet = await Wallet.findOne({ userId: agent._id }).lean();
 
     res.status(201).json({
       success: true,
-      message: `Booking #${booking.bookingId} confirmed successfully via Agent Wallet.`,
+      message: isCash
+        ? `Ticket PNR ${booking.pnr} issued on cash. Hand ₹${booking.fareBreakdown.totalPayable.toLocaleString('en-IN')} to your company office before departure — passengers cannot board until it is received.`
+        : `Ticket PNR ${booking.pnr} issued. ₹${booking.fareBreakdown.totalPayable.toLocaleString('en-IN')} debited from your wallet.`,
       booking,
       commissionsEarned: commRecords,
       walletBalance: updatedWallet ? updatedWallet.availableBalance : 0
     });
   } catch (err) {
     if (err.statusCode) {
-      return res.status(err.statusCode).json({ success: false, error: err.message });
+      return res.status(err.statusCode).json({ success: false, error: err.message, code: err.code, restrictedSeats: err.restrictedSeats });
     }
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 8b. AGENT CASH LEDGER (cash collected vs handed to the company office)
+// -------------------------------------------------------------
+router.get('/cash/summary', agentOnly, async (req, res, next) => {
+  try {
+    const summary = await cashCollection.agentSummary(req.user._id);
+    const policy = await cashPolicy.getPolicy(req.user.companyCode);
+    res.json({ success: true, policy, ...summary });
+  } catch (err) {
     next(err);
   }
 });

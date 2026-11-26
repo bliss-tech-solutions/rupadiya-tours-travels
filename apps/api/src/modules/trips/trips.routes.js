@@ -5,8 +5,9 @@ const Trip = require('./trip.model');
 const Bus = require('../fleet/bus.model');
 const Booking = require('../bookings/booking.model');
 const holdStore = require('../../config/holdStore');
+const { toPublicSeats } = require('../../services/seatPolicy');
 const { isValidCorridor, ROLES } = require('../../config/constants');
-const { authenticateToken } = require('../../middleware/auth.middleware');
+const { authenticateToken, optionalAuth } = require('../../middleware/auth.middleware');
 const { authorizeRoles } = require('../../middleware/rbac.middleware');
 const { searchLimiter } = require('../../middleware/rateLimit.middleware');
 
@@ -22,7 +23,9 @@ const handleSearch = async (req, res, next) => {
       });
     }
 
+    const agentCompany = req.user?.role === ROLES.AGENT ? req.user.companyCode : null;
     const trips = await ownInventory.searchTrips({
+      companyCode: agentCompany,
       fromCityId: from,
       toCityId: to,
       travelDate: date
@@ -31,6 +34,7 @@ const handleSearch = async (req, res, next) => {
     let upcomingTrips = [];
     if (trips.length === 0 && date) {
       const allUpcoming = await ownInventory.searchTrips({
+        companyCode: agentCompany,
         fromCityId: from,
         toCityId: to
       });
@@ -50,8 +54,8 @@ const handleSearch = async (req, res, next) => {
   }
 };
 
-router.get('/', searchLimiter, handleSearch);
-router.get('/search', searchLimiter, handleSearch);
+router.get('/', searchLimiter, optionalAuth, handleSearch);
+router.get('/search', searchLimiter, optionalAuth, handleSearch);
 
 const VALID_CLIENTS = new Set(['web-client', 'agent-portal', 'company-portal', 'admin-portal', 'test-runner']);
 
@@ -77,7 +81,7 @@ const requireBusSelectSession = (req, res, next) => {
 };
 
 // Get single trip details (Requires active client session)
-router.get('/:tripId', requireBusSelectSession, async (req, res, next) => {
+router.get('/:tripId', optionalAuth, requireBusSelectSession, async (req, res, next) => {
   try {
     const trip = await Trip.findById(req.params.tripId)
       .populate('routeId')
@@ -102,6 +106,8 @@ router.get('/:tripId', requireBusSelectSession, async (req, res, next) => {
       });
     }
 
+    obj.seats = toPublicSeats(trip.toObject(), obj.seats || []);
+
     const formatted = { 
       ...obj, 
       bus: obj.busId, 
@@ -119,7 +125,7 @@ router.get('/:tripId', requireBusSelectSession, async (req, res, next) => {
 });
 
 // Get 40-seat layout with live dynamic holds (Requires active client session)
-router.get('/:tripId/seats', requireBusSelectSession, async (req, res, next) => {
+router.get('/:tripId/seats', optionalAuth, requireBusSelectSession, async (req, res, next) => {
   try {
     const layout = await ownInventory.getSeatLayout(req.params.tripId);
     res.json({ success: true, layout });

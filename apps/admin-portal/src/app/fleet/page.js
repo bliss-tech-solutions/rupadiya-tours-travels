@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import PhoneInput from '../../components/ui/PhoneInput';
 import Link from 'next/link';
 import { 
   Bus, 
@@ -773,14 +774,7 @@ export default function AdminFleetManagementPage() {
                   </div>
                   <div>
                     <label className="text-[11px] font-bold text-blue-950 block mb-1">Driver Mobile Phone *</label>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="+91 9876500001"
-                      value={formData.driverPhone}
-                      onChange={(e) => setFormData({ ...formData, driverPhone: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-blue-200 text-xs font-mono font-semibold text-slate-900 focus:outline-none focus:border-blue-600"
-                    />
+                    <PhoneInput size="sm" required value={formData.driverPhone} onChange={(v) => setFormData({ ...formData, driverPhone: v })} />
                   </div>
                   <div>
                     <label className="text-[11px] font-bold text-blue-950 block mb-1">Commercial Driving License *</label>
@@ -795,13 +789,7 @@ export default function AdminFleetManagementPage() {
                   </div>
                   <div>
                     <label className="text-[11px] font-bold text-blue-950 block mb-1">Alternate / Emergency Contact</label>
-                    <input
-                      type="tel"
-                      placeholder="+91 9876500011"
-                      value={formData.driverAltPhone}
-                      onChange={(e) => setFormData({ ...formData, driverAltPhone: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-blue-200 text-xs font-mono font-semibold text-slate-900 focus:outline-none focus:border-blue-600"
-                    />
+                    <PhoneInput size="sm" value={formData.driverAltPhone} onChange={(v) => setFormData({ ...formData, driverAltPhone: v })} />
                   </div>
                 </div>
               </div>
@@ -904,12 +892,7 @@ export default function AdminFleetManagementPage() {
                   </div>
                   <div>
                     <label className="text-[11px] font-bold text-blue-950 block mb-1">Phone</label>
-                    <input
-                      type="tel"
-                      value={formData.driverPhone}
-                      onChange={(e) => setFormData({ ...formData, driverPhone: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-blue-200 text-xs font-semibold text-slate-900"
-                    />
+                    <PhoneInput size="sm" value={formData.driverPhone} onChange={(v) => setFormData({ ...formData, driverPhone: v })} />
                   </div>
                 </div>
               </div>

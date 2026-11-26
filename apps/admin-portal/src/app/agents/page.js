@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import PhoneInput from '../../components/ui/PhoneInput';
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -521,14 +522,7 @@ sponsorReferralCode: '',
 
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">Phone Number *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="0000000000"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200/90 text-slate-900 focus:outline-none focus:border-blue-600 font-mono"
-                  />
+                  <PhoneInput size="sm" required value={formData.phone} onChange={(v) => setFormData({ ...formData, phone: v })} />
                 </div>
               </div>
 
