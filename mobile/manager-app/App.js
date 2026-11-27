@@ -14,6 +14,25 @@ import BusScreen from './src/screens/BusScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import TabBar from './src/components/TabBar';
+import * as Updates from 'expo-updates';
+
+/**
+ * Over-the-air updates: on start, fetch a newer published update and restart into it, so fixes
+ * (like a new server address) reach phones without installing a new APK. Gives up after a few
+ * seconds on a slow or offline network; then the app runs as is and the update applies next launch.
+ */
+async function applyLatestUpdate() {
+  if (__DEV__ || !Updates.isEnabled) return;
+  const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+  try {
+    const check = await withTimeout(Updates.checkForUpdateAsync(), 6000);
+    if (!check.isAvailable) return;
+    const fetched = await withTimeout(Updates.fetchUpdateAsync(), 20000);
+    if (fetched.isNew) await Updates.reloadAsync();
+  } catch (e) {
+    // Offline / slow: keep going; expo-updates also downloads in the background for next launch.
+  }
+}
 
 /**
  * Rupadiya Bus Samiti — Bus Manager app.
@@ -25,7 +44,8 @@ export default function App() {
 
   useEffect(() => {
     setLoggedOutHandler(() => setUser(null));
-    loadServerUrl()
+    applyLatestUpdate()
+      .then(() => loadServerUrl())
       .catch(() => {})
       .then(() => api.resume())
       .then((u) => setUser(u))

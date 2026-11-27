@@ -13,6 +13,9 @@ const SERVER_KEY = 'rbs_server';
 
 const CONFIGURED_URL = (Constants.expoConfig?.extra?.apiUrl || '').trim();
 
+// Old API hosts. A saved address pointing at one of these is replaced by the current default.
+const RETIRED_SERVERS = [/\/\/rupadiya-tours-travels\.onrender\.com(\/|:|$)/i];
+
 /** Normalises what a person types: "192.168.1.12" → "http://192.168.1.12:4500/api/v1". */
 export function normaliseServerUrl(input) {
   let url = String(input || '').trim().replace(/\/+$/, '');
@@ -52,6 +55,11 @@ export function getApiBase() {
 /** Loads a saved server address (call once at start-up). */
 export async function loadServerUrl() {
   const saved = await SecureStore.getItemAsync(SERVER_KEY).catch(() => null);
+  // Addresses of servers that were moved: drop them so the app uses the current live API.
+  if (saved && RETIRED_SERVERS.some((rx) => rx.test(saved))) {
+    await SecureStore.deleteItemAsync(SERVER_KEY).catch(() => {});
+    return apiBase;
+  }
   if (saved) apiBase = saved;
   return apiBase;
 }
