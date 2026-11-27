@@ -83,20 +83,28 @@ const SPOKE_OPTIONS = ROUTE_GROUPS.flatMap(g => g.cities.map(c => ({
   routeName: g.name
 })));
 
+// Calendar day in India time ("YYYY-MM-DD"). toISOString() gives the UTC day, which is the
+// previous day before 05:30 IST and put buses on the wrong date.
+const istKey = (d) => {
+  const x = new Date(d);
+  return Number.isNaN(x.getTime()) ? '' : x.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+};
+
 function getNext7Days() {
   const days = [];
   const now = new Date();
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [ty, tm, td] = istKey(now).split('-').map(Number);
   for (let i = 0; i <= 7; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() + i);
+    // Noon UTC of the India-time day keeps every derived value on the same calendar day.
+    const d = new Date(Date.UTC(ty, tm - 1, td + i, 12));
     const dateStr = d.toISOString().split('T')[0];
     let label = '';
     if (i === 0) label = 'Today';
     else if (i === 1) label = 'Tomorrow';
     else label = `+${i} Days`;
     
-    const formattedShort = `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]}`;
+    const formattedShort = `${String(d.getUTCDate()).padStart(2, '0')} ${MONTHS[d.getUTCMonth()]}`;
     days.push({
       dateStr,
       label,
@@ -357,10 +365,10 @@ export default function CompanyTripsPage() {
   // Filter & Sort Calculation
   const { filteredTrips, stats } = useMemo(() => {
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = istKey(now);
     const tom = new Date(now);
     tom.setDate(tom.getDate() + 1);
-    const tomStr = tom.toISOString().split('T')[0];
+    const tomStr = istKey(tom);
     const in7Days = new Date(now);
     in7Days.setDate(in7Days.getDate() + 7);
 
@@ -370,7 +378,7 @@ export default function CompanyTripsPage() {
 
     trips.forEach(t => {
       const dep = new Date(t.departureTime);
-      const depDateStr = !isNaN(dep.getTime()) ? dep.toISOString().split('T')[0] : '';
+      const depDateStr = istKey(dep);
       if (!isNaN(dep.getTime())) {
         if (dep < now) expiredCount++;
         else upcomingCount++;
@@ -387,7 +395,7 @@ export default function CompanyTripsPage() {
       if (!matchesSearch) return false;
 
       const dep = new Date(t.departureTime);
-      const depDateStr = !isNaN(dep.getTime()) ? dep.toISOString().split('T')[0] : '';
+      const depDateStr = istKey(dep);
       const isPast = !isNaN(dep.getTime()) && dep < now;
 
       // 2. Status Filter
@@ -731,8 +739,8 @@ export default function CompanyTripsPage() {
                   
                   const depDate = new Date(t.departureTime);
                   const isPast = t.isExpired || depDate < new Date();
-                  const todayStr = new Date().toISOString().split('T')[0];
-                  const depDateStr = !isNaN(depDate.getTime()) ? depDate.toISOString().split('T')[0] : '';
+                  const todayStr = istKey(new Date());
+                  const depDateStr = istKey(depDate);
                   const isToday = depDateStr === todayStr;
 
                   return (
@@ -760,7 +768,7 @@ export default function CompanyTripsPage() {
                             </span>
                           ) : (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                              {depDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                              {depDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}
                             </span>
                           )}
                           <span className="text-slate-800 font-bold text-xs">

@@ -83,6 +83,13 @@ router.post('/create-order', paymentLimiter, optionalAuth, async (req, res, next
 
     const trip = await Trip.findById(hold.tripId).select('seats companyCode departureTime status');
     if (!trip) return res.status(404).json({ success: false, error: 'Trip not found.' });
+    // Never take money for a bus that has left (or is no longer open) while the customer sat on the payment page.
+    if (trip.status && !['SCHEDULED', 'BOARDING'].includes(trip.status)) {
+      return res.status(409).json({ success: false, error: `This trip is ${String(trip.status).toLowerCase()} and is no longer accepting bookings.`, code: 'TRIP_CLOSED' });
+    }
+    if (trip.departureTime && new Date(trip.departureTime).getTime() <= Date.now()) {
+      return res.status(409).json({ success: false, error: 'This bus has already departed. Please choose another trip.', code: 'TRIP_DEPARTED' });
+    }
 
     let passengers;
     try {

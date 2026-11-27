@@ -658,44 +658,6 @@ export default function TicketConfirmationPage() {
                 )}
               </div>
             </div>
-
-            {/* 3. Bus Features & Amenities */}
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-sky-600 block">
-                    Coach Specifications
-                  </span>
-                  <h3 className="text-base font-bold text-slate-900">
-                    {busName}
-                  </h3>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Rupadiya Verified Fleet</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4">
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-center">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">Air Conditioning</span>
-                  <span className="text-xs font-bold text-slate-800">Climate Controlled</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-center">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">Power Supply</span>
-                  <span className="text-xs font-bold text-slate-800">USB at Every Seat</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-center">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">Tracking</span>
-                  <span className="text-xs font-bold text-slate-800">Live GPS Radar</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-center">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">Safety</span>
-                  <span className="text-xs font-bold text-slate-800">Emergency SOS / CCTV</span>
-                </div>
-              </div>
-            </div>
-
             {/* 4. Payment Receipt & Complete Fare Breakdown */}
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-5">
               {/* Receipt Header */}

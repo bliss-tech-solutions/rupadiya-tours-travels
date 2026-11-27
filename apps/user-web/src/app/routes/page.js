@@ -19,6 +19,7 @@ import {
 import { ROUTE_GROUPS, HUB_CITY, SPOKE_CITIES } from '../../lib/routes';
 import { getLocalDateString } from '../../lib/dateUtils';
 import { useLanguage } from '../../context/LanguageContext';
+import DatePicker from '../../components/ui/DatePicker';
 
 export default function RoutePage() {
   const router = useRouter();
@@ -106,13 +107,13 @@ export default function RoutePage() {
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
-                <input
-                  type="date"
-                  min={todayIso}
+                <DatePicker
                   value={travelDate}
-                  onChange={(e) => setTravelDate(e.target.value)}
-                  className="px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-800 text-xs font-bold shadow-xs focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-                  title="Travel Date"
+                  min={todayIso}
+                  onChange={setTravelDate}
+                  compact
+                  align="right"
+                  className="min-w-[190px]"
                 />
               </div>
             </div>

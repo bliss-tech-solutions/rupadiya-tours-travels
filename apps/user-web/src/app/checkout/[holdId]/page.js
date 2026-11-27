@@ -114,6 +114,16 @@ export default function CheckoutPassengerDetailsPage() {
   const [submittingHold, setSubmittingHold] = useState(false);
 
   useEffect(() => {
+    // Seats already held for payment in this tab (hold still running): go back to the payment
+    // page instead of holding again, which would restart the 10-minute timer.
+    try {
+      const paying = JSON.parse(sessionStorage.getItem('rupadiya_checkout') || 'null');
+      if (paying?.holdId && paying.expiresAt && new Date(paying.expiresAt).getTime() > Date.now() + 5000) {
+        router.replace(`/payment/${paying.holdId}`);
+        return;
+      }
+    } catch (e) { /* ignore bad session data */ }
+
     const raw = sessionStorage.getItem('rupadiya_booking_flow') || sessionStorage.getItem('rupadiya_checkout');
     if (!raw) {
       router.push('/');

@@ -621,11 +621,14 @@ test('search: shows all buses on a route for the day (every company, scheduled +
   await Company.updateOne({ companyCode: 2 }, { $setOnInsert: { companyCode: 2, name: 'Company Two', slug: `c2-${crypto.randomInt(1e6)}`, status: 'ACTIVE' } }, { upsert: true });
   const bus2 = await Bus.create({ busNumber: `UP40SRCH${crypto.randomInt(1000, 9999)}`, name: 'Second Coach', companyCode: 2, busType: 'AC Seater (2+2)' });
 
-  const day = new Date(Date.now() + 20 * 3600000); // ~tomorrow, same for all three trips
+  // Tomorrow in India time; all three trips are on that India date (independent of the server time zone).
+  const { istDateKey } = require('../utils/istDate');
+  const day = istDateKey(new Date(Date.now() + 24 * 3600000));
+  const hh = (h) => String(h).padStart(2, '0');
   const mk = async (companyCode, busId, hour, status) => Trip.create({
     routeId: fx.route._id, busId, companyCode,
-    departureTime: new Date(new Date(day).setHours(hour, 0, 0, 0)),
-    arrivalTime: new Date(new Date(day).setHours(hour + 12, 0, 0, 0)),
+    departureTime: new Date(`${day}T${hh(hour)}:00:00+05:30`),
+    arrivalTime: new Date(new Date(`${day}T${hh(hour)}:00:00+05:30`).getTime() + 12 * 3600000),
     baseFare: 1000, status, seats: Trip.generateSeater40Seats(1000)
   });
   const a = await mk(1, fx.bus._id, 7, 'SCHEDULED');     // company 1, scheduled
@@ -641,6 +644,34 @@ test('search: shows all buses on a route for the day (every company, scheduled +
   const companyCodes = new Set(results.filter((r) => ids.has(String(r._id)) && [String(a._id), String(b._id)].includes(String(r._id))).map((r) => r.companyCode));
   assert.ok(companyCodes.has(1) && companyCodes.has(2), 'buses from both companies are returned');
   assert.ok(results.find((r) => String(r._id) === String(b._id)).companyName === 'Company Two', 'company name on the card');
+});
+
+test('search: India-time travel date and departed buses are hidden', async (t) => {
+  if (!connected) return t.skip('MongoDB not available');
+  const ownInventory = require('../providers/inventory/OwnInventoryProvider');
+  const { istDateKey } = require('../utils/istDate');
+  const mk = (departureTime, status = 'SCHEDULED') => Trip.create({
+    routeId: fx.route._id, busId: fx.bus._id, companyCode: 1,
+    departureTime, arrivalTime: new Date(departureTime.getTime() + 12 * 3600000),
+    baseFare: 1000, status, seats: Trip.generateSeater40Seats(1000)
+  });
+  // A date 3 days ahead (India time) and a 02:00 IST bus on it = 20:30 UTC the day before.
+  const key = istDateKey(new Date(Date.now() + 3 * 86400000));
+  const early = await mk(new Date(`${key}T02:00:00+05:30`));
+  const late = await mk(new Date(`${key}T23:30:00+05:30`));
+  const prevKey = istDateKey(new Date(new Date(`${key}T12:00:00+05:30`).getTime() - 86400000));
+
+  const onDay = new Set((await ownInventory.searchTrips({ fromCityId: 'rupaidiha', toCityId: 'ahmedabad', travelDate: key })).map((r) => String(r._id)));
+  assert.ok(onDay.has(String(early._id)), '02:00 IST bus is on its India date');
+  assert.ok(onDay.has(String(late._id)), '23:30 IST bus is on its India date');
+  const dayBefore = new Set((await ownInventory.searchTrips({ fromCityId: 'rupaidiha', toCityId: 'ahmedabad', travelDate: prevKey })).map((r) => String(r._id)));
+  assert.ok(!dayBefore.has(String(early._id)), 'early bus is not listed on the previous date');
+
+  // Departed an hour ago (still SCHEDULED/BOARDING in the DB): not listed today, not bookable.
+  const gone = await mk(new Date(Date.now() - 3600000), 'BOARDING');
+  const today = new Set((await ownInventory.searchTrips({ fromCityId: 'rupaidiha', toCityId: 'ahmedabad', travelDate: istDateKey(new Date()) })).map((r) => String(r._id)));
+  assert.ok(!today.has(String(gone._id)), 'departed bus is hidden');
+  await assert.rejects(bookingService.holdSeats({ tripId: gone._id, seatNumbers: ['1'], passengerId: null }), (e) => e.statusCode === 409);
 });
 
 test('manager app: seat layout in manifest; date-wise history incl. mid-route handover', async (t) => {

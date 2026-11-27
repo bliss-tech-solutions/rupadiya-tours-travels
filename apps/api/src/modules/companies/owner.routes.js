@@ -1,4 +1,5 @@
 const express = require('express');
+const { istDayRange } = require('../../utils/istDate');
 const companyReports = require('../../services/companyReports.service');
 const settlementService = require('../settlements/settlement.service');
 const CompanySettlement = require('../settlements/companySettlement.model');
@@ -1267,11 +1268,9 @@ router.get('/trips', async (req, res, next) => {
     const query = { ...(req.companyFilter || { companyCode: code }) };
 
     // Support optional date query
-    if (req.query.date) {
-      const startOfDay = new Date(`${req.query.date}T00:00:00.000Z`);
-      const endOfDay = new Date(`${req.query.date}T23:59:59.999Z`);
-      query.departureTime = { $gte: startOfDay, $lte: endOfDay };
-    }
+    // Optional date (India-time calendar day).
+    const dayRange = req.query.date ? istDayRange(req.query.date) : null;
+    if (dayRange) query.departureTime = { $gte: dayRange[0], $lt: dayRange[1] };
 
     const sortOption = req.query.sort === 'departure_asc' 
       ? { departureTime: 1 }
@@ -1613,11 +1612,12 @@ router.post('/trips', async (req, res, next) => {
     // 4. Resolve Departure Date & Time (Supporting today through next 7 days)
     let depDateTime;
     if (departureDate && departureTime) {
-      depDateTime = new Date(`${departureDate}T${departureTime}:00`);
+      // Times are entered in India time; the server runs in UTC, so the offset must be explicit.
+      depDateTime = new Date(`${departureDate}T${String(departureTime).slice(0, 5)}:00+05:30`);
     } else if (departureTime && departureTime.includes('T')) {
       depDateTime = new Date(departureTime);
     } else if (departureDate) {
-      depDateTime = new Date(`${departureDate}T18:00:00`);
+      depDateTime = new Date(`${departureDate}T18:00:00+05:30`);
     } else {
       depDateTime = new Date();
     }
@@ -1652,11 +1652,11 @@ router.post('/trips', async (req, res, next) => {
     await trip.populate('routeId');
     await trip.populate('busId');
 
-    const formattedDepartureStr = depDateTime.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const formattedDepartureStr = depDateTime.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 
     res.status(201).json({
       success: true,
-      message: `Trip successfully dispatched for ${route.fromCity?.name} → ${route.toCity?.name} on ${formattedDepartureStr} at ${departureTime || depDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+      message: `Trip successfully dispatched for ${route.fromCity?.name} → ${route.toCity?.name} on ${formattedDepartureStr} at ${departureTime || depDateTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}.`,
       trip
     });
   } catch (err) {

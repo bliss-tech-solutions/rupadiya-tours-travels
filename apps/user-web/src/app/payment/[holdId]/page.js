@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { formatPhone } from '../../../lib/phone';
 import { 
-  ArrowLeft, 
   ShieldCheck, 
   CheckCircle2, 
   Tag, 
@@ -29,7 +28,8 @@ export default function PaymentPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [allowedMethods, setAllowedMethods] = useState({ upi: true, card: true, netbanking: true, wallet: true });
-  const [timeLeft, setTimeLeft] = useState(600); // 10 minutes timer
+  const [timeLeft, setTimeLeft] = useState(null); // seconds left on the seat hold (from its fixed expiry)
+  const [deadline, setDeadline] = useState(null);  // hold expiry (ms) — never restarted by revisiting the page
   const [insuranceOpted, setInsuranceOpted] = useState(false);
   const [serverQuote, setServerQuote] = useState(null); // authoritative fare (incl. platform + gateway fee)
 
@@ -45,45 +45,59 @@ export default function PaymentPage() {
       setInsuranceOpted(Boolean(data.insuranceOpted));
     }
 
-    // Calculate remaining seconds if expiresAt is set
-    if (data.expiresAt) {
-      const exp = new Date(data.expiresAt).getTime();
-      const diff = Math.floor((exp - Date.now()) / 1000);
-      if (diff > 0) {
-        setTimeLeft(diff);
-      }
+    // The countdown always runs to the hold's fixed expiry (set by the server when the seats were held).
+    // Only if it is somehow missing do we fix one now — and save it, so a refresh doesn't restart at 10:00.
+    let expiresAt = data.expiresAt;
+    if (!expiresAt || Number.isNaN(new Date(expiresAt).getTime())) {
+      expiresAt = new Date(Date.now() + 600 * 1000).toISOString();
+      sessionStorage.setItem('rupadiya_checkout', JSON.stringify({ ...data, expiresAt }));
     }
+    setDeadline(new Date(expiresAt).getTime());
 
-    // Keep active hold in localStorage for homepage banner
+    // Keep active hold in sessionStorage for homepage banner
     sessionStorage.setItem('rupadiya_active_hold', JSON.stringify({
       holdId: data.holdId,
       holdToken: data.holdId,
       tripId: data.tripId,
       selectedSeats: data.selectedSeats,
       totalPrice: data.totalPrice,
-      expiresAt: data.expiresAt || new Date(Date.now() + 600 * 1000).toISOString(),
+      expiresAt,
       routeLabel: `${data.trip?.route?.fromCity?.name || 'Rupaidiha'} → ${data.trip?.route?.toCity?.name || 'Ahmedabad'}`
     }));
   }, [router]);
 
-  // Hold Countdown Timer (10 Minutes)
+  // Hold countdown: recomputed from the fixed expiry every second (no drift, no restart).
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          addToast('Your 10-minute seat hold has expired. Please select your seats again.', 'warning', 'Hold Expired');
-          sessionStorage.removeItem('rupadiya_active_hold');
-          sessionStorage.removeItem('rupadiya_checkout');
-          router.push('/');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
+    if (!deadline) return undefined;
+    let done = false;
+    const tick = () => {
+      const left = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+      setTimeLeft(left);
+      if (left === 0 && !done) {
+        done = true;
+        addToast('Your 10-minute seat hold has expired. Please select your seats again.', 'warning', 'Hold Expired');
+        sessionStorage.removeItem('rupadiya_active_hold');
+        sessionStorage.removeItem('rupadiya_checkout');
+        router.replace('/');
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [addToast, router]);
+  }, [deadline, addToast, router]);
+
+  // No going back from payment: the browser / phone back button stays on this page.
+  // (Going back used to drop the entered details and create a fresh hold with a new 10 minutes.)
+  // To change seats or travellers, the user cancels the booking, which releases the seats.
+  useEffect(() => {
+    window.history.pushState({ rbsPaymentLock: true }, '', window.location.href);
+    const onPop = () => {
+      window.history.pushState({ rbsPaymentLock: true }, '', window.location.href);
+      addToast('Your seats are held for payment. To change seats or travellers, tap "Cancel Booking & Release Seats".', 'info', 'Payment in progress');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [addToast]);
 
 
   useEffect(() => {
@@ -118,8 +132,8 @@ export default function PaymentPage() {
 
   if (!checkoutData) return null;
 
-  const minutes = Math.floor(timeLeft / 60);
-  const seconds = String(timeLeft % 60).padStart(2, '0');
+  const minutes = timeLeft == null ? '--' : Math.floor(timeLeft / 60);
+  const seconds = timeLeft == null ? '--' : String(timeLeft % 60).padStart(2, '0');
 
   const baseFare = checkoutData.baseFare || 510;
   const seatsCount = checkoutData.selectedSeats?.length || 1;
@@ -247,7 +261,7 @@ export default function PaymentPage() {
 
               addToast('Payment confirmed! Your ticket is booked.', 'success', 'Booking Confirmed');
               const targetId = booking?.bookingId || booking?.pnr || checkoutData.holdId;
-              router.push(`/ticket/${targetId}`);
+              router.replace(`/ticket/${targetId}`);
             } else {
               addToast(verifyRes?.error || 'Payment signature verification failed.', 'error', 'Payment Verification');
             }
@@ -277,7 +291,7 @@ export default function PaymentPage() {
     sessionStorage.removeItem('rupadiya_checkout');
     sessionStorage.removeItem('rupadiya_booking_flow');
     addToast('Reservation cancelled and seats released.', 'info', 'Seats Released');
-    router.push('/');
+    router.replace('/');
   };
 
   return (
@@ -285,12 +299,9 @@ export default function PaymentPage() {
       {/* Sticky Header */}
       <div className="bg-white border-b border-slate-200 sticky top-0 md:top-20 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-          <button
-            onClick={() => router.back()}
-            className="p-2 rounded-full hover:bg-slate-100 text-slate-700 transition"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          <span className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center" aria-hidden="true">
+            <Lock className="w-4 h-4" />
+          </span>
           <div className="text-center">
             <h1 className="text-base font-black text-slate-900">Secure Payment</h1>
             <p className="text-xs text-slate-500">Step 4 of 4 · Complete booking</p>

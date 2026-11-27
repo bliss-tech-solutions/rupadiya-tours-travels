@@ -4,6 +4,7 @@ const { toPublicSeats } = require('../../services/seatPolicy');
 const holdStore = require('../../config/holdStore');
 const Company = require('../../modules/companies/company.model');
 const { SEAT_STATUS, SEAT_CATEGORY, normalizeCityId } = require('../../config/constants');
+const { istDayRange, istDateKey } = require('../../utils/istDate');
 
 class OwnInventoryProvider extends InventoryProvider {
   constructor() {
@@ -21,12 +22,15 @@ class OwnInventoryProvider extends InventoryProvider {
     const query = { status: { $in: ['SCHEDULED', 'BOARDING'] } };
     // Agents only see their own company's buses; customers see every company.
     if (companyCode != null) query.companyCode = Number(companyCode);
-    if (travelDate) {
-      const start = new Date(travelDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(travelDate);
-      end.setHours(23, 59, 59, 999);
-      query.departureTime = { $gte: start, $lte: end };
+    // Buses that have already departed are never listed (they can't be booked any more).
+    const now = new Date();
+    const dayKey = travelDate instanceof Date ? istDateKey(travelDate) : travelDate;
+    const range = dayKey ? istDayRange(dayKey) : null;
+    if (range) {
+      // The travel date is an India-time calendar day (not the server's UTC day).
+      query.departureTime = { $gte: range[0] > now ? range[0] : now, $lt: range[1] };
+    } else {
+      query.departureTime = { $gt: now };
     }
 
     const trips = await Trip.find(query)

@@ -3,6 +3,9 @@
  * Eliminates timezone conversion shifts (+5:30 IST / +5:45 NPT) and prevents raw ISO strings (e.g. 2026-10-28T11:30:00.000Z).
  */
 
+// Bus times are India time for everyone (company staff in Nepal see the same times as the ticket).
+const IST = 'Asia/Kolkata';
+
 export function parseLocalDate(input) {
   if (!input) return null;
   if (input instanceof Date) return isNaN(input.getTime()) ? null : input;
@@ -41,15 +44,15 @@ export function formatTime(value) {
 
   const d = parseLocalDate(value);
   if (!d) return String(value);
-  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: IST });
 }
 
 export function formatDateTime(value) {
   if (!value) return '—';
   const d = parseLocalDate(value);
   if (!d) return String(value);
-  const datePart = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  const timePart = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const datePart = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: IST });
+  const timePart = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: IST });
   return `${datePart}, ${timePart}`;
 }
 
@@ -66,8 +69,8 @@ export function formatDeparture(value) {
   if (str.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(str)) {
     const d = parseLocalDate(str);
     if (d) {
-      const datePart = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
-      const timePart = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const datePart = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: IST });
+      const timePart = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: IST });
       return `${datePart} · ${timePart}`;
     }
   }

@@ -27,6 +27,7 @@ import {
   getAllowedOrigins,
   normalizeCityId,
 } from "../lib/routes";
+import DatePicker from '../components/ui/DatePicker';
 import { useLanguage } from "../context/LanguageContext";
 import { getLocalDateString } from "../lib/dateUtils";
 
@@ -285,22 +286,14 @@ export default function HomePage() {
 
         {/* Date Row */}
         <div className="grid grid-cols-1 gap-3 mb-6">
-          <div className="p-3.5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <label className="text-[11px] font-semibold uppercase text-slate-400 block mb-1">
-              {t("departureDate")}
-            </label>
-            <input
-              type="date"
-              min={todayIso}
-              value={departureDate}
-              onChange={(e) => {
-                if (e.target.value >= todayIso) {
-                  setDepartureDate(e.target.value);
-                }
-              }}
-              className="w-full font-bold text-sm text-slate-800 bg-transparent focus:outline-none"
-            />
-          </div>
+          <DatePicker
+            label={t("departureDate")}
+            value={departureDate}
+            min={todayIso}
+            onChange={setDepartureDate}
+            compact
+            className="shadow-sm rounded-2xl"
+          />
         </div>
 
         {/* Big Blue Search Bus Button */}
@@ -616,25 +609,12 @@ export default function HomePage() {
                   </div>
 
                   {/* Departure Date */}
-                  <div className="border border-slate-200 rounded-2xl p-3 px-4 bg-white">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                      {t("departureDate")}
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-slate-400" />
-                      <input
-                        type="date"
-                        min={todayIso}
-                        value={departureDate}
-                        onChange={(e) => {
-                          if (e.target.value >= todayIso) {
-                            setDepartureDate(e.target.value);
-                          }
-                        }}
-                        className="w-full font-bold text-sm text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-                      />
-                    </div>
-                  </div>
+                  <DatePicker
+                    label={t("departureDate")}
+                    value={departureDate}
+                    min={todayIso}
+                    onChange={setDepartureDate}
+                  />
 
                   {/* Search Button */}
                   <button
